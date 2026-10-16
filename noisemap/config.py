@@ -97,6 +97,7 @@ DEFAULTS = {
                        "r_facade": 100.0, "r_source_main": 200.0, "r_source_minor": 50.0,
                        "r_second": 50.0},
         "skip_radius": 1.5,                        # 래스터 이산화 오차 보정 반경(m)
+        "segment_check": True,                     # RLS-19 3.2 주석 l ≤ s/2 진단(결과값 불변) → segment_check.csv
     },
     "receivers": {
         "center": None,                            # [x, y] 계산 중심(교차로 등)

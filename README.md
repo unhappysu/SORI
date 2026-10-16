@@ -95,6 +95,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | `noise3d.html` | **3D 웹 뷰어**: 지형 위 격자 소음지도 + 건물 벽면 층별 소음. 더블클릭해 브라우저로 열기(three.js 내장, 인터넷 없이 동작) |
 | `*.png` | 확인용 간이 그림(격자, 파사드 평면, 파사드 3D) |
 | `sources.csv` | 음원 점별 LW′, D_K, D_refl, 경사, 교차로 거리 등 |
+| `segment_check.csv` | 구간 길이 진단: RLS-19 3.2 주석(경험칙) l ≤ s/2 를 어기는 음원이 있는 수음점만(위반 음원 수, 최소 s/l). 결과값에는 영향 없음. 요약은 `run_info.json` 의 `segment_check` |
 | `traffic_used.csv`, `junctions_used.csv` | 실제 사용된 교통량·교차로 판정 (보고서 근거자료) |
 | `build_info.json`, `run_info.json` | 모델 규모, 가정값 사용 수, 계산 조건 기록 |
 

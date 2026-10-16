@@ -244,3 +244,24 @@ def test_traffic_basis_recorded():
     assert t["M_day"] == pytest.approx(0.0575 * 45000)
     with pytest.raises(RuntimeError):
         inputs.traffic_for_road(cfg, road, {}, {"전농로": dict(meas, basis="실측")}, True, 6)
+
+
+# ======================================================================= 구간 길이 진단 (S7)
+def test_segment_check_rule():
+    """RLS-19 3.2 주석 l ≤ s/2: s < 2l 이면 위반, s = 2l 은 위반 아님. s = 직접 경로 3D 거리"""
+    from noisemap.run import segment_check, _segment_summary
+    S = pd.DataFrame(dict(x=[0.0, 0.0], y=[0.0, 3.0], z=[0.0, 0.0], l=[4.0, 5.0], main=[True, False]))
+    rx = np.array([8.0, 7.9, 100.0]); ry = np.zeros(3); rz = np.zeros(3)
+    nv, nvm, ratio = segment_check(S, rx, ry, rz)
+    # R1: 간선 s = 8 = 2l(경계, 위반 아님), 이면 s = √73 ≈ 8.54 < 10(위반)
+    # R2: 간선 s = 7.9 < 8(위반), 이면 √(7.9²+9) < 10(위반)
+    # R3: 반경 2·l_max 안에 음원 없음
+    # min_s_over_l 은 모든 근처 음원 중 최소: R1 = min(8/4, √73/5), R2 = min(7.9/4, √71.41/5)
+    assert list(nv) == [1, 2, 0] and list(nvm) == [0, 1, 0]
+    assert ratio[0] == pytest.approx(math.sqrt(73) / 5) and ratio[1] == pytest.approx(math.sqrt(7.9 ** 2 + 9) / 5)
+    assert ratio[2] == math.inf
+    s = _segment_summary(nv, nvm, ratio)
+    assert (s["receivers"], s["violating"], s["violating_via_main"]) == (3, 2, 1)
+    # 높이 차도 s 에 포함(3D): 간선에서 수평 7 m, 높이 4 m → s = √65 ≈ 8.06 ≥ 8 → 간선 위반 아님
+    nv2, nvm2, _ = segment_check(S.iloc[:1], np.array([7.0]), np.zeros(1), np.array([4.0]))
+    assert nv2[0] == 0

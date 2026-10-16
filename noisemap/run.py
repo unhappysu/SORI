@@ -75,6 +75,36 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
     return dict(LrT=to_db(Ed), LrN=to_db(En), LrT_direct=to_db(Edir), LrT_refl1=to_db(E1), LrT_refl2=to_db(E2))
 
 
+def segment_check(S, rx, ry, rz):
+    """RLS-19 3.2 주석(경험칙) l_i ≤ s_i/2 진단. 결과값에는 영향 없음.
+    s = 구간 중앙(음원점) → 수음점 직접 경로의 3D 거리. 반사 경로는 s가 더 길어 제외.
+    반환: 수음점별 (위반 음원 수, 그중 간선 음원 수, 반경 2·l_max 안 음원의 최소 s/l — 없으면 inf)"""
+    from scipy.spatial import cKDTree
+    sx, sy, sz, sl = (S[c].values.astype(np.float64) for c in ("x", "y", "z", "l"))
+    sm = S["main"].values.astype(bool)
+    n = len(rx)
+    nv = np.zeros(n, np.int64); nvm = np.zeros(n, np.int64); ratio = np.full(n, np.inf)
+    if n == 0 or len(sx) == 0:
+        return nv, nvm, ratio
+    tree = cKDTree(np.c_[sx, sy])
+    for k, js in enumerate(tree.query_ball_point(np.c_[rx, ry], 2.0 * sl.max())):
+        if not js:
+            continue
+        js = np.asarray(js)
+        q = np.sqrt((sx[js] - rx[k]) ** 2 + (sy[js] - ry[k]) ** 2 + (sz[js] - rz[k]) ** 2) / sl[js]
+        bad = q < 2.0
+        nv[k] = bad.sum(); nvm[k] = (bad & sm[js]).sum(); ratio[k] = q.min()
+    return nv, nvm, ratio
+
+
+def _segment_summary(nv, nvm, ratio):
+    v = nv > 0
+    return {"receivers": int(len(nv)), "violating": int(v.sum()),
+            "violating_pct": round(100.0 * v.mean(), 2) if len(nv) else 0.0,
+            "violating_via_main": int((nvm > 0).sum()),
+            "min_s_over_l": float(ratio.min()) if len(ratio) and np.isfinite(ratio.min()) else None}
+
+
 def _write_tif(path, A, gx, gy, step, crs):
     import rasterio
     from rasterio.transform import from_origin
@@ -90,6 +120,15 @@ def main(cfg, which=("grid", "facade"), progress=None):
     out = cfg["project"]["output_dir"]
     d, S, F, FR = load_model(out)
     summary = {}
+    do_seg = bool(cfg["propagation"].get("segment_check", True))
+    seg_rows, seg_sum = [], {}
+
+    def _seg(kind, rx, ry, rz, label, extra):
+        nv, nvm, ratio = segment_check(S, rx, ry, rz)
+        seg_sum[label] = _segment_summary(nv, nvm, ratio)
+        v = nv > 0
+        seg_rows.append(pd.DataFrame(dict(kind=kind, x=rx[v], y=ry[v], z=rz[v], **{k: a[v] for k, a in extra.items()},
+                                          n_viol=nv[v], n_viol_main=nvm[v], min_s_over_l=ratio[v])))
     if "grid" in which and cfg["receivers"]["grid"]["enabled"]:
         gx, gy, gz, ins = d["gx"], d["gy"], d["gz"], d["ginside"]
         X, Y = np.meshgrid(gx, gy)
@@ -103,6 +142,8 @@ def main(cfg, which=("grid", "facade"), progress=None):
                      int(cfg["propagation"]["reflection"]["max_order_grid"]), f"격자 h={h:g} m", progress=progress)
             G = pd.DataFrame(dict(x=rx, y=ry, z=rz, h=float(h), **r))
             frames.append(G)
+            if do_seg:
+                _seg("grid", rx, ry, rz, f"grid_h{h:g}", {"h": np.full(nr, float(h)), "floor": np.full(nr, np.nan)})
             for key in ("LrT", "LrN"):
                 A = np.full(X.shape, np.nan)
                 A.ravel()[m] = G[key].values
@@ -120,12 +161,20 @@ def main(cfg, which=("grid", "facade"), progress=None):
         FR["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrN]
         FR.to_csv(os.path.join(out, "facade_result.csv"), index=False)
         summary["facade"] = {k: [float(np.nanmin(FR[k])), float(np.nanmax(FR[k]))] for k in ("LrT", "LrN")}
+        if do_seg:
+            _seg("facade", FR.x.values, FR.y.values, FR.z.values, "facade",
+                 {"h": np.full(len(FR), np.nan), "floor": FR.floor.values})
+    if do_seg and seg_rows:
+        pd.concat(seg_rows).to_csv(os.path.join(out, "segment_check.csv"), index=False)
+        log.info("구간 길이 진단(l ≤ s/2, 결과값 불변): %s", seg_sum)
     bands, lams, alphas, wts = _params(cfg)
     info = {"software": f"noisemap {__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
             "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)", "propagation": "ISO 9613-2:1996",
             "ground_method": cfg["input"]["ground"]["method"], "bands_hz": list(bands),
             "alpha_dB_per_km": [round(a, 3) for a in alphas], "weights": list(np.round(wts, 4)),
             "reflection": cfg["propagation"]["reflection"], "results_range": summary,
+            "segment_check": ({"rule": "RLS-19 3.2 주석 l_i <= s_i/2 (경험칙, 진단만·결과값 불변). "
+                                       "s = 직접 경로 3D 거리", **seg_sum} if do_seg else None),
             "config": cfg["_config_path"], "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     with open(os.path.join(out, "run_info.json"), "w", encoding="utf-8") as f:
         json.dump(info, f, ensure_ascii=False, indent=2, default=str)
