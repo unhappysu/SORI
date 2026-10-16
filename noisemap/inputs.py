@@ -127,7 +127,8 @@ def sample_dem(path, xs, ys, crs):
 
 # ------------------------------------------------------------------ 교통량
 TRAFFIC_COLS = ["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "p2_day",
-                "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note"]
+                "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note", "basis"]
+TRAFFIC_BASIS = ("measured", "assumed")     # basis 열: 실측 / 가정. 빈칸 → unspecified
 
 
 def read_csv_any(path):
@@ -196,10 +197,14 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
         raise RuntimeError(f"교통량 '{rec['key']}': DTV 또는 M_day/M_night 중 하나는 입력해야 함")
     if rec is None:
         dtv = tcfg["fallback_dtv_by_lanes"].get(int(min(max(row["lanes"], 1), 6)), 1000.0)
-    out = {}
+    basis = (rec.get("basis", "") if rec else "").strip().lower()
+    if rec is not None and basis and basis not in TRAFFIC_BASIS:
+        raise RuntimeError(f"교통량 '{rec['key']}': basis '{basis}' 는 {TRAFFIC_BASIS} 중 하나(또는 빈칸)여야 함")
+    out, m_from = {}, {}
     for per in ("day", "night"):
         Mf, p1s, p2s = t2[per]
         M = _f(rec, f"M_{per}")
+        m_from[per] = "direct" if M is not None else "DTV_x_tab2"     # 직접 입력 / DTV × 표 2 계수
         if M is None:
             M = Mf * dtv
         p1 = _f(rec, f"p1_{per}"); p2 = _f(rec, f"p2_{per}")
@@ -216,6 +221,11 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     out["grade"] = _f(rec, "grade")                    # 사용자 지정 종단경사 % (디지타이즈 방향 기준). 없으면 지형에서 산정
     out["road_type"] = rtype
     out["traffic_src"] = src
+    # 출처 기록(결과값에는 영향 없음): 실측/가정 구분, M 산정 방식, 메모
+    out["traffic_basis"] = "fallback_lanes" if rec is None else (basis or "unspecified")
+    out["M_day_from"] = m_from["day"]
+    out["M_night_from"] = m_from["night"]
+    out["note"] = rec.get("note", "") if rec else ""
     return out
 
 

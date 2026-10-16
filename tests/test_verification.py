@@ -220,3 +220,27 @@ def test_name_traffic_not_applied_to_narrow_same_name_piece():
     assert inputs.traffic_for_road(cfg, narrow, {}, by_name, False, 1)["traffic_src"] == "user"
     # UFID 지정은 항상 우선
     assert inputs.traffic_for_road(cfg, narrow, {"B": rec}, by_name, False, 6)["traffic_src"] == "user"
+
+
+# ======================================================================= 교통량 출처 기록 (S1)
+def test_traffic_basis_recorded():
+    """실측/가정(basis), M 산정 방식, 메모가 결과로 전달되고 교통량 값 자체는 바뀌지 않음"""
+    from noisemap import inputs, config
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
+    road = {"ufid": "A", "rname": "전농로", "axis": "전농로", "lanes": 5, "surface_attr": ""}
+    base = {c: "" for c in inputs.TRAFFIC_COLS}
+    meas = dict(base, key="전농로", DTV="45000", basis="Measured", note="TOPIS 2026-08")
+    t = inputs.traffic_for_road(cfg, road, {}, {"전농로": meas}, True, 6)
+    assert (t["traffic_src"], t["traffic_basis"], t["note"]) == ("user", "measured", "TOPIS 2026-08")
+    assert (t["M_day_from"], t["M_night_from"]) == ("DTV_x_tab2", "DTV_x_tab2")
+    # basis 빈칸 → unspecified, M 직접 입력 → direct (주간만)
+    t2 = inputs.traffic_for_road(cfg, road, {}, {"전농로": dict(base, key="전농로", DTV="45000", M_day="2000")}, True, 6)
+    assert t2["traffic_basis"] == "unspecified" and (t2["M_day_from"], t2["M_night_from"]) == ("direct", "DTV_x_tab2")
+    assert t2["M_day"] == 2000.0 and t2["M_night"] == t["M_night"]
+    # 교통량 파일에 없는 도로 → 차로수 가정값
+    t3 = inputs.traffic_for_road(cfg, dict(road, rname="", axis="_u"), {}, {}, True, 6)
+    assert t3["traffic_src"] == "fallback" and t3["traffic_basis"] == "fallback_lanes" and t3["note"] == ""
+    # 출처 열 추가가 교통량 값을 바꾸지 않음 (표 2 gemeinde 주간 계수 0.0575 × DTV)
+    assert t["M_day"] == pytest.approx(0.0575 * 45000)
+    with pytest.raises(RuntimeError):
+        inputs.traffic_for_road(cfg, road, {}, {"전농로": dict(meas, basis="실측")}, True, 6)
