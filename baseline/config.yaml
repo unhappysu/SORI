@@ -1,0 +1,12 @@
+# 기준선 계산 설정 — 「소음지도 앱 코드/config.yaml」(2026-10-14 실제 자료 계산)과 같은 조건.
+# 수치지도 경로만 원본 폴더(읽기 전용)를 직접 가리키도록 절대경로로 바꿈.
+project: {name: "전농사거리", output_dir: "output"}
+crs: 5186
+input:
+  map: {folders: ["/Users/gustnbijou_/Downloads/3-2/소음진동설계/전농사거리_수치지도"]}
+  traffic: {path: "traffic.csv"}
+  road_alias: {"전농로25길": "전농로"}
+receivers:
+  center: [205108.0, 553110.0]
+  grid: {size: [480.0, 520.0], step: 2.5, heights: [4.0]}
+  facade: {radius: 230.0}
