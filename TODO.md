@@ -5,7 +5,7 @@
 ## 도로 음원 모델링 수정 (설계안 S1~S8, 2026-10-16 승인)
 
 - [x] S1 교통량 출처(basis)·M 산정 방식·메모 기록 — 커밋 `73bc3c8`
-- [ ] S7 l ≤ s/2 진단(결과값 불변)
+- [x] S7 l ≤ s/2 진단(결과값 불변) — 커밋 `54e08b8`
 - [ ] S3 `roads_override.csv` 읽기(lanes_fwd/bwd, oneway_dir)
 - [ ] S4 방향별 차로 수·`lane_width` 설정 반영(기본 3.5 m, 홀수 차로 규칙은 옵션·기본은 현행 ceil)
 - [ ] S5 방향별 교통량 배분 `dir_split_fwd`/`dir_basis`(기본 0.5), `oneway_dir` 반영
