@@ -1,0 +1,10 @@
+# ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
+[server]
+maxUploadSize = 2000        # MB, 수치지도 여러 도엽 업로드용
+headless = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#d23c00"

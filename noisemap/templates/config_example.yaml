@@ -1,0 +1,53 @@
+# =====================================================================
+# 소음지도 계산 설정 (RLS-19 음원 + ISO 9613-2 전파)
+# ※ 본 설정 서식은 Claude(Anthropic의 AI)를 활용하여 제작하였음.
+# 경로는 이 파일이 있는 폴더 기준 상대경로 또는 절대경로.
+# 적지 않은 항목은 noisemap/config.py 의 DEFAULTS 값이 사용됨.
+# =====================================================================
+project:
+  name: "전농사거리"
+  output_dir: "output"
+
+crs: 5186                       # 계산 좌표계 EPSG (수치지도 1:1,000 = 5186)
+
+input:
+  map:                          # [필수] 국토지리정보원 수치지형도 v2.0 SHP 압축해제 폴더(여러 도엽 가능)
+    folders: ["data/map"]
+    encoding: "cp949"
+    # layers / fields 는 수치지도 표준 이름이 기본값. 다른 자료를 쓰면 여기서 바꿈.
+    # fields:
+    #   building_height: "높이"   # 높이(m) 필드가 있으면 층수×층고 대신 사용
+  dem:                          # [선택] DEM 래스터(GeoTIFF/IMG). 없으면 등고선·표고점만 사용
+    path: null                  # 예: "data/dem/37705.img"
+    use_as: "auxiliary"         # auxiliary | primary
+  traffic:                      # [필수 권장] 교통량. 서식은 `python -m noisemap template` 으로 생성
+    path: "traffic.csv"
+    default_road_type: "gemeinde"   # RLS-19 표 2: autobahn | bundesstrasse | landesstrasse | gemeinde
+    fallback_dtv_by_lanes: {1: 1000, 2: 6000, 3: 12000, 4: 20000, 5: 30000, 6: 40000}
+  junctions:                    # [선택] 교차로 유형(x,y,type). 없으면 자동 판정
+    path: null
+    auto_signal_min_lanes: 4
+  ground:
+    method: "general"           # general(ISO 7.3.1, 권장) | alternative(ISO 7.3.2 식 10)
+    default_G: 0.0              # 도시 포장지역
+    soft_polygons: null         # 녹지 폴리곤(SHP/GPKG) → soft_G 적용
+  road_alias: {"전농로25길": "전농로"}
+
+receivers:
+  center: [205108.0, 553110.0]  # 사가정로 x 전농로 교차점
+  grid:
+    size: [480.0, 520.0]
+    step: 5.0
+    heights: [4.0]              # 3D 격자: 예) [1.5, 4.0, 10.0]
+  facade:
+    radius: 230.0
+
+propagation:
+  bands_hz: [500]               # ISO 9613-2 1절 비고 1 (A가중 LW만 있을 때 500 Hz)
+  spectrum_dBA: [0.0]
+  temperature_C: 15.0
+  humidity_pct: 70.0
+  reflection:
+    rho: 0.8                    # ISO 9613-2 표 4: 창이 있는 건물 벽
+    max_order_grid: 1
+    max_order_facade: 2         # RLS-19 3.6: 1차·2차 반사
