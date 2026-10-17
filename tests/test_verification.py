@@ -299,3 +299,65 @@ def test_road_override_read(tmp_path):
         p.write_text(body, encoding="utf-8")
         with pytest.raises(RuntimeError):
             inputs.load_road_override(cfg)
+
+
+# ======================================================================= 음원선 배치 (S4)
+def _legacy_source_offsets(n_lanes, width, oneway):
+    """S4 이전(커밋 abf64c7) build.source_offsets 를 그대로 옮긴 것 — 기본값 동등성 비교용"""
+    wl = float(np.clip(width / n_lanes, 2.75, 3.5)) if width and width > 0 else 3.25
+    if oneway:
+        nd = n_lanes
+    else:
+        if n_lanes <= 1:
+            return [(0.0, None)]
+        nd = int(math.ceil(n_lanes / 2))
+    d_edge = 0.5 if nd <= 2 else (1.0 if nd <= 4 else 1.5)
+    if oneway:
+        return [(-(nd * wl / 2 - d_edge * wl), True)]
+    off = nd * wl - d_edge * wl
+    return [(-off, True), (+off, False)]
+
+
+def test_source_offsets_default_equals_legacy():
+    """기본 설정·확인값 없음 → 이전 코드와 오프셋이 비트 단위로 같음"""
+    from noisemap import build, config
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
+    for n in range(1, 11):
+        for w in (0.0, 3.0, 4.8, 7.0, 13.1, 25.0, 40.0):
+            for ow in (False, True):
+                nd, nb, wl, rule = build.lane_layout(cfg, n, w, ow, np.nan, np.nan)
+                new = build.source_offsets(nd, nb, wl, ow, single=(rule == "single_centre"))
+                assert new == _legacy_source_offsets(n, w, ow), (n, w, ow)
+
+
+def test_source_offsets_bild6_and_priority():
+    """Bild 6 규칙(방향별 차로 수 → 음원선 위치)과 확인값·설정 우선순위.
+    기대값은 Bild 6 문장에서 유도: 중심선(방향 경계)에서 음원선까지 = (nd − d_edge)·wl,
+    d_edge = 0.5(1·2차로), 1.0(3·4차로), 1.5(5차로 이상)"""
+    from noisemap import build, config
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}, "model": {"lane_width": 3.0}})
+    lay = lambda *a: build.lane_layout(cfg, *a)
+    expect = {1: 0.5, 2: 1.5, 3: 2.0, 4: 3.0, 5: 3.5, 6: 4.5}
+    for k, mult in expect.items():                              # 확인값 k + k
+        nd, nb, wl, rule = lay(2 * k, 99.0, False, k, k)
+        assert (nd, nb, wl, rule) == (k, k, 3.0, "override")
+        assert build.source_offsets(nd, nb, wl, False) == [(-mult * 3.0, True), (mult * 3.0, False)]
+    nd, nb, wl, _ = lay(5, 0.0, False, 3, 2)                      # 비대칭 3 + 2
+    assert build.source_offsets(nd, nb, wl, False) == [(-6.0, True), (4.5, False)]
+    # 확인값 없음: 홀수 차로 규칙
+    assert lay(5, 0.0, False, np.nan, np.nan)[:2] == (3, 3)      # ceil(현행)
+    cfg_m = config._merge(cfg, {"model": {"odd_lane_rule": "major_fwd"}})
+    assert build.lane_layout(cfg_m, 5, 0.0, False, np.nan, np.nan)[:2] == (3, 2)
+    assert build.lane_layout(cfg_m, 4, 0.0, False, np.nan, np.nan)[:2] == (2, 2)   # 짝수는 규칙 무관
+    assert build.lane_layout(cfg_m, 1, 0.0, False, np.nan, np.nan)[3] == "single_centre"
+    # 한쪽만 지정한 확인값 → 수치지도 규칙으로
+    assert lay(5, 0.0, False, 3, np.nan)[3] == "ceil"
+    # 일방통행: 확인값 lanes_fwd 우선, 음원선 1개
+    nd, nb, wl, rule = lay(1, 0.0, True, 2, np.nan)
+    assert (nd, nb, rule) == (2, 0, "override") and len(build.source_offsets(nd, nb, wl, True)) == 1
+    # 차로폭 auto: 도로폭/전체 차로수를 [2.75, 3.5] 로 제한, 도로폭 없으면 3.25
+    cfg_a = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
+    assert build.lane_layout(cfg_a, 4, 12.0, False)[2] == 3.0
+    assert build.lane_layout(cfg_a, 5, 30.0, False)[2] == 3.5
+    assert build.lane_layout(cfg_a, 4, 0.0, False)[2] == 3.25
+    assert build.lane_layout(cfg_a, 5, 15.0, False, 2, 2)[2] == 3.5          # 확인값 합계(4) 기준 15/4 → 3.5

@@ -81,6 +81,11 @@ DEFAULTS = {
         "segment_main": 3.0,
         "segment_minor": 5.0,
         "main_min_lanes": 2,                       # 차로수 ≥ 이 값 → 간선(반사 탐색거리 확대)
+        # 음원선 배치(RLS-19 3.3.1, Bild 6). 확인값(input.road_override)이 있으면 그 방향별 차로 수가 우선
+        "odd_lane_rule": "ceil",                   # 홀수 차로 양방향: ceil = 양쪽 ⌈n/2⌉(현행) | major_fwd = 디지타이즈 방향 ⌈n/2⌉, 반대 ⌊n/2⌋
+        "lane_width": "auto",                      # auto = 도로폭/차로수를 lane_width_clip 범위로(현행) | 숫자 = 고정 차로폭(m)
+        "lane_width_clip": [2.75, 3.5],
+        "lane_width_default": 3.25,                # auto 에서 도로폭 값이 없을 때
         "canyon": {"enabled": True, "parallel_tol_deg": 5.0, "probe_offsets": [-5.0, 0.0, 5.0],
                    "max_width": 100.0, "ray_length": 100.0},
     },
@@ -167,6 +172,11 @@ def _validate(c):
         raise ValueError("alpha_dB_per_km 길이가 bands_hz 와 같아야 함")
     if not 0.2 < float(p["reflection"]["rho"]) <= 1.0:
         raise ValueError("ISO 9613-2 7.5: 반사계수 rho 는 0.2 초과 1 이하")
+    m = c["model"]
+    if m["odd_lane_rule"] not in ("ceil", "major_fwd"):
+        raise ValueError("model.odd_lane_rule 는 ceil 또는 major_fwd")
+    if m["lane_width"] not in ("auto", None) and not (2.0 <= float(m["lane_width"]) <= 5.0):
+        raise ValueError("model.lane_width 는 auto 또는 2.0~5.0 m")
     if c["input"]["ground"]["method"] not in ("general", "alternative"):
         raise ValueError("ground.method 는 general 또는 alternative")
     r = c["receivers"]

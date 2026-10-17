@@ -236,20 +236,63 @@ def junctions(cfg, road):
 
 
 # ====================================================================== 음원선
-def source_offsets(n_lanes, width, oneway):
-    """RLS-19 3.3.1 / Bild 6. 반환: [(횡오프셋 m, 디지타이즈 방향과 같은가)] (+ = 진행방향 좌측)"""
-    wl = float(np.clip(width / n_lanes, 2.75, 3.5)) if width and width > 0 else 3.25
+def _d_edge(nd):
+    """Bild 6: 바깥 차로 가장자리에서 음원선까지 거리(차로폭 배수).
+    1차로 = 차로 중앙(0.5), 2차로 = 바깥 차로 중앙(0.5), 3~4차로 = 바깥 두 차로 사이 차선(1.0),
+    5차로 이상 = 바깥에서 두 번째 차로 중앙(1.5)"""
+    return 0.5 if nd <= 2 else (1.0 if nd <= 4 else 1.5)
+
+
+def _finite(v):
+    try:
+        return v is not None and math.isfinite(float(v))
+    except (TypeError, ValueError):
+        return False
+
+
+def lane_layout(cfg, n_lanes, width, oneway, lanes_fwd=None, lanes_bwd=None):
+    """방향별 차로 수와 차로폭 결정 (RLS-19 3.3.1: 음원선 위치는 방향별 차로 수로 정함).
+    우선순위: 확인값(roads_override: 양방향은 lanes_fwd·lanes_bwd 모두 ≥ 1, 일방통행은 lanes_fwd) → 수치지도 차로수.
+    반환: (nd_fwd, nd_bwd, wl, rule)  rule = override | oneway_map | single_centre | map_half | ceil | major_fwd
+      nd_fwd = 디지타이즈 방향, nd_bwd = 반대 방향(일방통행·중앙 1개선은 0)"""
+    mc = cfg["model"]
     if oneway:
-        nd = n_lanes
+        if _finite(lanes_fwd) and float(lanes_fwd) >= 1:
+            nd, nb, rule = int(lanes_fwd), 0, "override"
+        else:
+            nd, nb, rule = int(n_lanes), 0, "oneway_map"
+        total = nd
     else:
-        if n_lanes <= 1:
-            return [(0.0, None)]                   # 1차로 양방향: 중앙 1개선, 방향 미상
-        nd = int(math.ceil(n_lanes / 2))
-    d_edge = 0.5 if nd <= 2 else (1.0 if nd <= 4 else 1.5)   # 바깥 차로 가장자리에서 음원선까지(차로폭 배수)
+        if _finite(lanes_fwd) and _finite(lanes_bwd) and float(lanes_fwd) >= 1 and float(lanes_bwd) >= 1:
+            nd, nb, rule = int(lanes_fwd), int(lanes_bwd), "override"
+        elif n_lanes <= 1:
+            nd, nb, rule = 1, 0, "single_centre"
+        elif n_lanes % 2 == 0:
+            nd = nb = int(n_lanes // 2); rule = "map_half"
+        elif mc.get("odd_lane_rule", "ceil") == "major_fwd":
+            nd, nb, rule = int(math.ceil(n_lanes / 2)), int(n_lanes // 2), "major_fwd"
+        else:                                      # 현행: 양쪽 모두 ⌈n/2⌉
+            nd = nb = int(math.ceil(n_lanes / 2)); rule = "ceil"
+        total = (nd + nb) if rule == "override" else n_lanes
+    lw = mc.get("lane_width", "auto")
+    if lw == "auto" or lw is None:
+        lo, hi = mc.get("lane_width_clip", [2.75, 3.5])
+        wl = float(np.clip(width / total, lo, hi)) if width and width > 0 else float(mc.get("lane_width_default", 3.25))
+    else:
+        wl = float(lw)
+    return nd, nb, wl, rule
+
+
+def source_offsets(nd_fwd, nd_bwd, wl, oneway, single=False):
+    """RLS-19 3.3.1 / Bild 6. 반환: [(횡오프셋 m, 디지타이즈 방향과 같은가)] (+ = 디지타이즈 진행방향 좌측)
+    양방향: 도로중심선을 방향 경계로 간주(미확인 가정 — TECHNICAL_NOTES). 일방통행: 중심선 = 차도 중앙."""
+    if single:
+        return [(0.0, None)]                       # 1차로 양방향: 중앙 1개선, 방향 미상
     if oneway:
-        return [(-(nd * wl / 2 - d_edge * wl), True)]          # 우측통행 → 바깥 = 우측
-    off = nd * wl - d_edge * wl
-    return [(-off, True), (+off, False)]           # 우측선 = 디지타이즈 방향, 좌측선 = 반대방향
+        return [(-(nd_fwd * wl / 2 - _d_edge(nd_fwd) * wl), True)]      # 우측통행 → 바깥 = 우측
+    off_f = nd_fwd * wl - _d_edge(nd_fwd) * wl
+    off_b = nd_bwd * wl - _d_edge(nd_bwd) * wl
+    return [(-off_f, True), (+off_b, False)]       # 우측선 = 디지타이즈 방향, 좌측선 = 반대방향
 
 
 def detect_canyon(cfg, x, y, tx, ty, ftree, fgeoms, F, zroad):
@@ -294,7 +337,7 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
     ftree = STRtree(fgeoms) if len(fgeoms) else None
     Jxy = J[["x", "y"]].values if len(J) else np.zeros((0, 2))
     Jtype = J["type"].values if len(J) else np.array([])
-    rows, troad = [], []
+    rows, troad, lines = [], [], []
     name_max = road.groupby("axis")["lanes"].max().to_dict()
     half = float(mc.get("grade_base", 30.0)) / 2.0
     for _, rd in road.iterrows():
@@ -302,7 +345,13 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
         tr = I.traffic_for_road(cfg, rd, by_ufid, by_name, main, name_max.get(rd["axis"], 99))
         troad.append({"fid": rd["fid"], "ufid": rd["ufid"], "name": rd["rname"], "axis": rd["axis"],
                       "lanes": rd["lanes"], **tr})
-        offs = source_offsets(rd["lanes"], rd["width"], rd["oneway"])
+        nd, nb, wl, rule = lane_layout(cfg, rd["lanes"], rd["width"], rd["oneway"],
+                                       rd.get("lanes_fwd"), rd.get("lanes_bwd"))
+        offs = source_offsets(nd, nb, wl, rd["oneway"], single=(rule == "single_centre"))
+        lines.append({"fid": rd["fid"], "ufid": rd["ufid"], "name": rd["rname"], "lanes": rd["lanes"],
+                      "width": rd["width"], "oneway": rd["oneway"], "lanes_fwd_used": nd, "lanes_bwd_used": nb,
+                      "lane_rule": rule, "lane_width": wl, "offset_fwd": offs[0][0],
+                      "offset_bwd": offs[1][0] if len(offs) > 1 else np.nan})
         frac = 1.0 / len(offs) if len(offs) > 1 else 1.0
         seg = mc["segment_main"] if main else mc["segment_minor"]
         my_j = sorted(reach.get(rd["fid"], set()))
@@ -378,7 +427,7 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
                 lw.append(rls19.LW_prime(M, *args, g, r.D_K, r.D_refl))
         S[f"LWp_{per}"] = lw
         S[f"LW_{per}"] = S[f"LWp_{per}"] + 10 * np.log10(S.l)        # 점음원 LW = LW' + 10 lg l
-    return S, T.reset_index()
+    return S, T.reset_index(), pd.DataFrame(lines)
 
 
 # ====================================================================== 파사드 / 수음점
@@ -463,13 +512,14 @@ def main(cfg):
     refl_region = box(*gb).buffer(pc["reflection"]["r_facade"] + pc["reflection"]["r_source_main"])
     F = facade_edges(cfg, bld, bidr, rast, refl_region)
     J, reach = junctions(cfg, road)
-    S, T = build_sources(cfg, road, gnd, rast, F, J, reach)
+    S, T, Ln = build_sources(cfg, road, gnd, rast, F, J, reach)
     xs, ys, gz, inside = grid_receivers(cfg, gnd, bidr, rast)
     FR = facade_receivers(cfg, F, bld) if cfg["receivers"]["facade"]["enabled"] else pd.DataFrame()
     np.savez_compressed(os.path.join(out, "model_rasters.npz"), gnd=gnd, dsm=dsm, bid=bidr, G=Gm,
                         x0=rast.x0, y0=rast.y0, res=rast.res, gx=xs, gy=ys, gz=gz, ginside=inside)
     S.to_csv(os.path.join(out, "sources.csv"), index=False)
     T.to_csv(os.path.join(out, "traffic_used.csv"), index=False, encoding="utf-8-sig")
+    Ln.to_csv(os.path.join(out, "source_lines.csv"), index=False, encoding="utf-8-sig")   # 도로별 음원선 배치 근거
     F.to_csv(os.path.join(out, "facades.csv"), index_label="fid")
     FR.to_csv(os.path.join(out, "facade_receivers.csv"), index=False)
     J.to_csv(os.path.join(out, "junctions_used.csv"), index=False)

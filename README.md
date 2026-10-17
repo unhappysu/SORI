@@ -85,7 +85,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | lanes_basis, oneway_dir_basis | `checked`(확인) 또는 `assumed`(가정). 빈칸이면 unspecified |
 | note | 확인 출처 메모 |
 
-현재 판은 **읽기·검증·기록만** 합니다(`output/road_override_used.csv`, `build_info.json`의 `road_override`). 음원선 위치·방향 반영은 다음 단계에서 추가됩니다.
+방향별 차로 수(`lanes_fwd`·`lanes_bwd`, 양방향은 둘 다 1 이상일 때)는 음원선 위치(RLS-19 그림 6)에 반영됩니다(`output/source_lines.csv`의 `lane_rule = override`). `oneway_dir` 반영은 다음 단계에서 추가됩니다. 읽은 값과 경고는 `output/road_override_used.csv`, `build_info.json`의 `road_override`.
 
 ## 5. 주요 설정 (config.yaml)
 
@@ -95,6 +95,8 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | `input.ground.method` | general | ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제) |
 | `propagation.reflection.rho` | 0.8 | ISO 표 4 '창이 있는 건물 벽' |
 | `max_order_grid` / `max_order_facade` | 1 / 2 | 반사 차수 (RLS-19 3.6은 2차까지) |
+| `model.odd_lane_rule` | ceil | 확인값이 없는 홀수 차로 양방향 도로의 방향별 차로 수. `ceil` = 양쪽 ⌈n/2⌉(5 → 3+3), `major_fwd` = 디지타이즈 방향 ⌈n/2⌉·반대 ⌊n/2⌋(5 → 3+2) |
+| `model.lane_width` | auto | 음원선 위치 계산용 차로폭. `auto` = 도로폭/차로수를 `lane_width_clip`(2.75~3.5 m)로 제한, 도로폭 없으면 3.25 m. 숫자 = 고정값(m) |
 | `receivers.grid.heights` | [4.0] | 3D 격자 높이 목록 |
 | `propagation.max_dist_main/minor` | 300 / 150 m | 음원 탐색 거리 |
 
@@ -108,6 +110,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | `noise3d.html` | **3D 웹 뷰어**: 지형 위 격자 소음지도 + 건물 벽면 층별 소음. 더블클릭해 브라우저로 열기(three.js 내장, 인터넷 없이 동작) |
 | `*.png` | 확인용 간이 그림(격자, 파사드 평면, 파사드 3D) |
 | `sources.csv` | 음원 점별 LW′, D_K, D_refl, 경사, 교차로 거리 등 |
+| `source_lines.csv` | 도로 객체별 음원선 배치 근거: 사용한 방향별 차로 수, 근거(`lane_rule`: override·map_half·ceil·major_fwd·oneway_map·single_centre), 차로폭, 중심선 기준 오프셋 |
 | `segment_check.csv` | 구간 길이 진단: RLS-19 3.2 주석(경험칙) l ≤ s/2 를 어기는 음원이 있는 수음점만(위반 음원 수, 최소 s/l). 결과값에는 영향 없음. 요약은 `run_info.json` 의 `segment_check` |
 | `traffic_used.csv`, `junctions_used.csv` | 실제 사용된 교통량·교차로 판정 (보고서 근거자료) |
 | `build_info.json`, `run_info.json` | 모델 규모, 가정값 사용 수, 계산 조건 기록 |
