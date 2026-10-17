@@ -10,7 +10,7 @@
 - [x] S4 방향별 차로 수·`lane_width` 설정 반영(기본 auto = 전농사거리에서 3.5 m, 홀수 차로 규칙은 옵션·기본은 현행 ceil) — 커밋 `6992201`
 - [x] S5 방향별 교통량 배분 `dir_split_fwd`/`dir_basis`(기본 0.5, UFID·실측만), `oneway_dir` 반영 — 커밋 `272c42b`
 - [x] S2 일방통행 객체에 도로명 교통량 미배정(옵션 oneway_name_traffic: fallback, 기본 현행 apply) — 커밋 `dbdcb69`
-- [ ] S6 음원 지면 기준 `source_ground: road_profile`(옵션, 기본 현행 dtm_at_source)
+- [x] S6 음원 지면 기준 `source_ground: road_profile`(옵션, 기본 현행 dtm_at_source) — 커밋 `b2169a7` (켜기 전 DTM 보정 권장)
 - [ ] S8 TECHNICAL_NOTES 기록(일방통행 해석, 1차로 등가성, 중심선 미확인 가정, 횡단경사 미반영 근거, 노면 고도 기준, 진단 결과)
 
 ## 사용자 확인 대기 (지도·자료 확인)
