@@ -52,6 +52,9 @@ DEFAULTS = {
             "default_speed_minor": 30.0,
             "name_min_lanes": 2,                   # 도로명 교통량은 이 차로수 이상 구간에만 적용(같은 이름의 좁은 접속로 제외)
         },
+        "road_override": {
+            "path": None,                          # 도로별 확인값 CSV: ufid, lanes_fwd, lanes_bwd, oneway_dir(+1/−1) …
+        },                                         # (S3: 읽기·검증·기록만. 음원선 반영은 S4·S5)
         "junctions": {
             "path": None,                          # x,y,type(signal/roundabout/other) CSV
             "auto_signal_min_lanes": 4,            # 자동 판정: 차로수 ≥ 이 값인 서로 다른 도로축 2개 이상 → auto_type
@@ -145,7 +148,7 @@ def load(path):
 
     m = c["input"]["map"]
     m["folders"] = [rp(f) for f in m["folders"]]
-    for k in ("dem", "traffic", "junctions"):
+    for k in ("dem", "traffic", "junctions", "road_override"):
         c["input"][k]["path"] = rp(c["input"][k]["path"])
     c["input"]["ground"]["soft_polygons"] = rp(c["input"]["ground"]["soft_polygons"])
     c["project"]["output_dir"] = rp(c["project"]["output_dir"])

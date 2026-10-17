@@ -265,3 +265,37 @@ def test_segment_check_rule():
     # 높이 차도 s 에 포함(3D): 간선에서 수평 7 m, 높이 4 m → s = √65 ≈ 8.06 ≥ 8 → 간선 위반 아님
     nv2, nvm2, _ = segment_check(S.iloc[:1], np.array([7.0]), np.zeros(1), np.array([4.0]))
     assert nv2[0] == 0
+
+
+# ======================================================================= 도로별 확인값 (S3)
+def test_road_override_read(tmp_path):
+    """roads_override.csv 읽기·검증·도로 객체 부착. 계산에는 아직 쓰지 않음(S4·S5에서 반영)"""
+    from noisemap import inputs, config
+    p = tmp_path / "ov.csv"
+    p.write_text("UFID,도로명,lanes_fwd,lanes_bwd,lanes_basis,oneway_dir,oneway_dir_basis,note\n"
+                 "A,전농로,3,2,checked,,,항공사진\n"
+                 "B,골목,,,,-1,,\n"
+                 "C,사가정로,2,2,,,,\n"
+                 "Z,없는도로,1,1,,,,\n", encoding="utf-8")
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}, "input": {"road_override": {"path": str(p)}}})
+    ov = inputs.load_road_override(cfg)
+    assert ov["A"]["lanes_fwd"] == 3 and ov["A"]["lanes_bwd"] == 2 and ov["A"]["lanes_basis"] == "checked"
+    assert ov["B"]["oneway_dir"] == -1 and ov["B"]["oneway_dir_basis"] == "unspecified" and ov["B"]["lanes_basis"] == ""
+    road = pd.DataFrame({"ufid": ["A", "B", "C", "D"], "lanes": [5, 1, 5, 4], "oneway": [False, True, False, True]})
+    r, info = inputs.apply_road_override(road, ov)
+    assert list(r.lanes_src) == ["override", "map", "override", "map"]
+    assert r.lanes_fwd[0] == 3 and r.lanes_bwd[0] == 2 and np.isnan(r.lanes_fwd[1])
+    assert r.oneway_dir[1] == -1 and list(r.oneway_dir_src) == ["", "override", "", "digitized_assumed"]
+    assert list(r.lanes) == [5, 1, 5, 4]                                   # 수치지도 차로수는 그대로
+    assert info["matched_ufid"] == 3 and info["unmatched_ufid"] == 1
+    assert info["warnings"]["lanes_fwd + lanes_bwd ≠ 수치지도 차로수"] == 1   # C: 2+2 ≠ 5
+    # 파일 미지정 → None, 부착 열은 모두 기본값
+    assert inputs.load_road_override(config._merge(config.DEFAULTS, {})) is None
+    r0, _ = inputs.apply_road_override(road, None)
+    assert set(r0.lanes_src) == {"map"} and r0.lanes_fwd.isna().all()
+    # 검증 오류: 중복 UFID, oneway_dir 값, 0차로, basis 값
+    for body in ("ufid,lanes_fwd\nA,2\nA,3\n", "ufid,oneway_dir\nA,2\n", "ufid,lanes_fwd\nA,0\n",
+                 "ufid,lanes_fwd,lanes_basis\nA,2,확인\n", "ufid,lanes_fwd\nA,2.5\n"):
+        p.write_text(body, encoding="utf-8")
+        with pytest.raises(RuntimeError):
+            inputs.load_road_override(cfg)

@@ -5,6 +5,7 @@ import glob
 import logging
 import math
 import os
+from collections import defaultdict
 
 import geopandas as gpd
 import numpy as np
@@ -227,6 +228,116 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     out["M_night_from"] = m_from["night"]
     out["note"] = rec.get("note", "") if rec else ""
     return out
+
+
+# ------------------------------------------------------------------ 도로별 확인값 (roads_override.csv)
+OVERRIDE_BASIS = ("checked", "assumed")     # 지도·현장 확인 / 가정. 빈칸 → unspecified
+
+
+def _int_cell(v, name, key):
+    s = str(v).strip()
+    if s == "" or s.lower() == "nan":
+        return None
+    try:
+        f = float(s)
+    except ValueError:
+        raise RuntimeError(f"도로 확인값 '{key}': {name}='{s}' 는 정수여야 함")
+    if not math.isfinite(f) or f != int(f):
+        raise RuntimeError(f"도로 확인값 '{key}': {name}='{s}' 는 정수여야 함")
+    return int(f)
+
+
+def load_road_override(cfg):
+    """도로별 확인값 CSV 읽기·검증 → {ufid: dict}. 경로 미지정이면 None.
+    열(대소문자 무관): ufid(필수), lanes_fwd, lanes_bwd, oneway_dir(+1/−1), lanes_basis, oneway_dir_basis, note.
+    그 밖의 열은 무시. lanes_fwd = 디지타이즈 방향 차로 수, lanes_bwd = 반대 방향.
+    oneway_dir: +1 = 디지타이즈 방향이 진행방향, −1 = 반대."""
+    p = (cfg["input"].get("road_override") or {}).get("path")
+    if not p:
+        return None
+    if not os.path.exists(p):
+        raise RuntimeError(f"도로 확인값 파일 없음: {p}")
+    df = read_csv_any(p)
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    if "ufid" not in cols:
+        raise RuntimeError("도로 확인값 파일에 ufid 열이 없음")
+    out = {}
+    for _, r in df.iterrows():
+        get = lambda k: str(r[cols[k]]).strip() if k in cols else ""
+        u = get("ufid")
+        if not u or u.startswith("#"):
+            continue
+        if u in out:
+            raise RuntimeError(f"도로 확인값: UFID '{u}' 중복")
+        lf, lb = _int_cell(get("lanes_fwd"), "lanes_fwd", u), _int_cell(get("lanes_bwd"), "lanes_bwd", u)
+        od = _int_cell(get("oneway_dir"), "oneway_dir", u)
+        if lf is not None and lf < 1:
+            raise RuntimeError(f"도로 확인값 '{u}': lanes_fwd 는 1 이상")
+        if lb is not None and lb < 0:
+            raise RuntimeError(f"도로 확인값 '{u}': lanes_bwd 는 0 이상")
+        if od is not None and od not in (1, -1):
+            raise RuntimeError(f"도로 확인값 '{u}': oneway_dir 는 +1 또는 −1")
+        rec = {"lanes_fwd": lf, "lanes_bwd": lb, "oneway_dir": od, "note": get("note")}
+        for k, has in (("lanes_basis", lf is not None or lb is not None), ("oneway_dir_basis", od is not None)):
+            b = get(k).lower()
+            if b and b not in OVERRIDE_BASIS:
+                raise RuntimeError(f"도로 확인값 '{u}': {k} '{b}' 는 {OVERRIDE_BASIS} 중 하나(또는 빈칸)여야 함")
+            rec[k] = (b or "unspecified") if has else ""
+        out[u] = rec
+    log.info("도로 확인값 파일: %d건", len(out))
+    return out
+
+
+def apply_road_override(road, ov):
+    """도로 객체에 확인값 열을 붙임(계산에는 아직 쓰지 않음 — 음원선 반영은 S4·S5).
+    추가 열: lanes_fwd, lanes_bwd(없으면 NaN), lanes_src(override/map), lanes_basis,
+             oneway_dir(없으면 NaN), oneway_dir_src(override/digitized_assumed, 양방향은 빈칸), oneway_dir_basis,
+             override_note.  반환: (road, 요약 dict)"""
+    road = road.copy()
+    ov = ov or {}
+    n = len(road)
+    lf = np.full(n, np.nan); lb = np.full(n, np.nan); od = np.full(n, np.nan)
+    lsrc, lbas, osrc, obas, note = [], [], [], [], []
+    warn = defaultdict(list)
+    seen = set()
+    for i, (u, lanes, ow) in enumerate(zip(road["ufid"], road["lanes"], road["oneway"])):
+        o = ov.get(u)
+        if o is not None:
+            seen.add(u)
+        has_l = o is not None and (o["lanes_fwd"] is not None or o["lanes_bwd"] is not None)
+        if has_l:
+            lf[i] = np.nan if o["lanes_fwd"] is None else o["lanes_fwd"]
+            lb[i] = np.nan if o["lanes_bwd"] is None else o["lanes_bwd"]
+            if o["lanes_fwd"] is None or (o["lanes_bwd"] is None and not ow):
+                warn["한쪽 방향 차로 수만 지정"].append(u)
+            elif not ow and o["lanes_fwd"] + o["lanes_bwd"] != lanes:
+                warn["lanes_fwd + lanes_bwd ≠ 수치지도 차로수"].append(u)
+            if ow and (o["lanes_bwd"] or 0) > 0:
+                warn["일방통행 도로에 lanes_bwd > 0"].append(u)
+            if ow and o["lanes_fwd"] is not None and o["lanes_fwd"] != lanes:
+                warn["일방통행 lanes_fwd ≠ 수치지도 차로수"].append(u)
+        lsrc.append("override" if has_l else "map")
+        lbas.append(o["lanes_basis"] if has_l else "")
+        if o is not None and o["oneway_dir"] is not None:
+            od[i] = o["oneway_dir"]
+            if not ow:
+                warn["양방향 도로에 oneway_dir 지정(무시 예정)"].append(u)
+        osrc.append(("override" if np.isfinite(od[i]) else "digitized_assumed") if ow else "")
+        obas.append(o["oneway_dir_basis"] if (ow and np.isfinite(od[i])) else "")
+        note.append(o["note"] if o is not None else "")
+    road["lanes_fwd"] = lf; road["lanes_bwd"] = lb; road["lanes_src"] = lsrc; road["lanes_basis"] = lbas
+    road["oneway_dir"] = od; road["oneway_dir_src"] = osrc; road["oneway_dir_basis"] = obas
+    road["override_note"] = note
+    unmatched = sorted(set(ov) - seen)
+    if unmatched:
+        warn["계산 영역 도로에 없는 UFID"] = unmatched
+    for k, v in warn.items():
+        log.warning("도로 확인값: %s %d건 (예: %s)", k, len(v), ", ".join(v[:3]))
+    info = {"rows": len(ov), "matched_ufid": len(seen), "unmatched_ufid": len(unmatched),
+            "roads_lanes_override": int(sum(s == "override" for s in lsrc)),
+            "roads_oneway_dir_override": int(np.isfinite(od).sum()),
+            "warnings": {k: len(v) for k, v in warn.items()}}
+    return road, info
 
 
 # ------------------------------------------------------------------ 교차로 / 지면

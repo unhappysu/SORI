@@ -451,6 +451,8 @@ def main(cfg):
     region = box(gb[0] - margin, gb[1] - margin, gb[2] + margin, gb[3] + margin)
     bld = I.prepare_buildings(cfg, I.read_layer(cfg, "building", region))
     road = I.prepare_roads(cfg, I.read_layer(cfg, "road", region))
+    ov = I.load_road_override(cfg)                 # 도로별 확인값(S3: 읽기·기록만, 계산 미반영)
+    road, ov_info = I.apply_road_override(road, ov)
     cont = I.read_layer(cfg, "contour", region.buffer(100))
     spot = I.read_layer(cfg, "spot", region.buffer(100))
     rast = Raster(region.buffer(10).bounds, pc["dsm_res"])
@@ -483,6 +485,11 @@ def main(cfg):
             "roads_with_fallback_traffic": nfb,
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
             "canyon_segments": int((S.D_refl > 0).sum())}
+    if ov is not None:                             # 확인값 파일을 지정한 경우에만 기록(기본 출력은 그대로)
+        cols = ["fid", "ufid", "rname", "lanes", "oneway", "lanes_fwd", "lanes_bwd", "lanes_src", "lanes_basis",
+                "oneway_dir", "oneway_dir_src", "oneway_dir_basis", "override_note"]
+        road[cols].to_csv(os.path.join(out, "road_override_used.csv"), index=False, encoding="utf-8-sig")
+        info["road_override"] = ov_info
     with open(os.path.join(out, "build_info.json"), "w", encoding="utf-8") as f:
         json.dump(info, f, ensure_ascii=False, indent=2)
     log.info("모델 구축 완료: %s", info)

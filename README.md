@@ -74,6 +74,19 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 ### 4.3 다공성 지면 (선택)
 녹지 폴리곤(SHP/GPKG)을 `input.ground.soft_polygons`에 지정하면 그 범위의 G = `soft_G`(기본 1).
 
+### 4.4 도로별 확인값 `roads_override.csv` (선택)
+지도·항공사진으로 확인한 도로 객체별 값을 `input.road_override.path`에 지정합니다(서식: `templates/roads_override_example.csv`).
+
+| 열 | 설명 |
+|---|---|
+| ufid | 수치지도 UFID(필수, 열 이름 대소문자 무관). 그 밖의 열(도로명·좌표 등)은 무시 |
+| lanes_fwd, lanes_bwd | 디지타이즈 방향 / 반대 방향 차로 수(일방통행은 lanes_bwd 빈칸 또는 0) |
+| oneway_dir | 일방통행만: +1 = 디지타이즈 방향이 진행방향, −1 = 반대 |
+| lanes_basis, oneway_dir_basis | `checked`(확인) 또는 `assumed`(가정). 빈칸이면 unspecified |
+| note | 확인 출처 메모 |
+
+현재 판은 **읽기·검증·기록만** 합니다(`output/road_override_used.csv`, `build_info.json`의 `road_override`). 음원선 위치·방향 반영은 다음 단계에서 추가됩니다.
+
 ## 5. 주요 설정 (config.yaml)
 
 | 항목 | 기본값 | 의미 |

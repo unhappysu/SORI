@@ -1,0 +1,3 @@
+ufid,lanes_fwd,lanes_bwd,lanes_basis,oneway_dir,oneway_dir_basis,note
+1000377051742A00210000000000000450,3,2,checked,,,예시값 - 항공사진으로 방향별 차로 확인 후 입력
+1000377051742A00210000000000000999,,,,-1,checked,예시값 - 일방통행 진행방향이 디지타이즈 반대
