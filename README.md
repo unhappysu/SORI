@@ -125,6 +125,6 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 23개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교
+python -m pytest -q tests        # 33개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
 ```
 자세한 내용은 `TECHNICAL_NOTES.md`.

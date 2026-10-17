@@ -464,3 +464,38 @@ def test_source_ground_option():
     assert np.allclose(a.zg[fwd], -0.525) and np.allclose(a.zg[bwd], 0.525)       # 음원점 위치 DTM
     assert np.allclose(b.zg, 0.0) and np.allclose(b.z, 0.5)                        # 중심선 종단 고도 + 0.5 m
     assert np.allclose(a.z - a.zg, 0.5) and np.allclose(a[["x", "y", "LWp_day"]], b[["x", "y", "LWp_day"]])
+
+
+# ======================================================================= 양방향 1차로 중앙 1개선 등가성 (결정 2)
+def test_single_lane_two_coincident_lines_equivalent():
+    """양방향 1차로: 방향별 2개선은 모두 차도 중앙에 겹침 → (a) 중앙 1개선 M 과 (b) 같은 위치 2개선 M/2 는
+    총 에너지·성분(직접·1차·2차 반사)·음원별 기여가 같아야 함. 반사벽 2개 + 차폐벽이 있는 평지에서 확인"""
+    gnd, dsm, bid, G, x0, y0, res, nx, ny = flat_world()
+    dsm[150:350, 300] = 20.0; bid[150:350, 300] = 7                 # 반사벽 x = 300
+    dsm[150:350, 150] = 20.0; bid[150:350, 150] = 8                 # 반사벽 x = 151 (마주보는 면)
+    dsm[200:300, 240] = 2.0; bid[200:300, 240] = 9                  # 낮은 차폐벽 x = 240 (반사면 아님)
+    F = [np.array([300.0, 151.0]), np.array([150.0, 350.0]), np.array([300.0, 151.0]), np.array([350.0, 150.0]),
+         np.array([-1.0, 1.0]), np.array([0.0, 0.0]), np.array([0.0, 0.0]), np.array([20.0, 20.0]),
+         np.array([200.0, 200.0]), np.array([7, 8], np.int64)]
+    sy0 = np.arange(240.0, 261.0, 5.0)                               # 음원선(중앙) 위 점음원 5개
+    rec = (np.array([280.0]), np.array([250.0]), np.array([4.0]))
+
+    def solve(sy, LW):
+        n = len(sy); P = 10 ** (0.1 * LW)
+        return compute(*rec, np.zeros(1), -np.ones(1, np.int64), -np.ones(1, np.int64), 2,
+                       np.full(n, 200.0), sy, np.full(n, 0.5), np.zeros(n), P, P, np.ones(n, np.bool_), *F, 0.8,
+                       gnd, dsm, bid, G, x0, y0, res, nx, ny, 1.0, 1e3, 1e3, 1e3, 1e3, 1e3, 1e3, 1.5,
+                       np.array([500.0]), np.array([LAM500]), np.array([0.0]), np.array([1.0]),
+                       False, 20.0, 20.0, 25.0)
+    LW = np.full(len(sy0), 100.0)
+    a = solve(sy0, LW)                                                # (a) 1개선, M
+    b = solve(np.r_[sy0, sy0], np.r_[LW, LW] - 10 * math.log10(2))  # (b) 같은 위치 2개선, M/2 씩
+    for k, name in enumerate(("Ed", "En", "Edir", "E1", "E2")):
+        assert b[k][0] == pytest.approx(a[k][0], rel=1e-12), name
+    assert a[3][0] > 0 and a[4][0] > 0                                # 1·2차 반사 경로가 실제로 존재
+    free = 10 ** (0.1 * (100 - (20 * math.log10(math.hypot(80, 3.5)) + 11 - 3)))
+    assert a[2][0] / len(sy0) < free                                  # 차폐벽이 직접음을 줄임(시험 조건 확인)
+    for j in range(len(sy0)):                                         # 음원별 기여: 겹친 두 음원 합 = 원래 음원
+        one = solve(sy0[j:j + 1], LW[j:j + 1]); half = solve(sy0[j:j + 1], LW[j:j + 1] - 10 * math.log10(2))
+        for k in (2, 3, 4):
+            assert 2 * half[k][0] == pytest.approx(one[k][0], rel=1e-12)
