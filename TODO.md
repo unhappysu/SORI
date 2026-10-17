@@ -6,7 +6,7 @@
 
 - [x] S1 교통량 출처(basis)·M 산정 방식·메모 기록 — 커밋 `73bc3c8`
 - [x] S7 l ≤ s/2 진단(결과값 불변) — 커밋 `54e08b8`
-- [ ] S3 `roads_override.csv` 읽기(lanes_fwd/bwd, oneway_dir)
+- [x] S3 `roads_override.csv` 읽기(lanes_fwd/bwd, oneway_dir) — 커밋 `4c519f5` (읽기·검증·기록만)
 - [ ] S4 방향별 차로 수·`lane_width` 설정 반영(기본 3.5 m, 홀수 차로 규칙은 옵션·기본은 현행 ceil)
 - [ ] S5 방향별 교통량 배분 `dir_split_fwd`/`dir_basis`(기본 0.5), `oneway_dir` 반영
 - [ ] S2 일방통행 객체에 도로명 교통량 미배정(옵션, 기본 현행)
