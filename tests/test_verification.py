@@ -361,3 +361,53 @@ def test_source_offsets_bild6_and_priority():
     assert build.lane_layout(cfg_a, 5, 30.0, False)[2] == 3.5
     assert build.lane_layout(cfg_a, 4, 0.0, False)[2] == 3.25
     assert build.lane_layout(cfg_a, 5, 15.0, False, 2, 2)[2] == 3.5          # 확인값 합계(4) 기준 15/4 → 3.5
+
+
+# ======================================================================= 방향별 배분·일방통행 방향 (S5)
+def test_dir_split_and_oneway_dir(tmp_path):
+    """dir_split_fwd 는 UFID 행·dir_basis = measured 일 때만 적용, oneway_dir = −1 은 음원선 쪽·방향을 뒤집음.
+    평지(경사 0) 가상 도로: LW′ ∝ 10 lg M 이므로 두 음원선 LW′ 차 = 10 lg[p/(1−p)]"""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from noisemap import build, inputs, config, rls19
+    tp = tmp_path / "traffic.csv"
+    tp.write_text("key,key_type,DTV,dir_split_fwd,dir_basis\n"
+                  "A,ufid,10000,0.7,measured\nB,ufid,10000,0.7,assumed\n도로C,name,10000,0.7,measured\n"
+                  "D,ufid,10000,0.7,measured\nE,ufid,4000,0.7,measured\n", encoding="utf-8")
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}, "input": {"traffic": {"path": str(tp)}},
+                                          "model": {"canyon": {"enabled": False}}})
+    spec = [("A", "", 4, 14.0, False, 0), ("B", "", 4, 14.0, False, 50), ("C", "도로C", 4, 14.0, False, 100),
+            ("D", "", 1, 4.0, False, 150), ("E", "", 1, 4.0, True, 200), ("F", "", 2, 7.0, True, 250)]
+    road = gpd.GeoDataFrame({"ufid": [s[0] for s in spec], "rname": [s[1] for s in spec],
+                             "axis": [s[1] or f"_u{s[0]}" for s in spec], "lanes": [s[2] for s in spec],
+                             "width": [s[3] for s in spec], "oneway": [s[4] for s in spec], "fid": range(len(spec)),
+                             "surface_attr": ""}, geometry=[LineString([(0, s[5]), (100, s[5])]) for s in spec])
+    ovr = {u: {"lanes_fwd": None, "lanes_bwd": None, "oneway_dir": -1, "note": "", "lanes_basis": "",
+               "oneway_dir_basis": "checked"} for u in ("E", "F")}
+    road, _ = inputs.apply_road_override(road, ovr)
+    rast = build.Raster((-50.0, -50.0, 150.0, 300.0), 1.0)
+    gnd = np.zeros((rast.ny, rast.nx))
+    F = pd.DataFrame(columns=["x1", "y1", "x2", "y2", "nx", "ny", "z0", "ztop", "L", "bid"])
+    S, T, Ln = build.build_sources(cfg, road, gnd, rast, F, pd.DataFrame(columns=["x", "y", "type"]), {})
+    T = T.set_index("ufid"); Ln = Ln.set_index("ufid")
+    src = T.dir_split_src.to_dict()
+    assert src == {"A": "measured", "B": "not_measured_ignored", "C": "name_key_ignored", "D": "measured",
+                   "E": "oneway_ignored", "F": "default_half"}
+    assert T.dir_split_fwd.to_dict() == {"A": 0.7, "B": 0.5, "C": 0.5, "D": 0.7, "E": 1.0, "F": 1.0}
+    by = lambda u: S[S.fid == list(T.index).index(u)]
+    a = by("A")
+    assert np.allclose(a[a.along == True].frac, 0.7) and np.allclose(a[a.along == False].frac, 0.3)
+    d_lw = a[a.along == True].LWp_day.mean() - a[a.along == False].LWp_day.mean()
+    assert d_lw == pytest.approx(10 * math.log10(0.7 / 0.3), abs=1e-9)
+    b = by("B")
+    assert b[b.along == True].LWp_day.mean() == pytest.approx(b[b.along == False].LWp_day.mean(), abs=1e-12)
+    # D: 양방향 1차로 중앙 1개선 — 경사 0 이면 p 와 무관하게 LW′(M) (에너지 합 보존)
+    t = T.loc["D"]
+    ref = rls19.LW_prime(t.M_day, t.p1_day, t.p2_day, t.v_pkw, t.v_lkw, t.surface, 0.0)
+    assert by("D").LWp_day.values == pytest.approx(ref, abs=1e-9)
+    # E: 일방 1차로, oneway_dir = −1 → 중앙(오프셋 0) 그대로, 방향 표시만 반대
+    e = by("E")
+    assert (e.along == False).all() and np.allclose(e.y, 200.0) and Ln.loc["E", "oneway_dir_used"] == -1
+    # F: 일방 2차로(차로폭 3.5) → 기본은 디지타이즈 우측 −1.75 m, −1 이면 좌측 +1.75 m
+    f = by("F")
+    assert (f.along == False).all() and np.allclose(f.y, 251.75) and Ln.loc["F", "offset_fwd"] == pytest.approx(1.75)

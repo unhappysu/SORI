@@ -128,8 +128,16 @@ def sample_dem(path, xs, ys, crs):
 
 # ------------------------------------------------------------------ 교통량
 TRAFFIC_COLS = ["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "p2_day",
-                "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note", "basis"]
-TRAFFIC_BASIS = ("measured", "assumed")     # basis 열: 실측 / 가정. 빈칸 → unspecified
+                "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note", "basis",
+                "dir_split_fwd", "dir_basis"]
+TRAFFIC_BASIS = ("measured", "assumed")     # basis·dir_basis 열: 실측 / 가정. 빈칸 → unspecified
+_dir_warned = set()
+
+
+def _dir_warn(key, msg):
+    if (key, msg) not in _dir_warned:
+        _dir_warned.add((key, msg))
+        log.warning("교통량 '%s': %s", key, msg)
 
 
 def read_csv_any(path):
@@ -182,6 +190,7 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     같은 이름의 좁은 접속로·측도에 간선 교통량이 배정되는 것을 막기 위함. UFID 지정은 항상 우선."""
     tcfg = cfg["input"]["traffic"]
     rec = by_ufid.get(row["ufid"])
+    via_ufid = rec is not None
     src = "user" if rec else "fallback"
     if rec is None:
         rec = by_name.get(row["rname"]) or by_name.get(row["axis"])
@@ -227,6 +236,27 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     out["M_day_from"] = m_from["day"]
     out["M_night_from"] = m_from["night"]
     out["note"] = rec.get("note", "") if rec else ""
+    # 방향별 배분(RLS-19 3.3.1 기본은 M 을 두 음원선에 절반씩). 방향별 실측(dir_basis = measured)이고
+    # UFID 로 지정한 경우에만 적용 — 같은 도로명의 객체들은 디지타이즈 방향이 같다는 보장이 없음
+    split = _f(rec, "dir_split_fwd")
+    dbas = (rec.get("dir_basis", "") if rec else "").strip().lower()
+    if rec is not None and dbas and dbas not in TRAFFIC_BASIS:
+        raise RuntimeError(f"교통량 '{rec['key']}': dir_basis '{dbas}' 는 {TRAFFIC_BASIS} 중 하나(또는 빈칸)여야 함")
+    if split is not None and not 0.0 <= split <= 1.0:
+        raise RuntimeError(f"교통량 '{rec['key']}': dir_split_fwd={split} 는 0~1 이어야 함")
+    p, dsrc = 0.5, "default_half"
+    ow = bool(row.get("oneway", False))
+    if split is not None:
+        if ow:
+            dsrc = "oneway_ignored"; _dir_warn(rec["key"], "일방통행 도로에는 dir_split_fwd 를 쓰지 않음(전량)")
+        elif not via_ufid:
+            dsrc = "name_key_ignored"; _dir_warn(rec["key"], "도로명 지정 행의 dir_split_fwd 는 무시(UFID 로 지정할 것)")
+        elif dbas != "measured":
+            dsrc = "not_measured_ignored"; _dir_warn(rec["key"], "dir_basis 가 measured 가 아니어서 dir_split_fwd 무시(50:50)")
+        else:
+            p, dsrc = split, "measured"
+    out["dir_split_fwd"] = 1.0 if ow else p
+    out["dir_split_src"] = dsrc
     return out
 
 

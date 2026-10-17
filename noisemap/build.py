@@ -283,13 +283,15 @@ def lane_layout(cfg, n_lanes, width, oneway, lanes_fwd=None, lanes_bwd=None):
     return nd, nb, wl, rule
 
 
-def source_offsets(nd_fwd, nd_bwd, wl, oneway, single=False):
+def source_offsets(nd_fwd, nd_bwd, wl, oneway, single=False, oneway_dir=1):
     """RLS-19 3.3.1 / Bild 6. 반환: [(횡오프셋 m, 디지타이즈 방향과 같은가)] (+ = 디지타이즈 진행방향 좌측)
-    양방향: 도로중심선을 방향 경계로 간주(미확인 가정 — TECHNICAL_NOTES). 일방통행: 중심선 = 차도 중앙."""
+    양방향: 도로중심선을 방향 경계로 간주(미확인 가정 — TECHNICAL_NOTES). 일방통행: 중심선 = 차도 중앙.
+    oneway_dir = −1: 일방통행 진행방향이 디지타이즈 반대 → 진행방향 우측(바깥)이 디지타이즈 좌측"""
     if single:
         return [(0.0, None)]                       # 1차로 양방향: 중앙 1개선, 방향 미상
     if oneway:
-        return [(-(nd_fwd * wl / 2 - _d_edge(nd_fwd) * wl), True)]      # 우측통행 → 바깥 = 우측
+        off = -(nd_fwd * wl / 2 - _d_edge(nd_fwd) * wl)                  # 우측통행 → 바깥 = 우측
+        return [(-off, False)] if oneway_dir == -1 else [(off, True)]
     off_f = nd_fwd * wl - _d_edge(nd_fwd) * wl
     off_b = nd_bwd * wl - _d_edge(nd_bwd) * wl
     return [(-off_f, True), (+off_b, False)]       # 우측선 = 디지타이즈 방향, 좌측선 = 반대방향
@@ -347,12 +349,16 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
                       "lanes": rd["lanes"], **tr})
         nd, nb, wl, rule = lane_layout(cfg, rd["lanes"], rd["width"], rd["oneway"],
                                        rd.get("lanes_fwd"), rd.get("lanes_bwd"))
-        offs = source_offsets(nd, nb, wl, rd["oneway"], single=(rule == "single_centre"))
+        odir = -1 if (rd["oneway"] and _finite(rd.get("oneway_dir")) and int(rd.get("oneway_dir")) == -1) else 1
+        offs = source_offsets(nd, nb, wl, rd["oneway"], single=(rule == "single_centre"), oneway_dir=odir)
         lines.append({"fid": rd["fid"], "ufid": rd["ufid"], "name": rd["rname"], "lanes": rd["lanes"],
                       "width": rd["width"], "oneway": rd["oneway"], "lanes_fwd_used": nd, "lanes_bwd_used": nb,
                       "lane_rule": rule, "lane_width": wl, "offset_fwd": offs[0][0],
-                      "offset_bwd": offs[1][0] if len(offs) > 1 else np.nan})
-        frac = 1.0 / len(offs) if len(offs) > 1 else 1.0
+                      "offset_bwd": offs[1][0] if len(offs) > 1 else np.nan,
+                      "oneway_dir_used": odir if rd["oneway"] else np.nan})
+        p_fwd = float(tr["dir_split_fwd"])          # 방향별 배분(기본 0.5, 방향별 실측일 때만 다름)
+        # 음원선별 M 비율: 2개선 = 디지타이즈 방향 p, 반대 1−p / 1개선 = 1(양방향 중앙선은 아래에서 p, 1−p)
+        fracs = {True: p_fwd, False: 1.0 - p_fwd} if len(offs) > 1 else None
         seg = mc["segment_main"] if main else mc["segment_minor"]
         my_j = sorted(reach.get(rd["fid"], set()))
         for off, along in offs:
@@ -394,7 +400,8 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
                     else:
                         xk, kt = 999.0, "other"
                     rows.append(dict(x=p.x, y=p.y, l=L / k, tx=tx, ty=ty, g=g, along=along, main=main,
-                                     frac=frac, fid=rd["fid"], x_knot=xk, kt=kt, lanes=rd["lanes"],
+                                     frac=(fracs[along] if fracs else 1.0), fid=rd["fid"], x_knot=xk, kt=kt,
+                                     lanes=rd["lanes"],
                                      name=rd["rname"]))
     S = pd.DataFrame(rows)
     T = pd.DataFrame(troad).set_index("fid")
@@ -418,9 +425,10 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
             t = T.loc[r.fid]
             M = t[f"M_{per}"] * r.frac
             args = (t[f"p1_{per}"], t[f"p2_{per}"], t["v_pkw"], t["v_lkw"], t["surface"])
-            if r.along is None:                       # 양방향 1개선: 경사 방향을 반씩
-                a = rls19.LW_prime(M / 2, *args, r.g, r.D_K, r.D_refl)
-                b = rls19.LW_prime(M / 2, *args, -r.g, r.D_K, r.D_refl)
+            if r.along is None:                       # 양방향 1개선: 디지타이즈 방향 p(+경사), 반대 1−p(−경사)
+                pf = float(t["dir_split_fwd"])        # 기본 0.5 → M·0.5 = M/2 (비트 단위 동일)
+                a = rls19.LW_prime(M * pf, *args, r.g, r.D_K, r.D_refl)
+                b = rls19.LW_prime(M * (1.0 - pf), *args, -r.g, r.D_K, r.D_refl)
                 lw.append(10 * math.log10(10 ** (0.1 * a) + 10 ** (0.1 * b)))
             else:
                 g = r.g if r.along else -r.g          # 반대방향 차선: 경사 부호 반전
