@@ -532,7 +532,8 @@ def main(cfg):
     np.savez_compressed(os.path.join(out, "model_rasters.npz"), gnd=gnd, dsm=dsm, bid=bidr, G=Gm,
                         x0=rast.x0, y0=rast.y0, res=rast.res, gx=xs, gy=ys, gz=gz, ginside=inside)
     S.to_csv(os.path.join(out, "sources.csv"), index=False)
-    T.to_csv(os.path.join(out, "traffic_used.csv"), index=False, encoding="utf-8-sig")
+    T.drop(columns=["_key"], errors="ignore").to_csv(os.path.join(out, "traffic_used.csv"), index=False,
+                                                     encoding="utf-8-sig")
     Ln.to_csv(os.path.join(out, "source_lines.csv"), index=False, encoding="utf-8-sig")   # 도로별 음원선 배치 근거
     F.to_csv(os.path.join(out, "facades.csv"), index_label="fid")
     FR.to_csv(os.path.join(out, "facade_receivers.csv"), index=False)
@@ -549,6 +550,9 @@ def main(cfg):
             "roads_with_fallback_traffic": nfb,
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
             "canyon_segments": int((S.D_refl > 0).sum())}
+    if cfg["input"]["traffic"].get("missing_m", "error") != "error":             # 옵션을 켠 경우에만 기록
+        est = T.M_day_from.str.startswith("est_") | T.M_night_from.str.startswith("est_")
+        info["traffic_m_estimated"] = {"roads": int(est.sum()), "keys": sorted(set(T._key[est]))}
     if cfg["input"]["traffic"].get("oneway_name_traffic", "apply") != "apply":   # 옵션을 켠 경우에만 기록
         info["roads_oneway_name_fallback"] = int((T.traffic_src == "fallback_oneway").sum())
     if ov is not None:                             # 확인값 파일을 지정한 경우에만 기록(기본 출력은 그대로)

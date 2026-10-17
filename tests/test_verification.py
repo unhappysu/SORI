@@ -499,3 +499,111 @@ def test_single_lane_two_coincident_lines_equivalent():
         one = solve(sy0[j:j + 1], LW[j:j + 1]); half = solve(sy0[j:j + 1], LW[j:j + 1] - 10 * math.log10(2))
         for k in (2, 3, 4):
             assert 2 * half[k][0] == pytest.approx(one[k][0], rel=1e-12)
+
+
+# ======================================================================= 교통량 M 부분 입력 (S9)
+def _s9_cfg(mode=None):
+    from noisemap import config
+    upd = {"receivers": {"center": [0, 0]}}
+    if mode:
+        upd["input"] = {"traffic": {"missing_m": mode}}
+    return config._merge(config.DEFAULTS, upd)
+
+
+def _s9_rec(**kw):
+    from noisemap import inputs
+    return dict({c: "" for c in inputs.TRAFFIC_COLS}, **kw)
+
+
+_S9_ROAD = {"ufid": "A", "rname": "전농로", "axis": "전농로", "lanes": 5, "surface_attr": "", "oneway": False}
+
+
+def test_missing_m_error_default(tmp_path):
+    """기본 missing_m = error: DTV 없이 M 한쪽만 → RuntimeError(key·빠진 항목), 문제 행은 한 번에 모두 나열"""
+    from noisemap import inputs
+    cfg = _s9_cfg()
+    for given, missing in (("M_day", "M_night"), ("M_night", "M_day")):
+        rec = _s9_rec(key="전농로", **{given: "2500"})
+        with pytest.raises(RuntimeError) as e:
+            inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": rec}, True, 6)
+        assert "전농로" in str(e.value) and missing in str(e.value) and "missing_m" in str(e.value)
+    p = tmp_path / "t.csv"
+    p.write_text("key,DTV,M_day,M_night\n가로A,,2500,\n가로B,,,400\n가로C,30000,,\n", encoding="utf-8")
+    cfg["input"]["traffic"]["path"] = str(p)
+    with pytest.raises(RuntimeError) as e:
+        inputs.load_traffic(cfg)
+    msg = str(e.value)
+    assert "가로A" in msg and "가로B" in msg and "가로C" not in msg and "M_night" in msg and "M_day" in msg
+
+
+def test_missing_m_estimate_tab2_ratio(tmp_path):
+    """missing_m = estimate: RLS-19 표 2 의 그 road_type 주·야 계수 비율로 보충, from 에 추정 표시"""
+    from noisemap import inputs
+    cfg = _s9_cfg("estimate")
+    t = inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": _s9_rec(key="전농로", M_day="2500")}, True, 6)
+    assert t["M_day"] == 2500.0 and t["M_night"] == pytest.approx(2500 * 0.0100 / 0.0575)
+    assert (t["M_day_from"], t["M_night_from"]) == ("direct", "est_from_M_day_tab2")
+    t = inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": _s9_rec(key="전농로", road_type="autobahn", M_day="2500")}, True, 6)
+    assert t["M_night"] == pytest.approx(2500 * 0.0140 / 0.0555)
+    t = inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": _s9_rec(key="전농로", M_night="400")}, True, 6)
+    assert t["M_night"] == 400.0 and t["M_day"] == pytest.approx(400 * 0.0575 / 0.0100)
+    assert (t["M_day_from"], t["M_night_from"]) == ("est_from_M_night_tab2", "direct")
+    p = tmp_path / "t.csv"
+    p.write_text("key,DTV,M_day,M_night\n가로A,,2500,\n", encoding="utf-8")
+    cfg["input"]["traffic"]["path"] = str(p)
+    by_ufid, by_name = inputs.load_traffic(cfg)                                 # 오류 없이 읽힘
+    assert "가로A" in by_name
+
+
+def test_traffic_m_regression_and_dtv_in():
+    """DTV 만 / DTV + M_day / M_day + M_night 는 이전과 같은 값·from. DTV_in = 입력 DTV(없으면 빈칸)"""
+    from noisemap import inputs
+    for mode in (None, "estimate"):
+        cfg = _s9_cfg(mode)
+        f = lambda **kw: inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": _s9_rec(key="전농로", **kw)}, True, 6)
+        t = f(DTV="45000")
+        assert (t["M_day"], t["M_night"]) == (pytest.approx(0.0575 * 45000), pytest.approx(0.0100 * 45000))
+        assert (t["M_day_from"], t["M_night_from"]) == ("DTV_x_tab2", "DTV_x_tab2") and t["DTV_in"] == 45000.0
+        t = f(DTV="45000", M_day="3000")
+        assert (t["M_day"], t["M_night"]) == (3000.0, pytest.approx(0.0100 * 45000))
+        assert (t["M_day_from"], t["M_night_from"]) == ("direct", "DTV_x_tab2")
+        t = f(M_day="3000", M_night="500")
+        assert (t["M_day"], t["M_night"]) == (3000.0, 500.0) and (t["M_day_from"], t["M_night_from"]) == ("direct", "direct")
+        assert t["DTV_in"] is None
+    t = inputs.traffic_for_road(_s9_cfg(), dict(_S9_ROAD, rname="", axis="_u"), {}, {}, True, 6)   # 가정값 도로
+    assert t["DTV_in"] is None
+
+
+def test_traffic_summary_no_back_calculation():
+    """지도 정보란 문구: M 직접 입력을 DTV 로 역산하지 않음, 출처 한글 표기, 추정·여러 값 표시, 예전 서식 호환"""
+    from noisemap.maps_hq import traffic_summary
+    T = pd.DataFrame({
+        "axis": ["전농로", "사가정로", "답십리로", "답십리로", "서울시립대로", "골목"],
+        "traffic_src": ["user", "user", "user", "user", "user", "fallback"],
+        "DTV_in": [np.nan, 45000.0, 35000.0, 30000.0, 30000.0, np.nan],
+        "M_day": [2500.0, 2587.5, 2012.5, 1725.0, 1725.0, 57.5],
+        "M_night": [2500 * 0.0100 / 0.0575, 450.0, 350.0, 300.0, 300.0, 10.0],
+        "M_day_from": ["direct", "DTV_x_tab2", "DTV_x_tab2", "DTV_x_tab2", "DTV_x_tab2", "DTV_x_tab2"],
+        "M_night_from": ["est_from_M_day_tab2", "DTV_x_tab2", "DTV_x_tab2", "DTV_x_tab2", "DTV_x_tab2", "DTV_x_tab2"],
+        "traffic_basis": ["assumed", "measured", "assumed", "measured", "unspecified", "fallback_lanes"],
+        "road_type": ["gemeinde"] * 6})
+    txt, fb = traffic_summary(T)
+    part = {s.split(" ")[0]: s for s in txt.split(", ")}
+    assert "DTV" not in part["전농로"] and "M_T 2,500" in part["전농로"] and "M_N 435" in part["전농로"]
+    assert "가정" in part["전농로"] and "야간 추정" in part["전농로"]
+    assert "DTV 45,000" in part["사가정로"] and "실측" in part["사가정로"]
+    assert "여러 값" in part["답십리로"] and "실측" in part["답십리로"] and "가정" in part["답십리로"]
+    assert "출처 미기재" in part["서울시립대로"] and "골목" not in part and fb == 1
+    old = T.drop(columns=["DTV_in", "traffic_basis", "M_day_from", "M_night_from"]).iloc[[1]]   # S1 이전 서식
+    txt_old, _ = traffic_summary(old)
+    assert "DTV" not in txt_old and "M_T 2,588" in txt_old and "출처 미기재" in txt_old
+
+
+def test_missing_m_config_validation(tmp_path):
+    from noisemap import config
+    p = tmp_path / "c.yaml"
+    p.write_text("receivers: {center: [0, 0]}\ninput: {traffic: {missing_m: guess}}\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        config.load(str(p))
+    p.write_text("receivers: {center: [0, 0]}\ninput: {traffic: {missing_m: estimate}}\n", encoding="utf-8")
+    assert config.load(str(p))["input"]["traffic"]["missing_m"] == "estimate"

@@ -21,7 +21,7 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE, __version__
 from .config import center, grid_bbox
-from .maps_hq import DIN_EDGES, DIN_COLS
+from .maps_hq import DIN_EDGES, DIN_COLS, traffic_summary
 
 GROUND_BG = (226, 230, 222)
 ROAD_RGB = (150, 150, 150)
@@ -140,13 +140,12 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
         pt = q.interpolate(0.55, normalized=True)
         labels.append({"t": nm, "x": round(pt.x - cx, 1), "y": round(pt.y - cy, 1), "z": round(float(zg(pt.x, pt.y)[0]) - zref + 3, 1)})
     T = pd.read_csv(os.path.join(out, "traffic_used.csv"))
-    u = T[T.traffic_src == "user"]
-    traffic = ", ".join(f"{a} {g.M_day.iloc[0] / 0.0575:,.0f}" for a, g in u.groupby("axis"))
+    traffic, n_fallback = traffic_summary(T)      # M 에서 DTV 를 역산하지 않음(maps_hq 와 같은 표기)
     return {
         "name": cfg["project"]["name"], "R": R, "n": n, "step": mesh_step,
         "zg": np.round(Zg - zref, 2).tolist(), "tex": textures, "bld": blds, "fac": fac, "labels": labels,
         "edges": DIN_EDGES, "cols": DIN_COLS, "h0": float(h0), "fh": fh,
-        "meta": {"traffic": traffic, "fallback": int(T.traffic_src.str.startswith("fallback").sum()),
+        "meta": {"traffic": traffic, "fallback": n_fallback,
                  "notice": AI_NOTICE, "ver": __version__, "nq": int(len(FR)), "nb": int(len(has))},
     }
 

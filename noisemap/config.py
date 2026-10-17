@@ -52,6 +52,7 @@ DEFAULTS = {
             "default_speed_minor": 30.0,
             "name_min_lanes": 2,                   # 도로명 교통량은 이 차로수 이상 구간에만 적용(같은 이름의 좁은 접속로 제외)
             "oneway_name_traffic": "apply",        # 도로명 교통량을 같은 이름의 일방통행 객체에: apply(현행) | fallback(차로수 가정값)
+            "missing_m": "error",                  # DTV 없이 M_day·M_night 중 하나만 있을 때: error(기본) | estimate(표 2 계수 비율로 보충)
         },
         "road_override": {
             "path": None,                          # 도로별 확인값 CSV: ufid, lanes_fwd, lanes_bwd, oneway_dir(+1/−1) …
@@ -174,6 +175,8 @@ def _validate(c):
         raise ValueError("alpha_dB_per_km 길이가 bands_hz 와 같아야 함")
     if not 0.2 < float(p["reflection"]["rho"]) <= 1.0:
         raise ValueError("ISO 9613-2 7.5: 반사계수 rho 는 0.2 초과 1 이하")
+    if c["input"]["traffic"]["missing_m"] not in ("error", "estimate"):
+        raise ValueError("input.traffic.missing_m 는 error 또는 estimate")
     if c["input"]["traffic"]["oneway_name_traffic"] not in ("apply", "fallback"):
         raise ValueError("input.traffic.oneway_name_traffic 는 apply 또는 fallback")
     m = c["model"]

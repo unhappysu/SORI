@@ -149,6 +149,27 @@ def read_csv_any(path):
     raise RuntimeError(f"CSV 인코딩을 읽을 수 없음: {path}")
 
 
+def _missing_m_message(items):
+    """items: [(key, 빠진 항목, 입력된 항목)] → 한 번에 보여 줄 오류 문구"""
+    lines = [f"교통량 파일: DTV 없이 M_day·M_night 중 하나만 입력된 행 {len(items)}개"]
+    lines += [f"  - '{k}': {miss} 없음 ({given} 만 입력)" for k, miss, given in items]
+    lines.append("해결: 빠진 M 을 입력하거나, DTV 를 입력하거나, 설정 input.traffic.missing_m: estimate "
+                 "(RLS-19 표 2 의 그 도로유형 주·야 계수 비율로 보충)")
+    return "\n".join(lines)
+
+
+def _m_partial(rec):
+    """DTV 없이 M 한쪽만 있으면 (빠진 항목, 입력된 항목), 아니면 None"""
+    if str(rec.get("DTV", "")).strip():
+        return None
+    d, n = str(rec.get("M_day", "")).strip(), str(rec.get("M_night", "")).strip()
+    if d and not n:
+        return "M_night", "M_day"
+    if n and not d:
+        return "M_day", "M_night"
+    return None
+
+
 def load_traffic(cfg):
     p = cfg["input"]["traffic"]["path"]
     if not p or not os.path.exists(p):
@@ -162,6 +183,7 @@ def load_traffic(cfg):
         if c not in df.columns:
             df[c] = ""
     by_ufid, by_name = {}, {}
+    partial = []                                   # DTV 없이 M 한쪽만 있는 행
     for _, r in df.iterrows():
         key = r["key"].strip()
         if not key or key.startswith("#"):
@@ -170,8 +192,18 @@ def load_traffic(cfg):
         if not (rec["DTV"] or rec["M_day"] or rec["M_night"]):
             log.warning("교통량 '%s': DTV/M 값이 비어 있어 무시(가정값 사용)", key)
             continue
+        pm = _m_partial(rec)
+        if pm:
+            partial.append((key, *pm))
         kt = rec["key_type"].lower() or "name"
         (by_ufid if kt == "ufid" else by_name)[key] = rec
+    if partial:
+        if cfg["input"]["traffic"].get("missing_m", "error") == "estimate":
+            for k, miss, given in partial:
+                log.warning("교통량 '%s': DTV 없음 → %s 를 %s × (RLS-19 표 2 계수 비율)로 추정(missing_m: estimate)",
+                            k, miss, given)
+        else:
+            raise RuntimeError(_missing_m_message(partial))
     log.info("교통량 파일: 도로명 %d건, UFID %d건", len(by_name), len(by_ufid))
     return by_ufid, by_name
 
@@ -206,8 +238,14 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
         raise RuntimeError(f"road_type '{rtype}' 은 {list(rls19.TAB2)} 중 하나여야 함")
     t2 = rls19.TAB2[rtype]
     dtv = _f(rec, "DTV")
-    if dtv is None and rec and _f(rec, "M_day") is None:
-        raise RuntimeError(f"교통량 '{rec['key']}': DTV 또는 M_day/M_night 중 하나는 입력해야 함")
+    dtv_in = dtv if rec is not None else None      # 입력 DTV(가정값 도로·DTV 빈칸은 None) → traffic_used.csv DTV_in
+    m_in = {per: _f(rec, f"M_{per}") for per in ("day", "night")}
+    if rec is not None and dtv is None:
+        if m_in["day"] is None and m_in["night"] is None:
+            raise RuntimeError(f"교통량 '{rec['key']}': DTV 또는 M_day·M_night 를 입력해야 함")
+        pm = _m_partial(rec)
+        if pm and tcfg.get("missing_m", "error") != "estimate":
+            raise RuntimeError(_missing_m_message([(rec["key"], *pm)]))
     if rec is None:
         dtv = tcfg["fallback_dtv_by_lanes"].get(int(min(max(row["lanes"], 1), 6)), 1000.0)
     basis = (rec.get("basis", "") if rec else "").strip().lower()
@@ -216,10 +254,14 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     out, m_from = {}, {}
     for per in ("day", "night"):
         Mf, p1s, p2s = t2[per]
-        M = _f(rec, f"M_{per}")
-        m_from[per] = "direct" if M is not None else "DTV_x_tab2"     # 직접 입력 / DTV × 표 2 계수
-        if M is None:
-            M = Mf * dtv
+        M = m_in[per]
+        if M is not None:
+            m_from[per] = "direct"                                  # 직접 입력
+        elif dtv is not None:
+            M = Mf * dtv; m_from[per] = "DTV_x_tab2"                 # DTV × 표 2 계수
+        else:                                                        # missing_m: estimate — 반대 시간대 M × 표 2 계수 비
+            other = "night" if per == "day" else "day"
+            M = m_in[other] * Mf / t2[other][0]; m_from[per] = f"est_from_M_{other}_tab2"
         p1 = _f(rec, f"p1_{per}"); p2 = _f(rec, f"p2_{per}")
         out[f"M_{per}"] = M
         out[f"p1_{per}"] = p1s if p1 is None else p1
@@ -260,6 +302,8 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
             p, dsrc = split, "measured"
     out["dir_split_fwd"] = 1.0 if ow else p
     out["dir_split_src"] = dsrc
+    out["DTV_in"] = dtv_in
+    out["_key"] = rec["key"] if rec is not None else ""   # 내부용(build_info 집계). traffic_used.csv 에는 쓰지 않음
     return out
 
 

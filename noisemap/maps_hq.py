@@ -53,6 +53,39 @@ DEFAULT_LIMITS = {"LrT": 68.0, "LrN": 58.0,
 KEYNAME = {"LrT": "LrT 주간 (06–22시)", "LrN": "LrN 야간 (22–06시)"}
 
 
+# ------------------------------------------------------------------ 교통량 표기
+BASIS_KO = {"measured": "실측", "assumed": "가정", "unspecified": "출처 미기재"}
+
+
+def traffic_summary(T):
+    """traffic_used.csv(T) → (정보란 교통량 문구, 가정값 도로 객체 수). 순수 함수.
+    도로명(axis)별로 입력 DTV(DTV_in)가 있으면 "DTV n 대/일", 없으면 "M_T n / M_N n 대/h".
+    M 에서 DTV 를 역산하지 않음. 출처(traffic_basis)는 실측/가정/출처 미기재, 추정 보충이면 "주간·야간 추정".
+    한 axis 안에 값이 다르면 "여러 값". S1 이전 서식(출처 열 없음)은 M 값과 "출처 미기재"로 표시."""
+    src = T["traffic_src"].astype(str)
+    fb = int(src.str.startswith("fallback").sum())
+    u = T[src == "user"]
+    parts = []
+    for ax, g in u.groupby("axis"):
+        dtv = g["DTV_in"] if "DTV_in" in g else pd.Series(np.nan, index=g.index)
+        vals = {("D", round(float(d), 6)) if pd.notna(d) else ("M", round(float(md), 6), round(float(mn), 6))
+                for d, md, mn in zip(dtv, g["M_day"], g["M_night"])}
+        if len(vals) > 1:
+            txt = f"{ax} 여러 값"
+        elif next(iter(vals))[0] == "D":
+            txt = f"{ax} DTV {next(iter(vals))[1]:,.0f} 대/일"
+        else:
+            _, md, mn = next(iter(vals))
+            txt = f"{ax} M_T {md:,.0f} / M_N {mn:,.0f} 대/h"
+        basis = g["traffic_basis"] if "traffic_basis" in g else pd.Series("unspecified", index=g.index)
+        tags = list(dict.fromkeys(BASIS_KO.get(str(b), str(b)) for b in basis.fillna("unspecified")))
+        for col, lab in (("M_day_from", "주간 추정"), ("M_night_from", "야간 추정")):
+            if col in g and g[col].astype(str).str.startswith("est_").any():
+                tags.append(lab)
+        parts.append(f"{txt}({'·'.join(tags)})")
+    return ", ".join(parts), fb
+
+
 # ------------------------------------------------------------------ 자료
 class Ctx:
     def __init__(self, cfg):
@@ -79,14 +112,8 @@ class Ctx:
             self.run_info = json.load(open(p, encoding="utf-8"))
 
     def traffic_text(self):
-        u = self.T[self.T.traffic_src == "user"]
-        parts = []
-        for ax, g in u.groupby("axis"):
-            dtv = (g.M_day.iloc[0] / 0.0575) if g.road_type.iloc[0] != "autobahn" else g.M_day.iloc[0] / 0.0555
-            parts.append(f"{ax} {dtv:,.0f}")
-        fb = int(self.T.traffic_src.str.startswith("fallback").sum())
-        txt = "입력: " + ", ".join(parts) + " 대/일" if parts else "입력 없음"
-        return txt, fb
+        txt, fb = traffic_summary(self.T)
+        return ("입력: " + txt if txt else "입력 없음"), fb
 
 
 # ------------------------------------------------------------------ 공통 지도 요소
