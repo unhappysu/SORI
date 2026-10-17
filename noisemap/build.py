@@ -543,6 +543,8 @@ def main(cfg):
             "roads_with_fallback_traffic": nfb,
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
             "canyon_segments": int((S.D_refl > 0).sum())}
+    if cfg["input"]["traffic"].get("oneway_name_traffic", "apply") != "apply":   # 옵션을 켠 경우에만 기록
+        info["roads_oneway_name_fallback"] = int((T.traffic_src == "fallback_oneway").sum())
     if ov is not None:                             # 확인값 파일을 지정한 경우에만 기록(기본 출력은 그대로)
         cols = ["fid", "ufid", "rname", "lanes", "oneway", "lanes_fwd", "lanes_bwd", "lanes_src", "lanes_basis",
                 "oneway_dir", "oneway_dir_src", "oneway_dir_basis", "override_note"]

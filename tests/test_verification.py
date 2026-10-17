@@ -411,3 +411,26 @@ def test_dir_split_and_oneway_dir(tmp_path):
     # F: 일방 2차로(차로폭 3.5) → 기본은 디지타이즈 우측 −1.75 m, −1 이면 좌측 +1.75 m
     f = by("F")
     assert (f.along == False).all() and np.allclose(f.y, 251.75) and Ln.loc["F", "offset_fwd"] == pytest.approx(1.75)
+
+
+# ======================================================================= 일방통행 객체의 도로명 교통량 (S2)
+def test_oneway_name_traffic_option():
+    """oneway_name_traffic: apply(기본, 현행) | fallback(도로명 교통량을 같은 이름 일방통행에 배정 안 함). UFID 우선"""
+    from noisemap import inputs, config
+    rec = dict({c: "" for c in inputs.TRAFFIC_COLS}, key="사가정로", DTV="45000")
+    by_name = {"사가정로": rec}
+    ramp = {"ufid": "R", "rname": "사가정로", "axis": "사가정로", "lanes": 2, "surface_attr": "", "oneway": True}
+    main = dict(ramp, ufid="M", lanes=5, oneway=False)
+    narrow = dict(ramp, ufid="N", lanes=1)
+    base = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
+    fb = config._merge(base, {"input": {"traffic": {"oneway_name_traffic": "fallback"}}})
+    t = inputs.traffic_for_road(base, ramp, {}, by_name, True, 6)              # 기본: 현행대로 배정
+    assert t["traffic_src"] == "user" and t["M_day"] == pytest.approx(0.0575 * 45000)
+    t = inputs.traffic_for_road(fb, ramp, {}, by_name, True, 6)                # fallback: 차로수 2 가정값
+    assert (t["traffic_src"], t["traffic_basis"]) == ("fallback_oneway", "fallback_lanes")
+    assert t["M_day"] == pytest.approx(0.0575 * base["input"]["traffic"]["fallback_dtv_by_lanes"][2])
+    assert inputs.traffic_for_road(fb, main, {}, by_name, True, 6)["traffic_src"] == "user"        # 양방향은 무관
+    assert inputs.traffic_for_road(fb, narrow, {}, by_name, False, 6)["traffic_src"] == "fallback_narrow"
+    ufid_rec = dict(rec, key="R", key_type="ufid", DTV="8000")
+    t = inputs.traffic_for_road(fb, ramp, {"R": ufid_rec}, by_name, True, 6)   # UFID 지정은 항상 우선
+    assert t["traffic_src"] == "user" and t["M_day"] == pytest.approx(0.0575 * 8000)

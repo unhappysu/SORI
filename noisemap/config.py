@@ -51,6 +51,7 @@ DEFAULTS = {
             "default_speed_main": 50.0,            # 교통량 파일에 속도가 없을 때
             "default_speed_minor": 30.0,
             "name_min_lanes": 2,                   # 도로명 교통량은 이 차로수 이상 구간에만 적용(같은 이름의 좁은 접속로 제외)
+            "oneway_name_traffic": "apply",        # 도로명 교통량을 같은 이름의 일방통행 객체에: apply(현행) | fallback(차로수 가정값)
         },
         "road_override": {
             "path": None,                          # 도로별 확인값 CSV: ufid, lanes_fwd, lanes_bwd, oneway_dir(+1/−1) …
@@ -172,6 +173,8 @@ def _validate(c):
         raise ValueError("alpha_dB_per_km 길이가 bands_hz 와 같아야 함")
     if not 0.2 < float(p["reflection"]["rho"]) <= 1.0:
         raise ValueError("ISO 9613-2 7.5: 반사계수 rho 는 0.2 초과 1 이하")
+    if c["input"]["traffic"]["oneway_name_traffic"] not in ("apply", "fallback"):
+        raise ValueError("input.traffic.oneway_name_traffic 는 apply 또는 fallback")
     m = c["model"]
     if m["odd_lane_rule"] not in ("ceil", "major_fwd"):
         raise ValueError("model.odd_lane_rule 는 ceil 또는 major_fwd")

@@ -198,6 +198,9 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
         nml = int(tcfg.get("name_min_lanes", 2))
         if rec is not None and row["lanes"] < nml <= name_max_lanes:
             rec, src = None, "fallback_narrow"
+        # 도로명 교통량(양방향 합)은 같은 이름의 일방통행 객체(램프·측도 등)에 배정하지 않는 옵션. UFID 지정은 우선
+        if rec is not None and row.get("oneway", False) and tcfg.get("oneway_name_traffic", "apply") == "fallback":
+            rec, src = None, "fallback_oneway"
     rtype = (rec.get("road_type") if rec else "") or tcfg["default_road_type"]
     if rtype not in rls19.TAB2:
         raise RuntimeError(f"road_type '{rtype}' 은 {list(rls19.TAB2)} 중 하나여야 함")
