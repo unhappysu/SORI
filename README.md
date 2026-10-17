@@ -60,7 +60,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | key_type | | `name`(기본) 또는 `ufid` — UFID 행이 도로명 행보다 우선 |
 | road_type | | RLS-19 표 2: `autobahn`, `bundesstrasse`, `landesstrasse`, `gemeinde` (빈칸 값 보충용) |
 | DTV | △ | 일평균 교통량(대/일, 양방향 합) — DTV 또는 M_day·M_night 중 하나 필수 |
-| M_day, M_night | △ | 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표 2 계수 |
+| M_day, M_night | △ | 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표 2 계수. **DTV 없이 한쪽만 입력하면** 기본은 오류(문제 행을 모두 나열) — 설정 `input.traffic.missing_m: estimate` 이면 표 2 의 주·야 계수 비율로 보충(가정값, `M_*_from = est_from_…`, 서울 간선에서는 야간을 과소 추정할 수 있음) |
 | p1_day … p2_night | | Lkw1(중형화물)·Lkw2(대형화물·버스·이륜) 비율 %. 비우면 표 2 표준값 |
 | v_pkw, v_lkw | | 차종별 속도 km/h (30 미만은 30 적용, RLS-19 2장) |
 | surface | | 노면: `ref`, `AC11`, `SMA5_8`, `SMA8_11`, `PA11`, `PA8`, `Waschbeton`, `LGA`, `LOA`, `SMA_LA8`, `DSH_V5`, `pflaster_even`, `pflaster_other` |
@@ -125,7 +125,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 33개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
+python -m pytest -q tests        # 38개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
 자세한 내용은 `TECHNICAL_NOTES.md`, 작업 경과와 남은 일은 `docs/작업기록_2026-10-15_17.md`.
