@@ -127,4 +127,5 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 ```bash
 python -m pytest -q tests        # 33개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
 ```
-자세한 내용은 `TECHNICAL_NOTES.md`.
+기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
+자세한 내용은 `TECHNICAL_NOTES.md`, 작업 경과와 남은 일은 `docs/작업기록_2026-10-15_17.md`.
