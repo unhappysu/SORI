@@ -434,3 +434,33 @@ def test_oneway_name_traffic_option():
     ufid_rec = dict(rec, key="R", key_type="ufid", DTV="8000")
     t = inputs.traffic_for_road(fb, ramp, {"R": ufid_rec}, by_name, True, 6)   # UFID 지정은 항상 우선
     assert t["traffic_src"] == "user" and t["M_day"] == pytest.approx(0.0575 * 8000)
+
+
+# ======================================================================= 음원 높이 기준 지면 (S6)
+def test_source_ground_option():
+    """source_ground: dtm_at_source(기본) = 음원점 위치 DTM, road_profile = 도로중심선 종단 고도.
+    횡단 10 % 기울어진 평면 지형 z = 0.1·(y − 100), 중심선 y = 100 의 4차로(차로폭 3.5 → 오프셋 ±5.25 m)"""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from noisemap import build, inputs, config
+    road = gpd.GeoDataFrame({"ufid": ["A"], "rname": [""], "axis": ["_uA"], "lanes": [4], "width": [14.0],
+                             "oneway": [False], "fid": [0], "surface_attr": [""]},
+                            geometry=[LineString([(0, 100), (100, 100)])])
+    road, _ = inputs.apply_road_override(road, None)
+    rast = build.Raster((-20.0, 50.0, 120.0, 150.0), 1.0)
+    X, Y = rast.centers()
+    gnd = 0.1 * (Y - 100.0)
+    F = pd.DataFrame(columns=["x1", "y1", "x2", "y2", "nx", "ny", "z0", "ztop", "L", "bid"])
+    J = pd.DataFrame(columns=["x", "y", "type"])
+    out = {}
+    for mode in ("dtm_at_source", "road_profile"):
+        cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}, "input": {"traffic": {"path": None}},
+                                              "model": {"canyon": {"enabled": False}, "source_ground": mode}})
+        S, _, _ = build.build_sources(cfg, road, gnd, rast, F, J, {})
+        out[mode] = S
+    a, b = out["dtm_at_source"], out["road_profile"]
+    fwd, bwd = (a.along == True).values, (a.along == False).values
+    assert np.allclose(a.y[fwd], 94.75) and np.allclose(a.y[bwd], 105.25)          # 위치는 두 방식 같음
+    assert np.allclose(a.zg[fwd], -0.525) and np.allclose(a.zg[bwd], 0.525)       # 음원점 위치 DTM
+    assert np.allclose(b.zg, 0.0) and np.allclose(b.z, 0.5)                        # 중심선 종단 고도 + 0.5 m
+    assert np.allclose(a.z - a.zg, 0.5) and np.allclose(a[["x", "y", "LWp_day"]], b[["x", "y", "LWp_day"]])

@@ -77,6 +77,7 @@ DEFAULTS = {
     "model": {
         "floor_height": 3.0,
         "source_height": 0.5,                      # RLS-19 3.2
+        "source_ground": "dtm_at_source",          # 음원 높이 기준 지면: dtm_at_source(현행, 음원점 위치 DTM) | road_profile(도로중심선 종단 고도)
         "terrain_smooth_m": 5.0,                   # 등고선 삼각망 계단 현상 완화(가우스 σ, m). 0 = 사용 안 함
         "grade_base": 30.0,                        # 종단경사 산정 구간 길이(m, 도로선을 따라)
         "segment_main": 3.0,
@@ -176,6 +177,8 @@ def _validate(c):
     if c["input"]["traffic"]["oneway_name_traffic"] not in ("apply", "fallback"):
         raise ValueError("input.traffic.oneway_name_traffic 는 apply 또는 fallback")
     m = c["model"]
+    if m["source_ground"] not in ("dtm_at_source", "road_profile"):
+        raise ValueError("model.source_ground 는 dtm_at_source 또는 road_profile")
     if m["odd_lane_rule"] not in ("ceil", "major_fwd"):
         raise ValueError("model.odd_lane_rule 는 ceil 또는 major_fwd")
     if m["lane_width"] not in ("auto", None) and not (2.0 <= float(m["lane_width"]) <= 5.0):

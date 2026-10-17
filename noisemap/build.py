@@ -340,6 +340,7 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
     Jxy = J[["x", "y"]].values if len(J) else np.zeros((0, 2))
     Jtype = J["type"].values if len(J) else np.array([])
     rows, troad, lines = [], [], []
+    clx, cly = [], []                              # 음원점의 도로중심선 투영점(source_ground: road_profile 용)
     name_max = road.groupby("axis")["lanes"].max().to_dict()
     half = float(mc.get("grade_base", 30.0)) / 2.0
     for _, rd in road.iterrows():
@@ -399,13 +400,18 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
                         kk = int(np.argmin(dj)); xk = float(dj[kk]); kt = Jtype[my_j][kk]
                     else:
                         xk, kt = 999.0, "other"
+                    pc = cl.interpolate(sc); clx.append(pc.x); cly.append(pc.y)
                     rows.append(dict(x=p.x, y=p.y, l=L / k, tx=tx, ty=ty, g=g, along=along, main=main,
                                      frac=(fracs[along] if fracs else 1.0), fid=rd["fid"], x_knot=xk, kt=kt,
                                      lanes=rd["lanes"],
                                      name=rd["rname"]))
     S = pd.DataFrame(rows)
     T = pd.DataFrame(troad).set_index("fid")
-    zg = rast.sample(gnd, S.x.values, S.y.values)
+    if mc.get("source_ground", "dtm_at_source") == "road_profile":
+        # RLS-19 3.2 "0,5 m über dem Boden" 의 지면 = 노면: 도로중심선 종단 고도(경사 산정과 같은 평활 DTM)
+        zg = rast.sample(gnd, np.asarray(clx), np.asarray(cly))
+    else:                                          # 현행: 음원점 위치의 DTM
+        zg = rast.sample(gnd, S.x.values, S.y.values)
     S["zg"] = zg
     S["z"] = zg + mc["source_height"]
     # 다중반사 할증 (간선만 탐색; 이면도로는 할증 0)

@@ -99,6 +99,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | `propagation.reflection.rho` | 0.8 | ISO 표 4 '창이 있는 건물 벽' |
 | `max_order_grid` / `max_order_facade` | 1 / 2 | 반사 차수 (RLS-19 3.6은 2차까지) |
 | `input.traffic.oneway_name_traffic` | apply | 도로명 교통량(양방향 합)을 같은 이름의 일방통행 객체에도 배정(`apply`) 또는 차로수 가정값 사용(`fallback`, `traffic_src = fallback_oneway`). UFID 지정 교통량은 항상 우선 |
+| `model.source_ground` | dtm_at_source | 음원 높이(지면 + 0.5 m)의 지면: `dtm_at_source` = 음원점 위치 DTM, `road_profile` = 도로중심선 종단 고도(경사 산정과 같은 평활 DTM). road_profile 은 노면이 주변 DTM 보다 낮은 곳에서 음원 옆 지형이 차폐로 잡힐 수 있음(TECHNICAL_NOTES) |
 | `model.odd_lane_rule` | ceil | 확인값이 없는 홀수 차로 양방향 도로의 방향별 차로 수. `ceil` = 양쪽 ⌈n/2⌉(5 → 3+3), `major_fwd` = 디지타이즈 방향 ⌈n/2⌉·반대 ⌊n/2⌋(5 → 3+2) |
 | `model.lane_width` | auto | 음원선 위치 계산용 차로폭. `auto` = 도로폭/차로수를 `lane_width_clip`(2.75~3.5 m)로 제한, 도로폭 없으면 3.25 m. 숫자 = 고정값(m) |
 | `receivers.grid.heights` | [4.0] | 3D 격자 높이 목록 |
