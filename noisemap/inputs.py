@@ -140,12 +140,44 @@ def _dir_warn(key, msg):
         log.warning("교통량 '%s': %s", key, msg)
 
 
+def _check_csv_rows(text, path):
+    """머리글보다 칸이 많은 행 검사. 값이 든 초과 칸(따옴표 없는 쉼표 등)은 줄 번호와 함께 오류,
+    빈 초과 칸(끝의 쉼표)만 있으면 잘라 낸 텍스트를 반환, 문제 없으면 None"""
+    import csv
+    import io
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return None
+    n = len(rows[0]); bad, trimmed = [], False
+    for i, r in enumerate(rows[1:], start=2):
+        if len(r) > n:
+            if any(c.strip() for c in r[n:]):
+                bad.append((i, len(r)))
+            else:
+                trimmed = True
+    if bad:
+        lst = ", ".join(f"{i}행({k}칸)" for i, k in bad[:10]) + (" …" if len(bad) > 10 else "")
+        raise RuntimeError(f"CSV '{path}': 머리글은 {n}칸인데 칸이 더 많은 행이 있음 — {lst}. "
+                           "메모 등에 쉼표가 있으면 그 칸을 큰따옴표로 묶을 것(예: \"가상, 중심 근처\")")
+    if not trimmed:
+        return None
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows([rows[0]] + [r[:n] for r in rows[1:]])
+    return out.getvalue()
+
+
 def read_csv_any(path):
     for enc in ("utf-8-sig", "cp949"):
         try:
-            return pd.read_csv(path, encoding=enc, dtype=str, keep_default_na=False)
+            with open(path, encoding=enc) as f:
+                text = f.read()
         except UnicodeDecodeError:
             continue
+        fixed = _check_csv_rows(text, path)
+        if fixed is None:                          # 일반적인 파일: 이전과 같은 방식으로 읽음
+            return pd.read_csv(path, encoding=enc, dtype=str, keep_default_na=False)
+        import io
+        return pd.read_csv(io.StringIO(fixed), dtype=str, keep_default_na=False)
     raise RuntimeError(f"CSV 인코딩을 읽을 수 없음: {path}")
 
 

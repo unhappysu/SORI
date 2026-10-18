@@ -607,3 +607,27 @@ def test_missing_m_config_validation(tmp_path):
         config.load(str(p))
     p.write_text("receivers: {center: [0, 0]}\ninput: {traffic: {missing_m: estimate}}\n", encoding="utf-8")
     assert config.load(str(p))["input"]["traffic"]["missing_m"] == "estimate"
+
+
+# ======================================================================= CSV 칸 수 검사·정보란 줄바꿈 (S10)
+def test_csv_extra_fields_message(tmp_path):
+    """따옴표 없는 쉼표로 칸이 늘어난 행 → 줄 번호와 해결 방법을 담은 오류. 끝의 빈 칸만 많은 행은 허용"""
+    from noisemap.inputs import read_csv_any
+    p = tmp_path / "a.csv"
+    p.write_text("ufid,lanes_fwd,note\nA,3,가상, 중심 근처\nB,2,정상\n", encoding="utf-8")
+    with pytest.raises(RuntimeError) as e:
+        read_csv_any(str(p))
+    assert "2행" in str(e.value) and "큰따옴표" in str(e.value) and "3행" not in str(e.value)
+    p.write_text('ufid,lanes_fwd,note\nA,3,"가상, 중심 근처"\nB,2,,\n', encoding="utf-8")
+    df = read_csv_any(str(p))
+    assert list(df.columns) == ["ufid", "lanes_fwd", "note"] and df.note.tolist() == ["가상, 중심 근처", ""]
+    assert df.ufid.tolist() == ["A", "B"]                               # 첫 열이 인덱스로 밀리지 않음
+
+
+def test_info_wrap_keeps_number_and_unit():
+    from noisemap.maps_hq import wrap_info
+    lines = wrap_info("입력: 가로A M_T 2,300 / M_N 400 대/h(가정·야간 추정), 가로B DTV 30,000 대/일(실측)", 30)
+    joined = " ".join(lines)
+    assert "M_N 400 대/h" in joined and "DTV 30,000 대/일" in joined
+    assert not any(w.endswith(("M_N", "M_T", "DTV", "400", "30,000", "2,300")) for w in lines)
+    assert wrap_info("") == [""]

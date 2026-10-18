@@ -53,6 +53,19 @@ DEFAULT_LIMITS = {"LrT": 68.0, "LrN": 58.0,
 KEYNAME = {"LrT": "LrT 주간 (06–22시)", "LrN": "LrN 야간 (22–06시)"}
 
 
+# ------------------------------------------------------------------ 정보란 줄바꿈
+_NBSP = "\u00a0"
+
+
+def wrap_info(v, width=30):
+    """정보란 문구 줄바꿈. 숫자와 단위(대/일·대/h·dB·m·%), 'M_T 2,500'·'DTV 30,000' 같은 표기는 가르지 않음"""
+    import re
+    import textwrap
+    v = re.sub(r"(\d) (?=대/|dB|m\b|%|개)", r"\1" + _NBSP, v)
+    v = re.sub(r"\b(M_T|M_N|DTV|G=|EPSG:?) (?=[\d,])", r"\1" + _NBSP, v)
+    return [w.replace(_NBSP, " ") for w in textwrap.wrap(v, width)] or [""]
+
+
 # ------------------------------------------------------------------ 교통량 표기
 BASIS_KO = {"measured": "실측", "assumed": "가정", "unspecified": "출처 미기재"}
 
@@ -230,8 +243,7 @@ def info_block(side, y_top, C, lines_extra):
     for k, v in rows:
         if k:
             side.text(0.0, y, k, fontsize=9, weight="bold", va="top", transform=side.transAxes)
-        import textwrap
-        wrapped = textwrap.wrap(v, 30) or [""]
+        wrapped = wrap_info(v, 30)
         for i, w in enumerate(wrapped):
             side.text(0.25, y - i * 0.022, w, fontsize=9, va="top", transform=side.transAxes)
         y -= 0.022 * len(wrapped) + 0.008
