@@ -1,0 +1,5 @@
+﻿key,key_type,road_type,DTV,M_day,M_night,p1_day,p2_day,p1_night,p2_night,v_pkw,v_lkw,surface,grade,note,basis
+사가정로,name,gemeinde,,2331.0,967.5,,,,,50,50,,,"기준선 DTV 45,000 가정, 주·야 계수 서울 28지점(산정근거 문서 4절)",assumed
+전농로,name,gemeinde,,2331.0,967.5,,,,,50,50,,,"기준선 DTV 45,000 가정, 주·야 계수 서울 28지점(산정근거 문서 4절)",assumed
+답십리로,name,gemeinde,,1813.0,752.5,,,,,50,50,,,"기준선 DTV 35,000 가정, 주·야 계수 서울 28지점(산정근거 문서 4절)",assumed
+서울시립대로,name,gemeinde,,1554.0,645.0,,,,,50,50,,,"기준선 DTV 30,000 가정, 주·야 계수 서울 28지점(산정근거 문서 4절)",assumed
