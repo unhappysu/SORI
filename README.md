@@ -125,7 +125,9 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 38개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
+python -m pytest -q tests        # 40개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
+
+그 밖의 도구: `tools/make_review_lists.py`(지도 확인 목록 → `docs/review/`), `tools/diagnostics.py`(구간 분할·횡단경사 진단 재현). 교통량 비교 시나리오는 `scenarios/`.
 자세한 내용은 `TECHNICAL_NOTES.md`, 작업 경과와 남은 일은 `docs/작업기록_2026-10-15_17.md`.
