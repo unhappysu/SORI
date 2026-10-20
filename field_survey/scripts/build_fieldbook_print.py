@@ -9,6 +9,7 @@
 시스템 글꼴 Apple SD Gothic Neo 로 만든다.
 """
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -95,16 +96,18 @@ def noise_card(doc, no):
     rows = [
         ["측정점", "", "회차", "", "장비", ""],
         ["날짜", "", "시작 시각", "", "종료 시각", ""],
+        ["측정자", "", "", "", "방풍망", "☐ Y    ☐ N"],
         ["L_{Aeq}", "", "L_{Amax}", "", "L_{Amin}", ""],
         ["L_{10}", "", "L_{50}", "", "L_{90}", ""],
         ["풍속(m/s)", "", "배경소음(참고)", "", "유효", "☐ Y    ☐ N"],
         ["이상 소음\n(시각·코드)", "", "", "", "", ""],
         ["무효 사유·메모", "", "", "", "", ""],
     ]
-    fills = {(r, c): LABEL for r in range(len(rows)) for c in (0, 2, 4) if r < 5}
-    fills.update({(5, 0): LABEL, (6, 0): LABEL})
-    t = table(doc, rows, [24, 31, 24, 31, 24, 32], header_rows=0, size=9.5, min_height_mm=11, fills=fills)
-    for r, hmm in ((5, 32), (6, 14)):
+    fills = {(r, c): LABEL for r in range(6) for c in (0, 2, 4) if rows[r][c]}
+    fills.update({(6, 0): LABEL, (7, 0): LABEL})
+    t = table(doc, rows, [24, 31, 24, 31, 24, 32], header_rows=0, size=9.5, min_height_mm=10.5, fills=fills)
+    merge_row(t, 2, 1, 3)                                  # 측정자 이름 칸
+    for r, hmm in ((6, 26), (7, 12)):
         merge_row(t, r, 1, 5)
         t.rows[r].height = Mm(hmm)
     return t
@@ -165,8 +168,7 @@ def build(out_path):
 if __name__ == "__main__":
     out_dir = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else Path(__file__).resolve().parents[1] / "forms"
     out_dir.mkdir(parents=True, exist_ok=True)
-    tmp = out_dir / "_print_build"
-    tmp.mkdir(exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix="fs_pdf_"))             # 임시 docx는 저장소 밖에
     if "--pdf" in sys.argv:
         docx_common.set_font("Apple SD Gothic Neo")
     src = build(tmp / "fieldbook_print.docx")

@@ -82,11 +82,16 @@ def _fieldbook(tmp_path):
     for i, (pid, rd, L, mins, ok) in enumerate(rows):
         r = 5 + i
         start = dt.datetime(2026, 10, 21, 7, 30)
-        n.cell(r, 1, pid); n.cell(r, 2, rd); n.cell(r, 9, L); n.cell(r, 18, ok)
-        n.cell(r, 6, start.time()); n.cell(r, 7, (start + dt.timedelta(minutes=mins)).time())
-        n.cell(r, 22, f"{rd}_TC")
+        _put(n, r, 측정점=pid, 회차=rd, LAeq=L, **{"유효(Y/N)": ok, "교통량 참조": f"{rd}_TC",
+             "시작 시각": start.time(), "종료 시각": (start + dt.timedelta(minutes=mins)).time()})
     wb.save(src)
     return src
+
+
+def _put(ws, r, **values):
+    """3_소음기록 r행에 열 이름으로 값 넣기(열 위치가 바뀌어도 그대로 씀)"""
+    for name, v in values.items():
+        ws[f"{build_fieldbook_xlsx.NC[name]}{r}"] = v
 
 
 def _read(path):
@@ -120,7 +125,7 @@ def test_short_measurement_flagged(tmp_path):
     src = _fieldbook(tmp_path)
     wb = load_workbook(src)
     n = wb["3_소음기록"]
-    n.cell(5, 7, dt.time(7, 35))                    # R1 D1 을 5분으로
+    _put(n, 5, **{"종료 시각": dt.time(7, 35)})       # R1 D1 을 5분으로
     wb.save(src)
     out = tmp_path / "d2"
     pm.main([str(src), "--out", str(out)])
@@ -140,3 +145,60 @@ def test_model_comparison(tmp_path):
     # 차이 1.6, −1.0 → 평균 0.3, 표준편차 √((1.3² + 1.3²)/1) = 1.84
     assert (int(s["n"]), float(s["mean_diff"]), float(s["sd_diff"]), float(s["max_abs_diff"]), s["max_abs_point"]) == \
         (2, 0.3, 1.84, 1.6, "R1/day")
+
+
+def test_model_leq_calc_not_number(tmp_path):
+    """Leq_calc 가 숫자가 아니면 행 번호와 값을 담은 오류. 빈칸·nan 은 '계산값 없음'으로 허용"""
+    model = tmp_path / "model.csv"
+    model.write_text("point_id,period,Leq_calc\nR1,day,70.0\nF1,day,약 66\nR1,night,\nB1,day,nan\n",
+                     encoding="utf-8")
+    with pytest.raises(ValueError) as e:
+        pm.read_model(model)
+    assert "3행" in str(e.value) and "'약 66'" in str(e.value) and "F1" in str(e.value)
+    model.write_text("point_id,period,Leq_calc,quantity\nR1,day,70.0,LrT\nR1,night,,LrN\n", encoding="utf-8")
+    assert pm.read_model(model) == {("R1", "day"): 70.0, ("R1", "night"): None}
+
+
+def test_extra_columns_do_not_break_reading(tmp_path):
+    """3_소음기록 앞쪽에 열을 끼워 넣어도(열 위치 이동) 열 이름으로 읽으므로 결과가 같음"""
+    src = _fieldbook(tmp_path)
+    pm.main([str(src), "--out", str(tmp_path / "a")])
+    wb = load_workbook(src)
+    for name in ("3_소음기록", "2_측정점"):
+        ws = wb[name]
+        ws.insert_cols(2)
+        ws.cell(4, 2, "추가 메모 열")
+    wb.save(src)
+    pm.main([str(src), "--out", str(tmp_path / "b")])
+    assert _read(tmp_path / "a" / "measured_levels.csv") == _read(tmp_path / "b" / "measured_levels.csv")
+
+
+def test_excel_formulas_match_script(tmp_path):
+    """엑셀 6_계산 시트 수식 결과 = process_measurements.py 결과. 시각이 빠진 행(유효 Y, LAeq 있음)은 둘 다 제외.
+    엑셀 수식 계산에 formulas 패키지가 필요(없으면 건너뜀)."""
+    formulas = pytest.importorskip("formulas")
+    src = _fieldbook(tmp_path)
+    wb = load_workbook(src)
+    _put(wb["3_소음기록"], 14, 측정점="R1", 회차="D2", LAeq=90.0, **{"유효(Y/N)": "Y",   # 종료 시각 누락
+                                                               "시작 시각": dt.time(11, 30)})
+    _put(wb["3_소음기록"], 15, 측정점="F1", 회차="N1", LAeq=55.0, **{"유효(Y/N)": "Y"})  # 시각 둘 다 누락
+    wb.save(src)
+    pm.main([str(src), "--out", str(tmp_path / "d")])
+    m = _read(tmp_path / "d" / "measured_levels.csv")
+    sol = formulas.ExcelModel().loads(str(src)).finish().calculate()
+    vals = {}
+    for k, v in sol.items():
+        if "!" in k:
+            sh, ref = k.upper().rsplit("!", 1)
+            vals[(sh.split("]")[-1].strip("'"), ref)] = v.value[0][0] if hasattr(v, "value") else v
+    xl = lambda ref: vals[("6_계산", ref)]  # noqa: E731
+    for row, pid in ((5, "R1"), (7, "F1")):          # 6_계산: 측정점 순서 R1, R2, F1 …
+        assert xl(f"A{row}") == pid
+        for per, (n_, ar, en) in (("day", "BCF"), ("night", "GHK")):
+            got = m.get((pid, per))
+            if got is None:
+                assert float(xl(f"{n_}{row}")) == 0 and xl(f"{ar}{row}") == "" and xl(f"{en}{row}") == ""
+                continue
+            assert float(xl(f"{n_}{row}")) == int(got["n_samples"])
+            assert float(xl(f"{ar}{row}")) == pytest.approx(float(got["Leq_legal_mean"]))
+            assert float(xl(f"{en}{row}")) == pytest.approx(float(got["Leq"]))

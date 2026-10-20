@@ -8,11 +8,12 @@
 --pdf: Pages(macOS)로 검수용 PDF를 만든다(PDF용은 시스템 글꼴 Apple SD Gothic Neo).
 """
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import docx_common  # noqa: E402
-from docx_common import (INPUT_FILL, add_toc, bullets, caption, cover, h, m_frac, m_r, m_sub, m_sum, m_sup,  # noqa: E402
+from docx_common import (INPUT_FILL, add_toc, bullets, caption, cover, h, keep_together, m_frac, m_r, m_sub, m_sum, m_sup,  # noqa: E402
                          math_para, new_document, note_box, page_break, para, table)
 from survey_points import POINTS  # noqa: E402
 
@@ -59,7 +60,7 @@ def build(out):
         ["시뮬레이션 비교 결과(목적 나)", TBD],
         ["주요 한계", TBD],
         ["소음지도 작업에 대한 시사점", TBD],
-    ], [52, 114], min_height_mm=12, fills={(r, 1): INPUT_FILL for r in range(1, 6)})
+    ], [52, 114], min_height_mm=9, fills={(r, 1): INPUT_FILL for r in range(1, 6)})
 
     # 2
     h(doc, "2. 조사 개요", 1)
@@ -69,9 +70,10 @@ def build(out):
     h(doc, "2.2 일시·인원·장비", 2)
     rows = [["항목", "내용"], ["측정일·요일", TBD], ["예비일 사용 여부·이유", TBD], ["회차별 시각", TBD],
             ["조사 인원·역할", TBD], ["시나리오(장비 대수)", TBD]]
-    table(doc, rows, [52, 114], min_height_mm=10, fills={(r, 1): INPUT_FILL for r in range(1, len(rows))})
+    table(doc, rows, [52, 114], min_height_mm=8.5, fills={(r, 1): INPUT_FILL for r in range(1, len(rows))})
+    # Pages 는 표 안 '다음 단락과 함께'를 무시하므로, 장비 표가 2.2 와 같은 쪽에 들어가도록 위 표 높이를 줄였음
     rows = [["장비 ID", "모델", "일련번호", "등급", "교정기(모델·표시값)"]] + blank_rows(4, 5, ["SLM-1", "SLM-2", "SLM-3", "SLM-4"])
-    table(doc, rows, [22, 40, 34, 20, 50], min_height_mm=9, fills=yellow(rows, range(1, 5)), align="ccccc")
+    keep_together(table(doc, rows, [22, 40, 34, 20, 50], min_height_mm=8, fills=yellow(rows, range(1, 5)), align="ccccc"))
     h(doc, "2.3 적용 기준", 2)
     table(doc, [
         ["구분", "문서", "현행본(2026-10-19 확인)"],
@@ -94,6 +96,8 @@ def build(out):
         ["기상 조건", "풍속 2 m/s 이상 방풍망, 5 m/s 초과 측정 금지"],
         ["평균 방법", "법정 평가: 산술평균(원문 규정). 시뮬레이션 비교: 측정시간 가중 에너지평균(본 조사 자체 설정)"],
         ["배경소음 보정", "적용 방법에 조항이 없어 보정하지 않음"],
+        ["회차 간 시간 간격 요건", "수동 확인 — 환경기준 낮 2시간 이상 간격 4회·밤 2시간 간격 2회(ES 03301.1c 5.3), 도로교통 "
+                          "4시간 이상 간격 2회(ES 03304.1d 5.3.2·5.3.3). 야장·처리 스크립트는 자동 확인하지 않음. 확인 결과: " + TBD],
     ], [36, 130], size=9)
     h(doc, "3.2 계획 대비 변경 사항", 2)
     rows = [["항목", "계획", "실제", "변경 이유", "결과에 미치는 영향"]] + blank_rows(5, 5)
@@ -160,17 +164,19 @@ def build(out):
     table(doc, rows, [52, 114], size=9, min_height_mm=9, fills={(r, 1): INPUT_FILL for r in range(1, len(rows))})
     h(doc, "6.2 측정값과 계산값", 2)
     caption(doc, "표 6-1 측정 L_{Aeq}와 계산 L_{Aeq} 비교 (dB(A), 차이 = 측정 − 계산)")
-    rows = [["측정점", "회차·시간대", "측정 L_{Aeq}", "계산 L_{Aeq}", "차이", "비고"]]
-    rows += [[p, "", "", "", "", ""] for p in PIDS]
-    table(doc, rows, [16, 26, 26, 26, 20, 52], size=9, min_height_mm=9, fills=yellow(rows, range(1, 6)), align="cccccl")
+    rows = [["측정점", "시간대", "측정 L_{Aeq}", "계산 L_{Aeq}", "차이", "비고"]]
+    rows += [[p, per, "", "", "", ""] for p in PIDS for per in ("낮", "밤")]
+    table(doc, rows, [16, 26, 26, 26, 20, 52], size=9, min_height_mm=8, fills=yellow(rows, range(2, 6)), align="cccccl")
     h(doc, "6.3 차이 통계", 2)
-    para(doc, "차이 d_{i} = L_{측정,i} − L_{계산,i}, 비교 점 수 n. 평균 차이와 표준편차(표본)는 다음과 같다.", size=9.5)
+    intro = para(doc, "차이 d_{i} = L_{측정,i} − L_{계산,i}, 비교 점 수 n. 평균 차이와 표준편차(표본)는 다음과 같다.", size=9.5)
     d_i = m_sub(m_r("d"), m_r("i"))
     dbar = f"<m:bar><m:barPr><m:pos m:val=\"top\"/></m:barPr><m:e>{m_r('d')}</m:e></m:bar>"
-    math_para(doc, dbar + m_r("=", False) + m_frac(m_r("1", False), m_r("n")) + m_sum(d_i, m_r("i") + m_r("=1", False), m_r("n")))
-    math_para(doc, m_r("s") + m_r("=", False) + m_rad(m_frac(
+    f1 = math_para(doc, dbar + m_r("=", False) + m_frac(m_r("1", False), m_r("n")) + m_sum(d_i, m_r("i") + m_r("=1", False), m_r("n")))
+    f2 = math_para(doc, m_r("s") + m_r("=", False) + m_rad(m_frac(
         m_sum(m_sup(f"<m:d><m:e>{d_i}{m_r('−', False)}{dbar}</m:e></m:d>", m_r("2", False)), m_r("i") + m_r("=1", False), m_r("n")),
         m_r("n") + m_r("−1", False))))
+    for p_ in (intro, f1, f2):                           # 설명·두 수식·통계표 머리가 한 쪽에 오도록
+        p_.paragraph_format.keep_with_next = True
     rows = [["지표", "값(dB)", "비고"], ["비교 점 수 n", "", ""], ["평균 차이", "", "양수면 모델이 낮게 계산"],
             ["표준편차", "", ""], ["최대 차이(절댓값)", "", "해당 측정점·회차"]]
     table(doc, rows, [50, 40, 76], size=9, min_height_mm=9, fills={(r, 1): INPUT_FILL for r in range(1, 5)})
@@ -182,8 +188,9 @@ def build(out):
             ["반사", "측정점 주변 반사면과 모델 반사 차수·수음점 위치(파사드 5 cm 대 측정 1.0 m 등)", ""],
             ["신호 대기", "정지·출발, 교차로 보정(RLS-19) 적용 범위", ""],
             ["배경소음", "도로 외 소음(이상 소음 코드) 포함 구간", ""],
-            ["기상", "풍속·풍향, 노면 상태, 기온·습도와 모델 설정(15 °C, 70 %)", ""],
-            ["주행속도", "측정 속도와 모델 입력 속도(50 km/h 기본)", ""],
+            ["기상", "풍속·풍향, 노면 상태, 기온·습도와 모델 설정(propagation.temperature_C 15 °C·humidity_pct 70 %, 코드 기본값)", ""],
+            ["주행속도", "측정 속도와 모델 입력 속도(교통량 파일에 속도가 없으면 간선 50 km/h·그 밖 30 km/h, "
+                     "input.traffic.default_speed_main/minor)", ""],
             ["기타", "", ""]]
     table(doc, rows, [30, 80, 56], size=9, min_height_mm=11, fills=yellow(rows, (2,)))
 
@@ -231,8 +238,7 @@ if __name__ == "__main__":
     out = build(out_dir / OUT_NAME)
     print("저장:", out)
     if "--pdf" in sys.argv:
-        tmp = out_dir / "_report_build"
-        tmp.mkdir(exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(prefix="fs_pdf_"))         # PDF용 임시 docx는 저장소 밖에
         docx_common.set_font("Apple SD Gothic Neo")
         src = build(tmp / "for_pdf.docx")
         docx_common.export_pdf(src, out.with_suffix(".pdf"), tmp)

@@ -8,6 +8,7 @@
 기준 조항은 field_survey/references/기준조사_1단계_결과.md(2026-10-19 원문 확인)에서 옮겼다.
 """
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -529,8 +530,7 @@ if __name__ == "__main__":
     out = build(out_dir / OUT.name)
     print("저장:", out)
     if "--pdf" in sys.argv:
-        tmp = out_dir / "_pdf_build"
-        tmp.mkdir(exist_ok=True)
+        tmp = Path(tempfile.mkdtemp(prefix="fs_pdf_"))         # PDF용 임시 docx는 저장소 밖에
         docx_common.set_font("Apple SD Gothic Neo")
         src = build(tmp / "for_pdf.docx")
         docx_common.export_pdf(src, out.with_suffix(".pdf"), tmp)

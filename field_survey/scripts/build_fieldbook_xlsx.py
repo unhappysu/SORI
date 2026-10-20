@@ -226,41 +226,53 @@ def sheet_points(wb, L):
 
 
 # ───────────────────────── 3 소음 기록
-NOISE_HEAD = ["측정점", "회차", "시간대", "날짜", "장비", "시작 시각", "종료 시각", "측정시간(분)",
-              "LAeq", "LAmax", "LAmin", "L10", "L50", "L90", "배경소음(참고)", "풍속(m/s)",
-              "이상 소음(시각·코드·메모)", "유효(Y/N)", "무효 사유", "시간 요건(10분)", "풍속 판정",
-              "교통량 참조", "basis", "에너지 가중값", "가중 시간", "유효 LAeq(1/0)"]
+# (열 이름, 열 너비). 열 위치는 이름으로 찾음(NC) — 열을 추가해도 수식·process_measurements.py 가 깨지지 않게
+NOISE_COLS = [("측정점", 8), ("회차", 7), ("시간대", 7), ("날짜", 11), ("장비", 8), ("측정자", 10),
+              ("시작 시각", 9), ("종료 시각", 9), ("측정시간(분)", 9),
+              ("LAeq", 8), ("LAmax", 8), ("LAmin", 8), ("L10", 8), ("L50", 8), ("L90", 8), ("배경소음(참고)", 9),
+              ("풍속(m/s)", 8), ("방풍망(Y/N)", 9), ("이상 소음(시각·코드·메모)", 32), ("유효(Y/N)", 8), ("무효 사유", 18),
+              ("시간 요건(10분)", 10), ("풍속 판정", 22), ("교통량 참조", 12), ("basis", 10),
+              ("에너지 가중값", 12), ("가중 시간", 9), ("유효 LAeq(1/0)", 9)]
+NOISE_HEAD = [n for n, _ in NOISE_COLS]
+NC = {n: get_column_letter(i) for i, (n, _) in enumerate(NOISE_COLS, start=1)}
 
 
 def sheet_noise(wb, L, pt_ref):
     ws = wb.create_sheet("3_소음기록")
-    setup(ws, "3. 소음 기록 (단위 dB(A), 시각은 기준 시계)",
-          [8, 7, 7, 11, 8, 9, 9, 9, 8, 8, 8, 8, 8, 8, 9, 8, 32, 8, 18, 10, 13, 12, 10, 12, 9, 9])
+    setup(ws, "3. 소음 기록 (단위 dB(A), 시각은 기준 시계)", [w for _, w in NOISE_COLS])
     header(ws, H0, NOISE_HEAD)
     first, last = H0 + 1, H0 + N_NOISE
+    c = {n: NOISE_HEAD.index(n) + 1 for n in NOISE_HEAD}
+    rd, st, en, du, leq, ws_, wsc, ok_ = (NC[k] for k in ("회차", "시작 시각", "종료 시각", "측정시간(분)", "LAeq",
+                                                        "풍속(m/s)", "방풍망(Y/N)", "유효(Y/N)"))
+    inputs = {"측정점": None, "회차": None, "날짜": "yyyy-mm-dd", "장비": None, "측정자": None,
+              "시작 시각": "hh:mm:ss", "종료 시각": "hh:mm:ss", "방풍망(Y/N)": None,
+              "이상 소음(시각·코드·메모)": None, "유효(Y/N)": None, "무효 사유": None, "교통량 참조": None, "basis": None}
+    inputs.update({k: "0.0" for k in ("LAeq", "LAmax", "LAmin", "L10", "L50", "L90", "배경소음(참고)", "풍속(m/s)")})
     for r in range(first, last + 1):
-        inp(ws.cell(r, 1)); inp(ws.cell(r, 2))
-        calc(ws.cell(r, 3), f'=IF(B{r}="","",IF(LEFT(B{r},1)="N","밤","낮"))')
-        inp(ws.cell(r, 4), fmt="yyyy-mm-dd"); inp(ws.cell(r, 5))
-        inp(ws.cell(r, 6), fmt="hh:mm:ss"); inp(ws.cell(r, 7), fmt="hh:mm:ss")
-        calc(ws.cell(r, 8), f'=IF(OR(F{r}="",G{r}=""),"",ROUND(MOD(G{r}-F{r},1)*1440,1))', "0.0")
-        for c in range(9, 17):
-            inp(ws.cell(r, c), fmt="0.0")
-        inp(ws.cell(r, 17)); inp(ws.cell(r, 18)); inp(ws.cell(r, 19))
-        calc(ws.cell(r, 20), f'=IF(H{r}="","",IF(H{r}>=10,"충족","10분 미만"))')
-        calc(ws.cell(r, 21), f'=IF(P{r}="","",IF(P{r}>5,"5 m/s 초과(무효)",IF(P{r}>=2,"방풍망 필수","적합")))')
-        inp(ws.cell(r, 22)); inp(ws.cell(r, 23), None)
-        ok = f'AND(R{r}="Y",ISNUMBER(I{r}),ISNUMBER(H{r}))'
-        calc(ws.cell(r, 24), f'=IF({ok},H{r}*10^(I{r}/10),0)', "0.000E+00")
-        calc(ws.cell(r, 25), f'=IF({ok},H{r},0)', "0.0")
-        calc(ws.cell(r, 26), f'=IF(AND(R{r}="Y",ISNUMBER(I{r})),1,0)', "0")
-    dv_list(ws, pt_ref, f"A{first}:A{last}")
-    dv_list(ws, L["회차"], f"B{first}:B{last}")
-    dv_list(ws, L["장비"], f"E{first}:E{last}")
-    dv_list(ws, L["Y/N"], f"R{first}:R{last}")
-    dv_list(ws, L["basis"], f"W{first}:W{last}")
-    dv_num(ws, f"I{first}:O{last}", 20, 140)
-    dv_num(ws, f"P{first}:P{last}", 0, 30)
+        for name, fmt in inputs.items():
+            inp(ws.cell(r, c[name]), fmt=fmt)
+        calc(ws.cell(r, c["시간대"]), f'=IF({rd}{r}="","",IF(LEFT({rd}{r},1)="N","밤","낮"))')
+        # 측정시간은 반올림하지 않음(process_measurements.py 와 같은 값). 표시만 소수 첫째 자리
+        calc(ws.cell(r, c["측정시간(분)"]), f'=IF(OR({st}{r}="",{en}{r}=""),"",MOD({en}{r}-{st}{r},1)*1440)', "0.0")
+        calc(ws.cell(r, c["시간 요건(10분)"]), f'=IF({du}{r}="","",IF({du}{r}>=10,"충족","10분 미만"))')
+        calc(ws.cell(r, c["풍속 판정"]),
+             f'=IF({ws_}{r}="","",IF({ws_}{r}>5,"5 m/s 초과(무효)",IF({ws_}{r}>=2,'
+             f'IF(UPPER({wsc}{r})="N","경고: 방풍망 필수인데 미부착","방풍망 필수"),"적합")))')
+        # 유효 행: 유효=Y, LAeq 숫자, 측정시간 > 0 (process_measurements.read_noise 와 같은 기준)
+        ok = f'AND({ok_}{r}="Y",ISNUMBER({leq}{r}),ISNUMBER({du}{r}),N({du}{r})>0)'
+        calc(ws.cell(r, c["에너지 가중값"]), f'=IF({ok},{du}{r}*10^({leq}{r}/10),0)', "0.000E+00")
+        calc(ws.cell(r, c["가중 시간"]), f'=IF({ok},{du}{r},0)', "0.0")
+        calc(ws.cell(r, c["유효 LAeq(1/0)"]), f'=IF({ok},1,0)', "0")
+    col = lambda n: f"{NC[n]}{first}:{NC[n]}{last}"  # noqa: E731
+    dv_list(ws, pt_ref, col("측정점"))
+    dv_list(ws, L["회차"], col("회차"))
+    dv_list(ws, L["장비"], col("장비"))
+    dv_list(ws, L["Y/N"], col("유효(Y/N)"))
+    dv_list(ws, L["Y/N"], col("방풍망(Y/N)"))
+    dv_list(ws, L["basis"], col("basis"))
+    dv_num(ws, f"{NC['LAeq']}{first}:{NC['배경소음(참고)']}{last}", 20, 140)
+    dv_num(ws, col("풍속(m/s)"), 0, 30)
     ws.freeze_panes = f"C{first}"
     return first, last
 
@@ -348,14 +360,11 @@ def sheet_calc(wb, L, n_first, n_last, t_first, t_last, sp_first, sp_last):
     ws = wb.create_sheet("6_계산")
     setup(ws, "6. 계산 (자동)", [8, 8, 11, 10, 11, 12, 8, 11, 10, 11, 12, 10, 10, 10, 10, 10, 10, 10, 10])
     N = "'3_소음기록'!"
-    A = f"{N}$A${n_first}:$A${n_last}"
-    C = f"{N}$C${n_first}:$C${n_last}"
-    I_ = f"{N}$I${n_first}:$I${n_last}"
-    X = f"{N}$X${n_first}:$X${n_last}"
-    Y = f"{N}$Y${n_first}:$Y${n_last}"
-    Z = f"{N}$Z${n_first}:$Z${n_last}"
+    rng3 = lambda n: f"{N}${NC[n]}${n_first}:${NC[n]}${n_last}"  # noqa: E731
+    A, C, I_ = rng3("측정점"), rng3("시간대"), rng3("LAeq")
+    X, Y, Z = rng3("에너지 가중값"), rng3("가중 시간"), rng3("유효 LAeq(1/0)")
     ws.cell(3, 1, "법정 평가는 산술평균(원문 규정), 시뮬레이션 비교는 측정시간 가중 에너지평균(자체 설정). "
-                  "유효(Y)이고 LAeq가 있는 행만 씀. 배경소음 보정 없음.").font = font(False, 9, "595959")
+                  "유효(Y)이고 LAeq가 숫자이며 측정시간이 있는 행만 씀(process_measurements.py 와 같은 기준). 배경소음 보정 없음.").font = font(False, 9, "595959")
     heads = ["측정점", "낮 n", "낮 산술평균", "낮 최종(정수)", "낮 횟수(환경기준 4회)", "낮 에너지평균(검증용)",
              "밤 n", "밤 산술평균", "밤 최종(정수)", "밤 횟수(환경기준 2회)", "밤 에너지평균(검증용)",
              "별표1 낮 기준", "별표1 밤 기준", "별표1 판정", "도로교통 대상(Y/N)", "별표11 주간 기준", "별표11 야간 기준",

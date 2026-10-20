@@ -190,8 +190,23 @@ def read_model(path):
     need = {"point_id", "period", "Leq_calc"}
     if rows and not need <= set(rows[0]):
         raise ValueError(f"모델 결과 CSV에 {sorted(need)} 열이 필요함: {path}")
-    return {(r["point_id"].strip(), r["period"].strip()): _num(float(r["Leq_calc"])) if r["Leq_calc"].strip() else None
-            for r in rows}
+    out, bad = {}, []
+    for line, r in enumerate(rows, start=2):                 # 1행은 머리글
+        v = (r["Leq_calc"] or "").strip()
+        val = None
+        if v and v.lower() != "nan":                          # 빈칸·nan = 계산값 없음(건물 안 등)
+            try:
+                val = float(v)
+            except ValueError:
+                bad.append(f"{line}행 point_id={r['point_id']!r} Leq_calc={v!r}")
+                continue
+            if not math.isfinite(val):
+                bad.append(f"{line}행 point_id={r['point_id']!r} Leq_calc={v!r}")
+                continue
+        out[(r["point_id"].strip(), r["period"].strip())] = val
+    if bad:
+        raise ValueError(f"모델 결과 CSV의 Leq_calc 가 숫자가 아님({path}):\n  " + "\n  ".join(bad))
+    return out
 
 
 def compare(measured, model):

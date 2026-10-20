@@ -340,6 +340,15 @@ def table(doc, rows, widths_mm, header_rows=1, size=9, fills=None, align=None, m
     return t
 
 
+def keep_together(t):
+    """표가 쪽에서 나뉘지 않게: 마지막 행을 뺀 모든 칸 문단에 '다음 단락과 함께'를 건다(행 나눔 금지는 table()에서 이미 설정)."""
+    for row in t.rows[:-1]:
+        for cell in row.cells:
+            for p in cell.paragraphs:
+                p.paragraph_format.keep_with_next = True
+    return t
+
+
 def note_box(doc, text, fill=NOTE_FILL, size=9.5):
     """한 칸짜리 표로 만든 안내 상자(본문 폭)."""
     t = table(doc, [[text]], [BODY_W_MM], header_rows=0, size=size, fills={(0, 0): fill})
