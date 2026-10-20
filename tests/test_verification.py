@@ -631,3 +631,85 @@ def test_info_wrap_keeps_number_and_unit():
     assert "M_N 400 대/h" in joined and "DTV 30,000 대/일" in joined
     assert not any(w.endswith(("M_N", "M_T", "DTV", "400", "30,000", "2,300")) for w in lines)
     assert wrap_info("") == [""]
+
+
+# ======================================================================= 점 수음점(현장 측정점 비교용)
+def _point_world(tmp_path):
+    """경사 지면(z = 0.05·x) 200 m × 200 m, 건물 1동, 직선 음원 — run.main 이 읽는 출력 폴더를 직접 만든다."""
+    from noisemap import config
+    n, res, slope = 200, 1.0, 0.05
+    xc = (np.arange(n) + 0.5) * res
+    gnd = np.tile(slope * xc, (n, 1))
+    bid = -np.ones((n, n), np.int64)
+    bid[80:100, 150:170] = 0                                  # x 150~170, y 100~120 (y0 = 200 기준 행)
+    dsm = gnd + np.where(bid >= 0, 10.0, 0.0)
+    gx = np.arange(2.5, 200.0, 5.0); gy = np.arange(2.5, 200.0, 5.0)
+    X, Y = np.meshgrid(gx, gy)
+    gz = slope * X                                            # 선형 지면이라 1차 보간이 정확히 이 값
+    ins = bid[(200 - Y).astype(int), X.astype(int)] >= 0
+    out = tmp_path / "out"; out.mkdir()
+    np.savez_compressed(out / "model_rasters.npz", gnd=gnd, dsm=dsm, bid=bid, G=np.zeros((n, n)),
+                        x0=0.0, y0=200.0, res=res, gx=gx, gy=gy, gz=gz, ginside=ins)
+    sx = np.arange(11.0, 190.0, 2.0)
+    pd.DataFrame(dict(x=sx, y=50.0, z=slope * sx + 0.5, zg=slope * sx, LW_day=80.0, LW_night=72.0,
+                      main=True, l=2.0)).to_csv(out / "sources.csv", index=False)
+    cols = ("x1", "y1", "x2", "y2", "nx", "ny", "z0", "ztop", "L", "bid")
+    pd.DataFrame({c: [] for c in ("fid",) + cols}).to_csv(out / "facades.csv", index=False)
+    (out / "facade_receivers.csv").write_text("")
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [100.0, 100.0], "grid": {"heights": [1.5]},
+                                                        "facade": {"enabled": False}}})
+    cfg["project"]["output_dir"] = str(out)
+    cfg["propagation"]["segment_check"] = False
+    cfg["propagation"]["reflection"].update(max_order_grid=1, max_order_point=1)
+    cfg["_config_path"] = "test"
+    return config.Cfg(cfg), out
+
+
+def test_point_receivers_equal_grid(tmp_path):
+    """격자점과 같은 좌표·높이의 점 수음점 → 격자 결과와 같은 값. 측정점 목록 열 이름(x_epsg5186, height_m)도 읽음"""
+    from noisemap import run
+    cfg, out = _point_world(tmp_path)
+    pts = tmp_path / "points.csv"
+    pts.write_text("point_id,x_epsg5186,y_epsg5186,height_m,note\n"
+                   "R1,52.5,102.5,1.5,\nV1,102.5,152.5,1.5,\nB1,12.5,72.5,1.5,\n"
+                   "IN,160.5,110.5,1.5,건물 안\nNOXY,,,1.5,좌표 없음\nNOH,57.5,102.5,,높이 없음\n", encoding="utf-8")
+    cfg["receivers"]["points"]["path"] = str(pts)
+    run.main(cfg, which=("grid", "points"))
+    G = pd.read_csv(out / "grid_result.csv")
+    P = pd.read_csv(out / "point_result.csv", encoding="utf-8-sig")
+    assert P.point_id.tolist() == ["R1", "V1", "B1", "IN"]       # 좌표·높이 없는 행은 건너뜀
+    for _, p in P[P.point_id != "IN"].iterrows():
+        g = G[(G.x == p.x) & (G.y == p.y)].iloc[0]
+        assert p.zg == pytest.approx(0.05 * p.x) and p.z == pytest.approx(g.z)
+        assert p.LrT == pytest.approx(g.LrT, abs=1e-9) and p.LrN == pytest.approx(g.LrN, abs=1e-9)
+    inside = P[P.point_id == "IN"].iloc[0]
+    assert inside.note == "건물 안" and np.isnan(inside.LrT)
+    C = pd.read_csv(out / "point_levels_for_comparison.csv", encoding="utf-8-sig")
+    assert list(C.columns[:3]) == ["point_id", "period", "Leq_calc"]
+    r1 = C[(C.point_id == "R1")]
+    assert r1[r1.period == "day"].Leq_calc.iloc[0] == round(P.LrT[0], 1)
+    assert r1[r1.period == "night"].Leq_calc.iloc[0] == round(P.LrN[0], 1)
+
+
+def test_point_receivers_default_height_and_errors(tmp_path):
+    from noisemap.run import read_points
+    p = tmp_path / "p.csv"
+    p.write_text("point_id,x,y,h\nA,1,2,\nB,3,4,4.0\n", encoding="utf-8")
+    P = read_points(str(p), default_height=1.5)
+    assert P.h.tolist() == [1.5, 4.0] and P.h_basis.tolist() == ["default_height", "input"]
+    assert read_points(str(p)).point_id.tolist() == ["B"]
+    p.write_text("point_id,x,y,h\nA,1,2,1.5\nA,3,4,1.5\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_points(str(p))
+    p.write_text("id,lon,lat\nA,127,37\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_points(str(p))
+
+
+def test_point_receivers_config_path(tmp_path):
+    from noisemap import config
+    c = tmp_path / "c.yaml"
+    c.write_text("receivers: {center: [0, 0], points: {path: pts.csv}}\n", encoding="utf-8")
+    cfg = config.load(str(c))
+    assert cfg["receivers"]["points"]["path"] == str((tmp_path / "pts.csv").resolve())
+    assert cfg["propagation"]["reflection"]["max_order_point"] == 2

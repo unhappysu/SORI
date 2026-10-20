@@ -168,7 +168,7 @@
         "model_receiver_id": "",
         "coord_basis": "미입력",
         "photo_no": "",
-        "note": "모델 격자 높이에 1.5 m 추가 필요(현재 설정 heights: [4.0])"
+        "note": "모델 점 수음점(receivers.points.path)으로 같은 좌표·높이 계산"
       }
     },
     {

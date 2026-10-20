@@ -104,7 +104,7 @@ DEFAULTS = {
         "profile_step": 1.0,
         "dsm_res": 1.0,
         "barrier": {"C2": 20.0, "dz_max_single": 20.0, "dz_max_double": 25.0},
-        "reflection": {"rho": 0.8, "max_order_grid": 1, "max_order_facade": 2,
+        "reflection": {"rho": 0.8, "max_order_grid": 1, "max_order_facade": 2, "max_order_point": 2,
                        "r_facade": 100.0, "r_source_main": 200.0, "r_source_minor": 50.0,
                        "r_second": 50.0},
         "skip_radius": 1.5,                        # 래스터 이산화 오차 보정 반경(m)
@@ -114,6 +114,8 @@ DEFAULTS = {
         "center": None,                            # [x, y] 계산 중심(교차로 등)
         "grid": {"enabled": True, "bbox": None, "size": [480.0, 520.0], "step": 5.0, "heights": [4.0]},
         "facade": {"enabled": True, "radius": 230.0, "piece": 10.0, "z_in_floor": 2.8, "offset": 0.05},
+        "points": {"path": None,                   # 점 수음점 CSV: point_id, x, y, h(지면 위 높이 m) — 현장 측정점 비교용
+                   "default_height": None},        # h 가 빈 행에 쓸 높이(m). None 이면 그 행은 건너뜀
     },
     "plots": {"font": None, "dpi": 130, "targets_3d": None, "radius_3d": 105.0,
               "limits": None,                       # 기준 초과 지도: {LrT: 68, LrN: 58, label: "..."}
@@ -159,6 +161,7 @@ def load(path):
     for k in ("dem", "traffic", "junctions", "road_override"):
         c["input"][k]["path"] = rp(c["input"][k]["path"])
     c["input"]["ground"]["soft_polygons"] = rp(c["input"]["ground"]["soft_polygons"])
+    c["receivers"]["points"]["path"] = rp(c["receivers"]["points"]["path"])
     c["project"]["output_dir"] = rp(c["project"]["output_dir"])
     c["input"]["traffic"]["fallback_dtv_by_lanes"] = {
         int(k): float(v) for k, v in c["input"]["traffic"]["fallback_dtv_by_lanes"].items()}

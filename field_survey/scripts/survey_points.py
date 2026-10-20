@@ -78,7 +78,7 @@ POINTS = [
          nearest_road="사가정로", height_m="1.5",
          method="본 조사 자체 설정(검증용) + ES 03301.1c 측정 조건 준용", area_class="도로변지역",
          rationale="반사·신호 대기 영향이 작은 곳에서 음원 모델(RLS-19) 확인. 모델 격자 수음점을 같은 좌표·높이에 둠",
-         note="모델 격자 높이에 1.5 m 추가 필요(현재 설정 heights: [4.0])"),
+         note="모델 점 수음점(receivers.points.path)으로 같은 좌표·높이 계산"),
     dict(point_id="V2", type="d",
          location_desc="교차로 중심에서 120 m 이내 사가정로 또는 전농로변 개활 지점",
          nearest_road="사가정로", height_m="1.5",

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""계산 실행: 격자(높이별)·파사드(층별) 수음점 → CSV, GeoTIFF, 실행정보(JSON)
+"""계산 실행: 격자(높이별)·파사드(층별)·점 수음점 → CSV, GeoTIFF, 실행정보(JSON)
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
 import json
 import logging
@@ -105,6 +105,57 @@ def _segment_summary(nv, nvm, ratio):
             "min_s_over_l": float(ratio.min()) if len(ratio) and np.isfinite(ratio.min()) else None}
 
 
+# 점 수음점 CSV 열 이름 대응(왼쪽이 표준 이름). field_survey/plan/measurement_points.csv 형식도 읽음
+POINT_COLS = {"point_id": ("point_id", "id", "ID"), "x": ("x", "x_epsg5186", "X"), "y": ("y", "y_epsg5186", "Y"),
+              "h": ("h", "height_m", "height", "z")}
+
+
+def read_points(path, default_height=None):
+    """점 수음점 CSV → DataFrame(point_id, x, y, h, h_basis). 좌표(EPSG = cfg crs)가 빈 행은 건너뜀.
+    h 는 지면 위 높이(m). 빈 칸이면 default_height(없으면 그 행 건너뜀)."""
+    from .inputs import read_csv_any
+    raw = read_csv_any(path)
+    cols = {}
+    for std, names in POINT_COLS.items():
+        hit = next((n for n in names if n in raw.columns), None)
+        if hit is None and std != "h":
+            raise ValueError(f"점 수음점 CSV에 {std} 열이 없음(허용 이름: {', '.join(names)}): {path}")
+        cols[std] = hit
+    rows, skipped = [], []
+    for _, r in raw.iterrows():
+        pid = str(r[cols["point_id"]]).strip()
+        x, y = pd.to_numeric(r[cols["x"]], errors="coerce"), pd.to_numeric(r[cols["y"]], errors="coerce")
+        h = pd.to_numeric(r[cols["h"]], errors="coerce") if cols["h"] else np.nan
+        basis = "input"
+        if not np.isfinite(h) and default_height is not None:
+            h, basis = float(default_height), "default_height"
+        if not (np.isfinite(x) and np.isfinite(y) and np.isfinite(h)):
+            skipped.append(pid)
+            continue
+        rows.append(dict(point_id=pid, x=float(x), y=float(y), h=float(h), h_basis=basis))
+    if skipped:
+        log.warning("점 수음점 %d개 건너뜀(좌표 또는 높이 없음): %s", len(skipped), ", ".join(skipped))
+    P = pd.DataFrame(rows, columns=["point_id", "x", "y", "h", "h_basis"])
+    if P.point_id.duplicated().any():
+        raise ValueError(f"점 수음점 point_id 중복: {sorted(set(P.point_id[P.point_id.duplicated()]))}")
+    return P
+
+
+def point_ground(d, x, y):
+    """점 수음점의 지면고(build.Raster.sample 과 같은 1차 보간)와 건물 안·모델 범위 밖 여부."""
+    from scipy.ndimage import map_coordinates
+    gnd, bid = d["gnd"], d["bid"]
+    x0, y0, res = float(d["x0"]), float(d["y0"]), float(d["res"])
+    x, y = np.asarray(x, float), np.asarray(y, float)
+    zg = map_coordinates(gnd.astype(np.float64), [(y0 - y) / res - 0.5, (x - x0) / res - 0.5], order=1, mode="nearest")
+    i, j = np.floor((y0 - y) / res).astype(int), np.floor((x - x0) / res).astype(int)
+    outside = (i < 0) | (j < 0) | (i >= gnd.shape[0]) | (j >= gnd.shape[1])
+    inside = np.zeros(len(x), bool)
+    ok = ~outside
+    inside[ok] = bid[i[ok], j[ok]] >= 0
+    return zg, inside, outside
+
+
 def _write_tif(path, A, gx, gy, step, crs):
     import rasterio
     from rasterio.transform import from_origin
@@ -115,7 +166,7 @@ def _write_tif(path, A, gx, gy, step, crs):
         ds.update_tags(NOTE=AI_NOTICE)
 
 
-def main(cfg, which=("grid", "facade"), progress=None):
+def main(cfg, which=("grid", "facade", "points"), progress=None):
     """progress(label, done, total, eta_s): 진행률 콜백(웹앱용, 선택)"""
     out = cfg["project"]["output_dir"]
     d, S, F, FR = load_model(out)
@@ -164,6 +215,37 @@ def main(cfg, which=("grid", "facade"), progress=None):
         if do_seg:
             _seg("facade", FR.x.values, FR.y.values, FR.z.values, "facade",
                  {"h": np.full(len(FR), np.nan), "floor": FR.floor.values})
+    ppath = cfg["receivers"].get("points", {}).get("path")
+    if "points" in which and ppath:
+        P = read_points(ppath, cfg["receivers"]["points"].get("default_height"))
+        zg, inside, outside = point_ground(d, P.x.values, P.y.values)
+        P["zg"], P["z"] = zg, zg + P.h.values
+        P["note"] = np.where(outside, "모델 범위 밖", np.where(inside, "건물 안", ""))
+        ok = (P.note == "").values
+        keys = ("LrT", "LrN", "LrT_direct", "LrT_refl1", "LrT_refl2")
+        for k in keys:
+            P[k] = np.nan
+        if ok.any():
+            n = int(ok.sum())
+            r = _run(cfg, d, S, F, P.x.values[ok], P.y.values[ok], P.z.values[ok], P.zg.values[ok],
+                     np.full(n, -1, np.int64), np.full(n, -1, np.int64),
+                     int(cfg["propagation"]["reflection"]["max_order_point"]), "점 수음점", progress=progress)
+            for k in keys:
+                P.loc[ok, k] = r[k]
+        P["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrT]   # RLS-19 3.1 올림
+        P["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrN]
+        P = P[["point_id", "x", "y", "zg", "h", "h_basis", "z", *keys, "LrT_cmp", "LrN_cmp", "note"]]
+        P.to_csv(os.path.join(out, "point_result.csv"), index=False, encoding="utf-8-sig")
+        # field_survey/scripts/process_measurements.py --model 입력 형식(point_id, period, Leq_calc)
+        cmp = pd.concat([pd.DataFrame(dict(point_id=P.point_id, period=per, Leq_calc=P[k].round(1),
+                                           quantity=f"{k} (RLS-19 평가레벨, 교차로·반사 보정 포함)", note=P.note))
+                         for per, k in (("day", "LrT"), ("night", "LrN"))])
+        cmp.to_csv(os.path.join(out, "point_levels_for_comparison.csv"), index=False, encoding="utf-8-sig")
+        if ok.any():
+            summary["points"] = {k: [float(np.nanmin(P[k])), float(np.nanmax(P[k]))] for k in ("LrT", "LrN")}
+        if (~ok).any():
+            log.warning("점 수음점 %d개 계산 안 함: %s", int((~ok).sum()),
+                        ", ".join(f"{a}({b})" for a, b in zip(P.point_id[~ok], P.note[~ok])))
     if do_seg and seg_rows:
         pd.concat(seg_rows).to_csv(os.path.join(out, "segment_check.csv"), index=False)
         log.info("구간 길이 진단(l ≤ s/2, 결과값 불변): %s", seg_sum)

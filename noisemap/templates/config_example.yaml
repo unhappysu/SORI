@@ -41,6 +41,9 @@ receivers:
     heights: [4.0]              # 3D 격자: 예) [1.5, 4.0, 10.0]
   facade:
     radius: 230.0
+  points:
+    path: null                  # 점 수음점 CSV(point_id, x, y, h). 예) ../field_survey/plan/measurement_points.csv
+    default_height: null        # h 가 빈 행에 쓸 높이(m). null 이면 그 행은 건너뜀
 
 propagation:
   bands_hz: [500]               # ISO 9613-2 1절 비고 1 (A가중 LW만 있을 때 500 Hz)
@@ -51,3 +54,4 @@ propagation:
     rho: 0.8                    # ISO 9613-2 표 4: 창이 있는 건물 벽
     max_order_grid: 1
     max_order_facade: 2         # RLS-19 3.6: 1차·2차 반사
+    max_order_point: 2          # 점 수음점(현장 측정점 비교용)

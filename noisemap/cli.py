@@ -26,6 +26,7 @@ def main(argv=None):
     ap.add_argument("-c", "--config", default="config.yaml")
     ap.add_argument("--grid", action="store_true")
     ap.add_argument("--facade", action="store_true")
+    ap.add_argument("--points", action="store_true", help="점 수음점만(receivers.points.path)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -42,7 +43,8 @@ def main(argv=None):
                 log.info("생성: %s", dst)
         return 0
     cfg = C.load(a.config)
-    which = tuple(w for w, f in (("grid", a.grid), ("facade", a.facade)) if f) or ("grid", "facade")
+    which = tuple(w for w, f in (("grid", a.grid), ("facade", a.facade), ("points", a.points)) if f) \
+        or ("grid", "facade", "points")
     if a.cmd == "template":
         from . import build
         out = os.path.join(os.path.dirname(cfg["_config_path"]), "traffic_template.csv")

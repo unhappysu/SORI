@@ -90,6 +90,17 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 
 방향별 차로 수(`lanes_fwd`·`lanes_bwd`, 양방향은 둘 다 1 이상일 때)는 음원선 위치(RLS-19 그림 6)에 반영됩니다(`output/source_lines.csv`의 `lane_rule = override`). 일방통행 `oneway_dir = −1`이면 음원선을 진행방향 우측(디지타이즈 기준 좌측)에 두고 종단경사 부호를 반대로 씁니다(`source_lines.csv`의 `oneway_dir_used`). 값이 없으면 +1(디지타이즈 방향 = 진행방향, 가정). 읽은 값과 경고는 `output/road_override_used.csv`, `build_info.json`의 `road_override`.
 
+### 4.5 점 수음점 `points.csv` (선택 — 현장 측정점 비교용)
+현장 측정점처럼 임의 좌표·높이의 수음점을 `receivers.points.path`에 지정합니다. `python -m noisemap run -c config.yaml --points`로 점 수음점만 계산할 수 있습니다(모델은 먼저 `build`).
+
+| 열 | 설명 |
+|---|---|
+| point_id | 수음점 이름(필수, 중복 불가). `id`·`ID`도 읽음 |
+| x, y | 계산 좌표계(`crs`, 기본 EPSG:5186) 좌표(필수). `x_epsg5186`·`y_epsg5186`도 읽음 |
+| h | 지면 위 높이(m). `height_m`·`height`·`z`도 읽음. 빈칸이면 `receivers.points.default_height`, 그것도 없으면 그 행은 건너뜀 |
+
+`field_survey/plan/measurement_points.csv`를 그대로 지정할 수 있습니다(좌표가 빈 측정점은 건너뛰고 로그에 이름을 남김). 지면고는 격자와 같은 방식(모델 DTM 1차 보간)으로 구하고, 자기 벽면을 빼지 않으므로 벽 앞 측정점도 벽 반사를 포함해 계산합니다. 건물 안이거나 모델 범위 밖인 점은 계산하지 않고 `note`에 적습니다.
+
 ## 5. 주요 설정 (config.yaml)
 
 | 항목 | 기본값 | 의미 |
@@ -97,7 +108,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | `propagation.bands_hz` / `spectrum_dBA` | [500] / [0] | 500 Hz 단일대역(ISO 9613-2 1절 비고 1). 옥타브 스펙트럼을 넣으면 8대역 계산 |
 | `input.ground.method` | general | ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제) |
 | `propagation.reflection.rho` | 0.8 | ISO 표 4 '창이 있는 건물 벽' |
-| `max_order_grid` / `max_order_facade` | 1 / 2 | 반사 차수 (RLS-19 3.6은 2차까지) |
+| `max_order_grid` / `max_order_facade` / `max_order_point` | 1 / 2 / 2 | 반사 차수 (RLS-19 3.6은 2차까지) |
 | `input.traffic.oneway_name_traffic` | apply | 도로명 교통량(양방향 합)을 같은 이름의 일방통행 객체에도 배정(`apply`) 또는 차로수 가정값 사용(`fallback`, `traffic_src = fallback_oneway`). UFID 지정 교통량은 항상 우선 |
 | `model.source_ground` | dtm_at_source | 음원 높이(지면 + 0.5 m)의 지면: `dtm_at_source` = 음원점 위치 DTM, `road_profile` = 도로중심선 종단 고도(경사 산정과 같은 평활 DTM). road_profile 은 노면이 주변 DTM 보다 낮은 곳에서 음원 옆 지형이 차폐로 잡힐 수 있음(TECHNICAL_NOTES) |
 | `model.odd_lane_rule` | ceil | 확인값이 없는 홀수 차로 양방향 도로의 방향별 차로 수. `ceil` = 양쪽 ⌈n/2⌉(5 → 3+3), `major_fwd` = 디지타이즈 방향 ⌈n/2⌉·반대 ⌊n/2⌋(5 → 3+2) |
@@ -111,6 +122,8 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 |---|---|
 | `grid_result.csv`, `grid_LrT_h4m.tif` … | 격자 결과(높이별), GeoTIFF는 QGIS에서 바로 열림 |
 | `facade_result.csv` | 파사드 결과(층별). `LrT_cmp`는 RLS-19 3.1 올림값, `LrT_direct/refl1/refl2`는 성분 |
+| `point_result.csv` | 점 수음점 결과: 지면고 `zg`, 높이 `h`(`h_basis` = input/default_height), `LrT`·`LrN`, 성분, 3.1 올림값, `note`(건물 안·모델 범위 밖) |
+| `point_levels_for_comparison.csv` | 측정값 비교용(point_id, period = day/night, Leq_calc). `field_survey/scripts/process_measurements.py --model` 입력 형식. 값은 RLS-19 평가레벨 LrT·LrN(교차로·반사 보정 포함)이며, 측정 회차와 비교하려면 그 회차의 동시 교통량으로 계산한 결과를 써야 함 |
 | `HQ_*.png / .pdf` | **보고서·발표용 A3 지도(300 dpi + 벡터 PDF)**: 격자 소음지도, 기준 초과 지도, 벽면 색 띠 지도, 건물별 평가도 (주·야) |
 | `noise3d.html` | **3D 웹 뷰어**: 지형 위 격자 소음지도 + 건물 벽면 층별 소음. 더블클릭해 브라우저로 열기(three.js 내장, 인터넷 없이 동작) |
 | `*.png` | 확인용 간이 그림(격자, 파사드 평면, 파사드 3D) |
