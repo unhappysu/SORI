@@ -74,11 +74,11 @@ def _fieldbook(tmp_path):
     src = build_fieldbook_xlsx.build(tmp_path / "야장.xlsx")
     wb = load_workbook(src)
     p = wb["2_측정점"]
-    p["F5"], p["G5"] = 205100.0, 553120.0          # R1 좌표
+    p["F5"], p["G5"] = 205100.0, 553120.0          # A1 좌표(지도 판독값을 덮어씀)
     n = wb["3_소음기록"]
-    rows = [("R1", "D1", 70.0, 10, "Y"), ("R1", "D2", 72.0, 10, "Y"), ("R1", "D3", 68.0, 10, "Y"),
-            ("R1", "D4", 74.0, 10, "Y"), ("R1", "N1", 62.0, 10, "Y"), ("R1", "N2", 58.0, 10, "Y"),
-            ("F1", "D1", 65.0, 10, "Y"), ("F1", "D2", 67.0, 10, "N"), ("F1", "D3", 66.0, 20, "Y")]
+    rows = [("A1", "D1", 70.0, 10, "Y"), ("A1", "D2", 72.0, 10, "Y"), ("A1", "D3", 68.0, 10, "Y"),
+            ("A1", "D4", 74.0, 10, "Y"), ("A1", "N1", 62.0, 10, "Y"), ("A1", "N2", 58.0, 10, "Y"),
+            ("A2", "D1", 65.0, 10, "Y"), ("A2", "D2", 67.0, 10, "N"), ("A2", "D3", 66.0, 20, "Y")]
     for i, (pid, rd, L, mins, ok) in enumerate(rows):
         r = 5 + i
         start = dt.datetime(2026, 10, 21, 7, 30)
@@ -105,58 +105,58 @@ def test_fieldbook_to_measured_levels(tmp_path):
     m = _read(out / "measured_levels.csv")
     assert list(csv.reader(open(out / "measured_levels.csv", encoding="utf-8-sig")))[0][:9] == \
         ["point_id", "x", "y", "z", "period", "Leq", "n_samples", "valid_flag", "traffic_count_ref"]
-    r1d = m[("R1", "day")]
+    r1d = m[("A1", "day")]
     # 에너지평균 10·lg((10^7 + 10^7.2 + 10^6.8 + 10^7.4)/4) = 71.56 → 71.6, 산술평균 71.0
     assert (float(r1d["Leq"]), int(r1d["n_samples"]), r1d["valid_flag"]) == (71.6, 4, "Y")
     assert (float(r1d["Leq_legal_mean"]), int(r1d["Leq_legal_final"]), r1d["legal_count_ok"]) == (71.0, 71, "Y")
     assert (float(r1d["x"]), float(r1d["y"]), float(r1d["z"])) == (205100.0, 553120.0, 1.5)
     assert r1d["traffic_count_ref"] == "D1_TC;D2_TC;D3_TC;D4_TC"
-    r1n = m[("R1", "night")]
+    r1n = m[("A1", "night")]
     # 10·lg((10^6.2 + 10^5.8)/2) = 60.44 → 60.4, 산술평균 60.0, 밤 2회 충족
     assert (float(r1n["Leq"]), float(r1n["Leq_legal_mean"]), r1n["legal_count_ok"]) == (60.4, 60.0, "Y")
-    f1d = m[("F1", "day")]
+    f1d = m[("A2", "day")]
     # 무효(N) 행 제외. (10분×10^6.5 + 20분×10^6.6)/30분 → 65.69 → 65.7, 산술 (65+66)/2 = 65.5 → 66, 낮 4회 미달
     assert (float(f1d["Leq"]), int(f1d["n_samples"]), float(f1d["Leq_legal_mean"]), int(f1d["Leq_legal_final"]),
             f1d["legal_count_ok"], float(f1d["total_minutes"])) == (65.7, 2, 65.5, 66, "N", 30.0)
-    assert ("F1", "night") not in m
+    assert ("A2", "night") not in m
 
 
 def test_short_measurement_flagged(tmp_path):
     src = _fieldbook(tmp_path)
     wb = load_workbook(src)
     n = wb["3_소음기록"]
-    _put(n, 5, **{"종료 시각": dt.time(7, 35)})       # R1 D1 을 5분으로
+    _put(n, 5, **{"종료 시각": dt.time(7, 35)})       # A1 D1 을 5분으로
     wb.save(src)
     out = tmp_path / "d2"
     pm.main([str(src), "--out", str(out)])
-    assert _read(out / "measured_levels.csv")[("R1", "day")]["valid_flag"] == "N"
+    assert _read(out / "measured_levels.csv")[("A1", "day")]["valid_flag"] == "N"
 
 
 def test_model_comparison(tmp_path):
     model = tmp_path / "model.csv"
-    model.write_text("point_id,period,Leq_calc\nR1,day,70.0\nF1,day,66.7\nR1,night,\n", encoding="utf-8")
+    model.write_text("point_id,period,Leq_calc\nA1,day,70.0\nA2,day,66.7\nA1,night,\n", encoding="utf-8")
     out = tmp_path / "data"
     pm.main([str(_fieldbook(tmp_path)), "--model", str(model), "--out", str(out)])
     c = _read(out / "comparison.csv")
-    assert float(c[("R1", "day")]["diff"]) == 1.6       # 71.6 − 70.0
-    assert float(c[("F1", "day")]["diff"]) == -1.0      # 65.7 − 66.7
-    assert c[("R1", "night")]["note"] == "계산값 없음"
+    assert float(c[("A1", "day")]["diff"]) == 1.6       # 71.6 − 70.0
+    assert float(c[("A2", "day")]["diff"]) == -1.0      # 65.7 − 66.7
+    assert c[("A1", "night")]["note"] == "계산값 없음"
     s = next(csv.DictReader(open(out / "comparison_summary.csv", encoding="utf-8-sig")))
     # 차이 1.6, −1.0 → 평균 0.3, 표준편차 √((1.3² + 1.3²)/1) = 1.84
     assert (int(s["n"]), float(s["mean_diff"]), float(s["sd_diff"]), float(s["max_abs_diff"]), s["max_abs_point"]) == \
-        (2, 0.3, 1.84, 1.6, "R1/day")
+        (2, 0.3, 1.84, 1.6, "A1/day")
 
 
 def test_model_leq_calc_not_number(tmp_path):
     """Leq_calc 가 숫자가 아니면 행 번호와 값을 담은 오류. 빈칸·nan 은 '계산값 없음'으로 허용"""
     model = tmp_path / "model.csv"
-    model.write_text("point_id,period,Leq_calc\nR1,day,70.0\nF1,day,약 66\nR1,night,\nB1,day,nan\n",
+    model.write_text("point_id,period,Leq_calc\nA1,day,70.0\nA2,day,약 66\nA1,night,\nB1,day,nan\n",
                      encoding="utf-8")
     with pytest.raises(ValueError) as e:
         pm.read_model(model)
-    assert "3행" in str(e.value) and "'약 66'" in str(e.value) and "F1" in str(e.value)
-    model.write_text("point_id,period,Leq_calc,quantity\nR1,day,70.0,LrT\nR1,night,,LrN\n", encoding="utf-8")
-    assert pm.read_model(model) == {("R1", "day"): 70.0, ("R1", "night"): None}
+    assert "3행" in str(e.value) and "'약 66'" in str(e.value) and "A2" in str(e.value)
+    model.write_text("point_id,period,Leq_calc,quantity\nA1,day,70.0,LrT\nA1,night,,LrN\n", encoding="utf-8")
+    assert pm.read_model(model) == {("A1", "day"): 70.0, ("A1", "night"): None}
 
 
 def test_extra_columns_do_not_break_reading(tmp_path):
@@ -179,9 +179,9 @@ def test_excel_formulas_match_script(tmp_path):
     formulas = pytest.importorskip("formulas")
     src = _fieldbook(tmp_path)
     wb = load_workbook(src)
-    _put(wb["3_소음기록"], 14, 측정점="R1", 회차="D2", LAeq=90.0, **{"유효(Y/N)": "Y",   # 종료 시각 누락
+    _put(wb["3_소음기록"], 14, 측정점="A1", 회차="D2", LAeq=90.0, **{"유효(Y/N)": "Y",   # 종료 시각 누락
                                                                "시작 시각": dt.time(11, 30)})
-    _put(wb["3_소음기록"], 15, 측정점="F1", 회차="N1", LAeq=55.0, **{"유효(Y/N)": "Y"})  # 시각 둘 다 누락
+    _put(wb["3_소음기록"], 15, 측정점="A2", 회차="N1", LAeq=55.0, **{"유효(Y/N)": "Y"})  # 시각 둘 다 누락
     wb.save(src)
     pm.main([str(src), "--out", str(tmp_path / "d")])
     m = _read(tmp_path / "d" / "measured_levels.csv")
@@ -192,7 +192,7 @@ def test_excel_formulas_match_script(tmp_path):
             sh, ref = k.upper().rsplit("!", 1)
             vals[(sh.split("]")[-1].strip("'"), ref)] = v.value[0][0] if hasattr(v, "value") else v
     xl = lambda ref: vals[("6_계산", ref)]  # noqa: E731
-    for row, pid in ((5, "R1"), (7, "F1")):          # 6_계산: 측정점 순서 R1, R2, F1 …
+    for row, pid in ((5, "A1"), (6, "A2")):          # 6_계산: 측정점 순서 A1, A2
         assert xl(f"A{row}") == pid
         for per, (n_, ar, en) in (("day", "BCF"), ("night", "GHK")):
             got = m.get((pid, per))
@@ -202,3 +202,37 @@ def test_excel_formulas_match_script(tmp_path):
             assert float(xl(f"{n_}{row}")) == int(got["n_samples"])
             assert float(xl(f"{ar}{row}")) == pytest.approx(float(got["Leq_legal_mean"]))
             assert float(xl(f"{en}{row}")) == pytest.approx(float(got["Leq"]))
+
+
+def test_same_round_rows_combined(tmp_path):
+    """같은 회차에 10분 행 3개를 적으면 회차값 = 30분 에너지평균, 법정 횟수는 회차 수로 셈"""
+    src = build_fieldbook_xlsx.build(tmp_path / "야장.xlsx")
+    wb = load_workbook(src)
+    n = wb["3_소음기록"]
+    start = dt.datetime(2026, 10, 21, 7, 30)
+    for i, (rd, L, k) in enumerate([("D1", 70.0, 0), ("D1", 73.0, 1), ("D1", 76.0, 2), ("D2", 71.0, 0)]):
+        t0 = start + dt.timedelta(minutes=10 * k)
+        _put(n, 5 + i, 측정점="A1", 회차=rd, LAeq=L, **{"유효(Y/N)": "Y", "시작 시각": t0.time(),
+                                                   "종료 시각": (t0 + dt.timedelta(minutes=10)).time()})
+    wb.save(src)
+    out = tmp_path / "d"
+    pm.main([str(src), "--out", str(out)])
+    r = {(x["point_id"], x["round"]): x for x in csv.DictReader(open(out / "measured_rounds.csv", encoding="utf-8-sig"))}
+    # D1: 10·lg((10^7 + 10^7.3 + 10^7.6)/3) = 10·lg(6.976×10^7 / 3) = 73.66 → 73.7 dB, 30분
+    assert float(r[("A1", "D1")]["Leq"]) == 73.7 and float(r[("A1", "D1")]["minutes"]) == 30.0
+    m = _read(out / "measured_levels.csv")[("A1", "day")]
+    # 법정: 회차값을 소수 첫째 자리로 한 뒤 (73.7 + 71.0)/2 = 72.35 → 72.4, 회차 2개
+    assert int(m["n_samples"]) == 2 and float(m["Leq_legal_mean"]) == 72.4
+
+
+def test_model_comparison_by_round(tmp_path):
+    """모델 CSV 에 round 열이 있으면 회차별로 비교"""
+    model = tmp_path / "model.csv"
+    model.write_text("point_id,period,round,Leq_calc\nA1,day,D1,69.0\nA1,day,D2,71.0\nA2,day,D1,66.0\n", encoding="utf-8")
+    out = tmp_path / "data"
+    pm.main([str(_fieldbook(tmp_path)), "--model", str(model), "--out", str(out)])
+    c = {(r["point_id"], r["round"]): r for r in csv.DictReader(open(out / "comparison.csv", encoding="utf-8-sig"))}
+    assert float(c[("A1", "D1")]["diff"]) == 1.0      # 70.0 − 69.0
+    assert float(c[("A1", "D2")]["diff"]) == 1.0      # 72.0 − 71.0
+    assert float(c[("A2", "D1")]["diff"]) == -1.0     # 65.0 − 66.0
+    assert c[("A1", "N1")]["note"] == "계산값 없음"

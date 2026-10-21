@@ -2,9 +2,8 @@
 
 ※ 본 스크립트는 생성형 AI(Claude)를 활용하여 작성되었음.
 
-측정점의 좌표·거리는 현장 답사 후 사용자가 채운다(빈칸). 이 파일의 목록은
-계획 단계의 후보이며, 위치 설명의 도로명은 수치지도(docs/review/arterials.csv)의
-도로명에서 가져왔다.
+측정점 2개(A1·A2)는 2026-10-21 확정. 좌표·거리는 수치지도에서 읽은 값이며 현장 답사 후
+실측값으로 고친다(--from-csv).
 
 사용법
     python field_survey/scripts/survey_points.py            # 계획 목록으로 CSV·GeoJSON 새로 만들기
@@ -22,12 +21,9 @@ PLAN_DIR = Path(__file__).resolve().parents[1] / "plan"
 CSV_PATH = PLAN_DIR / "measurement_points.csv"
 GEOJSON_PATH = PLAN_DIR / "measurement_points.geojson"
 
-# 측정점 유형: a 도로변 기준점, b 주거지 파사드 전면, c 이면도로/배후지, d 시뮬레이션 검증점
+# 측정점 유형. 2026-10-21 확정(A안): 2팀 × 3명, 2지점 동시 측정
 TYPE_NAMES = {
-    "a": "도로변 기준점",
-    "b": "주거지 파사드 전면",
-    "c": "이면도로·배후지",
-    "d": "시뮬레이션 검증점",
+    "f": "도로변 주거 건물 외벽 앞(법정 평가·모델 검증 겸용)",
 }
 
 FIELDS = [
@@ -37,59 +33,52 @@ FIELDS = [
     "method", "area_class", "rationale", "model_receiver_id", "coord_basis", "photo_no", "note",
 ]
 
-# height_m: 계획값(공정시험기준 범위 1.2~1.5 m 안에서 1.5 m로 통일). F2 는 층 높이에 따름.
-# area_class: 도로변지역/일반지역 — 도로단에서 차선수×10 m 안이면 도로변지역(ES 03301.1c 5.1.1 주 1)
+# 선정 근거(2026-10-21 원문 확인)
+#  - 「소음지도의 작성방법」 기후에너지환경부고시 제2026-19호 별표 2 제15호: 1시간 교통량 1,000대 이상인 도로당 한 지점 이상
+#    → 사가정로·전농로 각 1지점. 제14호 라목: 외벽 소음은 건물에서 소음원 방향 1.0 m, 반사음 포함
+#  - ES 03304.1d 5.1.1: 피해 예상자가 거주하는 건물 경계 1.0~3.5 m, 지면 위 1.2~1.5 m. 5.3.1: 측정지점 2개 이상
+#  - ES 03301.1c 5.1.3(도로변지역): 건축물에서 도로 방향 1.0 m
+# 좌표·거리는 수치지도 v2.0(2025) 건물·도로 중심선에서 읽은 값(현장 확인 필요). 외벽에서 도로 쪽 1.0 m 지점
 POINTS = [
-    dict(point_id="R1", type="a",
-         location_desc="사가정로 보도, 교차로 중심에서 사가정로를 따라 [  ] m. 건물 전면에서 도로 방향 1.0 m",
+    dict(point_id="A1", type="f",
+         location_desc="사가정로 동쪽 접근로 남측, 전농동하우스토리 아파트(20층, 사가정로 122) 외벽에서 도로 방향 1.0 m. "
+                       "교차로 중심에서 약 55 m",
          nearest_road="사가정로", height_m="1.5",
-         method="ES 03301.1c(도로변지역)·ES 03304.1d", area_class="도로변지역",
-         rationale="고정점: 측정 시간 전체 연속 측정, 다른 점의 시간 변동 보정 기준. 간선 교통 지배 지점",
-         note="연속측정이면 높이 1.2~5.0 m 가능(ES 03301.1c 5.1.3)"),
-    dict(point_id="R2", type="a",
-         location_desc="전농로 남측 접근로 보도, 교차로에서 [  ] m. 건물 전면에서 도로 방향 1.0 m",
+         lon_wgs84="127.058450", lat_wgs84="37.577467", x_epsg5186="205163.1", y_epsg5186="553103.6",
+         dist_road_centerline_m="16.8", dist_reflector_m="1.0",
+         method="ES 03304.1d 5.1.1 · ES 03301.1c 5.1.3 · 소음지도 작성방법 별표 2 제14호 라목", area_class="도로변지역",
+         rationale="사가정로(1시간 교통량 1,000대 이상 추정)에 직접 면한 공동주택. 피해 예상 거주 건물이며 모델 벽면 소음도가 높은 쪽",
+         model_receiver_id="A1", coord_basis="지도 판독(현장 확인 필요)",
+         note="도로폭 27 m(4차로, 수치지도). 아파트 단지 안이면 관리사무소 동의 필요. 교차로 120 m 안(RLS-19 신호 보정 구간)"),
+    dict(point_id="A2", type="f",
+         location_desc="전농로 남쪽 접근로 서측, 사가정로12길 5 주택(2층) 외벽에서 도로 방향 1.0 m. 교차로 중심에서 약 75 m",
          nearest_road="전농로", height_m="1.5",
-         method="ES 03301.1c(도로변지역)·ES 03304.1d", area_class="도로변지역",
-         rationale="두 번째 간선 접근로의 도로변 소음. 도로교통 방법의 측정지점 2개 이상 요건(5.3.1) 충족"),
-    dict(point_id="F1", type="b",
-         location_desc="사가정로변 주거 건물 [건물명/번지] 경계에서 음원 방향 1.0~3.5 m",
-         nearest_road="사가정로", height_m="1.5",
-         method="ES 03304.1d 5.1.1", area_class="도로변지역",
-         rationale="간선도로에 면한 주거 파사드의 피해 현황. 모델 파사드 수음점과 대응"),
-    dict(point_id="F2", type="b",
-         location_desc="전농로 또는 전농로25길변 공동주택 [  ]층 세대 창문 밖 0.5~1.0 m",
-         nearest_road="전농로", height_m="",
-         method="ES 03304.1d 5.1.3", area_class="도로변지역",
-         rationale="2층 이상 세대의 높이별 노출. 거주자 동의가 있을 때만",
-         note="외부 측정 불가로 창문 경계면에서 측정하면 +1.5 dB(A)(ES 03304.1d 5.1.3)"),
-    dict(point_id="B1", type="c",
-         location_desc="사가정로5길 또는 전농로29길(일방 1차로) 주거지, 반경 3.5 m 안 반사물 없는 곳",
-         nearest_road="사가정로5길", height_m="1.5",
-         method="ES 03301.1c(일반지역/도로변지역 판정 후)", area_class="[판정]",
-         rationale="이면도로 주거지. 모델에서 교통량이 가정값인 이면도로의 영향 확인",
-         note="1차로 이면도로는 별표 1의 '도로'(차선 2개 이상)에 해당하지 않을 수 있음 — 지역 구분 판정 필요"),
-    dict(point_id="B2", type="c",
-         location_desc="간선도로에서 떨어진 주거 블록 내부(사가정로17길 방향 배후지)",
-         nearest_road="사가정로17길", height_m="1.5",
-         method="ES 03301.1c(일반지역)", area_class="일반지역",
-         rationale="간선도로가 건물에 가려진 배후지의 차폐 효과 확인"),
-    dict(point_id="V1", type="d",
-         location_desc="사가정로변 개활 지점, 교차로 중심에서 120 m 이상 떨어진 곳, 반경 3.5 m 안 반사물 없음",
-         nearest_road="사가정로", height_m="1.5",
-         method="본 조사 자체 설정(검증용) + ES 03301.1c 측정 조건 준용", area_class="도로변지역",
-         rationale="반사·신호 대기 영향이 작은 곳에서 음원 모델(RLS-19) 확인. 모델 격자 수음점을 같은 좌표·높이에 둠",
-         note="모델 점 수음점(receivers.points.path)으로 같은 좌표·높이 계산"),
-    dict(point_id="V2", type="d",
-         location_desc="교차로 중심에서 120 m 이내 사가정로 또는 전농로변 개활 지점",
-         nearest_road="사가정로", height_m="1.5",
-         method="본 조사 자체 설정(검증용) + ES 03301.1c 측정 조건 준용", area_class="도로변지역",
-         rationale="신호교차로 보정(RLS-19 식 8, 120 m 안)과 정지·출발 소음의 영향 확인"),
-    dict(point_id="V3", type="d",
-         location_desc="건물로 일부 가려진 지점(사가정로 뒤편 첫 블록), 반경 3.5 m 안 반사물 없음",
-         nearest_road="사가정로", height_m="1.5",
-         method="본 조사 자체 설정(검증용)", area_class="[판정]",
-         rationale="회절·차폐 계산(ISO 9613-2) 확인", note="장비 4대 이상일 때만"),
+         lon_wgs84="127.057503", lat_wgs84="37.576881", x_epsg5186="205079.5", y_epsg5186="553038.5",
+         dist_road_centerline_m="23.9", dist_reflector_m="1.0",
+         method="ES 03304.1d 5.1.1 · ES 03301.1c 5.1.3 · 소음지도 작성방법 별표 2 제14호 라목", area_class="도로변지역",
+         rationale="전농로(1시간 교통량 1,000대 이상 추정)에 면한 맨 앞 주거 건물. 고시의 도로당 1지점 요건",
+         model_receiver_id="A2", coord_basis="지도 판독(현장 확인 필요)",
+         note="도로폭 25 m(5차로, 수치지도). 도로 중심선에서 약 24 m 들어간 건물 — 앞쪽 공지·주차 여부 현장 확인. 교차로 120 m 안"),
 ]
+
+# 장비·팀(소음계 정보는 사용자가 나중에 입력)
+DEVICES = ["SLM-1", "SLM-2"]
+TEAMS = {"1팀": ("A1", "SLM-1", "사가정로"), "2팀": ("A2", "SLM-2", "전농로")}
+
+# 교통량 계수 차종과 RLS-19 차량군 대응
+#  RLS-19 2장(번역 원문/RLS19_main.tex): Lkw1 = 허용 총중량 3.5 t 초과 트레일러 없는 화물차 및 버스,
+#  Lkw2 = 트레일러 부착 화물차·세미트레일러 연결차. 이륜자동차는 방출 측면에서 Lkw2 로 분류(속도는 v_Pkw).
+#  소음지도 작성방법 별표 2 제12호 다목 표: RLS 소형 = 승용·소형트럭(2.5 t 미만)·중형트럭(2.5~3.5 t 미만),
+#  대형 = 중형버스·대형트럭(3.5 t 이상)·대형버스, 트레일러 없으면 대형1, 있으면 대형2.
+VEH_CLASSES = [  # (계수 차종, 예, RLS-19 차량군)
+    ("1 승용·승합", "승용차, SUV, 15인 미만 승합", "Pkw"),
+    ("2 소·중형 화물", "3.5 t 이하 화물(1톤·2.5톤 트럭, 밴)", "Pkw"),
+    ("3 버스", "15인 이상 버스(시내·마을·광역·관광)", "Lkw1"),
+    ("4 대형 화물", "3.5 t 초과, 트레일러 없음(카고·덤프·탱크)", "Lkw1"),
+    ("5 트레일러", "트레일러·세미트레일러 연결차", "Lkw2"),
+    ("6 이륜차", "오토바이·스쿠터(배달 포함)", "Lkw2(방출만, 속도는 Pkw)"),
+]
+VEH = [v[0].split(" ", 1)[1] for v in VEH_CLASSES]
 
 
 def full_rows():
@@ -98,7 +87,6 @@ def full_rows():
         r = {k: "" for k in FIELDS}
         r.update(p)
         r["type_name"] = TYPE_NAMES[p["type"]]
-        r["coord_basis"] = "미입력"
         rows.append(r)
     return rows
 

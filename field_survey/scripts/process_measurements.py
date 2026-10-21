@@ -8,11 +8,12 @@
 
 입력
     야장.xlsx   : build_fieldbook_xlsx.py 로 만든 소음측정_야장.xlsx (엑셀 수식 결과는 쓰지 않고 입력 칸만 읽어 다시 계산)
-    모델결과.csv : (선택) point_id, period(day/night), Leq_calc 열. 소음지도 소프트웨어 계산값을 측정점 좌표·높이·
-                  동시 교통량으로 계산해 사용자가 만든 표
+    모델결과.csv : (선택) point_id, period(day/night), Leq_calc 열. noisemap 의 point_levels_for_comparison.csv 를
+                  그대로 쓸 수 있다. round 열(D1…N2)을 더하면 그 회차의 동시 교통량으로 계산한 값과 회차별로 비교한다
 
 출력(--out 폴더, 기본 field_survey/data)
-    measured_levels.csv  : point_id, x, y, z, period, Leq, n_samples, valid_flag, traffic_count_ref
+    measured_rounds.csv  : 측정점·회차별 값(같은 회차의 여러 행은 측정시간 가중 에너지평균으로 합침)
+    measured_levels.csv  : point_id, x, y, z, period, Leq, n_samples(회차 수), valid_flag, traffic_count_ref
                            + Leq_legal_mean, Leq_legal_final, legal_count_ok, total_minutes
     comparison.csv       : (--model 이 있을 때) point_id, period, Leq_meas, Leq_calc, diff, note
     comparison_summary.csv : n, mean_diff, sd_diff, max_abs_diff, max_abs_point
@@ -35,7 +36,8 @@
 
 유효 행
     3_소음기록 에서 유효(Y/N) = "Y" 이고 LAeq 가 숫자이며 측정시간(종료−시작)이 0보다 큰 행만 쓴다.
-    valid_flag = "Y": 유효 행이 1개 이상이고 모두 10분 이상(ES 03304.1d 7.1.1.1) / 그 밖은 "N".
+    valid_flag = "Y": 모든 회차의 측정시간(같은 회차 행의 합)이 10분 이상(ES 03304.1d 7.1.1.1) / 그 밖은 "N".
+    야장에는 회차마다 1행(30분 등가소음도)을 적는 것을 원칙으로 한다. 여러 행이면 위와 같이 합친다.
 """
 import argparse
 import csv
@@ -145,8 +147,8 @@ def read_noise(wb):
         if not mins or mins <= 0:
             continue
         period = "night" if str(rd).strip().upper().startswith("N") else "day"
-        rows.append({"point_id": str(pid).strip(), "period": period, "Leq": L, "minutes": mins,
-                     "traffic_ref": str(g("교통량 참조") or "").strip()})
+        rows.append({"point_id": str(pid).strip(), "period": period, "round": str(rd).strip().upper(), "Leq": L,
+                     "minutes": mins, "traffic_ref": str(g("교통량 참조") or "").strip()})
     return rows
 
 
@@ -155,10 +157,32 @@ OUT_FIELDS = ["point_id", "x", "y", "z", "period", "Leq", "n_samples", "valid_fl
               "Leq_legal_mean", "Leq_legal_final", "legal_count_ok", "total_minutes"]
 
 
+ROUND_FIELDS = ["point_id", "round", "period", "Leq", "minutes", "n_rows", "valid_flag", "traffic_count_ref"]
+
+
+def combine_rounds(noise):
+    """같은 측정점·회차의 행(예: 10분 구간 여러 개)을 측정시간 가중 에너지평균으로 합쳐 회차값을 만든다.
+    회차값 = 그 회차 전체 구간의 등가소음도(ES 03300.c 2.10 정의와 같은 계산)."""
+    g = {}
+    for row in noise:
+        g.setdefault((row["point_id"], row["round"]), []).append(row)
+    out = []
+    for (pid, rd), rows in g.items():
+        Ts = [x["minutes"] for x in rows]
+        out.append({"point_id": pid, "round": rd, "period": rows[0]["period"],
+                    "Leq": energy_average([x["Leq"] for x in rows], Ts), "minutes": sum(Ts), "n_rows": len(rows),
+                    "valid_flag": "Y" if sum(Ts) >= MIN_MINUTES else "N",
+                    "traffic_count_ref": ";".join(sorted({x["traffic_ref"] for x in rows if x["traffic_ref"]}))})
+    return out
+
+
 def summarize(points, noise):
-    groups = {}
+    """법정 산술평균은 회차값(같은 회차 여러 행은 먼저 합침)으로, 검증용 에너지평균은 모든 행의 측정시간 가중으로."""
+    groups, rgroups = {}, {}
     for row in noise:
         groups.setdefault((row["point_id"], row["period"]), []).append(row)
+    for rr in combine_rounds(noise):
+        rgroups.setdefault((rr["point_id"], rr["period"]), []).append(rr)
     order = list(points) + sorted({p for p, _ in groups} - set(points))
     out = []
     for pid in order:
@@ -168,17 +192,18 @@ def summarize(points, noise):
                 continue
             Ls = [x["Leq"] for x in g]
             Ts = [x["minutes"] for x in g]
-            mean1, final = arithmetic_average_legal(Ls)
+            rounds = rgroups[(pid, period)]
+            mean1, final = arithmetic_average_legal([round_half_up(x["Leq"], 1) for x in rounds])
             p = points.get(pid, {})
             refs = sorted({x["traffic_ref"] for x in g if x["traffic_ref"]})
             out.append({
                 "point_id": pid, "x": p.get("x") if p.get("x") is not None else "",
                 "y": p.get("y") if p.get("y") is not None else "", "z": p.get("z") if p.get("z") is not None else "",
-                "period": period, "Leq": round_half_up(energy_average(Ls, Ts), 1), "n_samples": len(g),
-                "valid_flag": "Y" if all(t >= MIN_MINUTES for t in Ts) else "N",
+                "period": period, "Leq": round_half_up(energy_average(Ls, Ts), 1), "n_samples": len(rounds),
+                "valid_flag": "Y" if all(x["valid_flag"] == "Y" for x in rounds) else "N",
                 "traffic_count_ref": ";".join(refs),
                 "Leq_legal_mean": mean1, "Leq_legal_final": final,
-                "legal_count_ok": "Y" if len(g) >= LEGAL_COUNT[period] else "N",
+                "legal_count_ok": "Y" if len(rounds) >= LEGAL_COUNT[period] else "N",
                 "total_minutes": round_half_up(sum(Ts), 1),
             })
     return out
@@ -203,24 +228,33 @@ def read_model(path):
             if not math.isfinite(val):
                 bad.append(f"{line}행 point_id={r['point_id']!r} Leq_calc={v!r}")
                 continue
-        out[(r["point_id"].strip(), r["period"].strip())] = val
+        rd = (r.get("round") or "").strip().upper()          # round 열이 있으면 회차별 비교
+        out[(r["point_id"].strip(), rd) if rd else (r["point_id"].strip(), r["period"].strip())] = val
     if bad:
         raise ValueError(f"모델 결과 CSV의 Leq_calc 가 숫자가 아님({path}):\n  " + "\n  ".join(bad))
     return out
 
 
-def compare(measured, model):
+def compare(measured, model, rounds=None):
+    """model 키가 (point_id, period)면 시간대별, (point_id, 회차)면 회차별(rounds 필요)로 비교한다."""
     comp, diffs = [], []
-    for m in measured:
-        key = (m["point_id"], m["period"])
+    by_round = any(k[1] not in ("day", "night") for k in model)
+    items = []
+    if by_round:
+        for rr in rounds or []:
+            items.append(dict(rr, Leq=round_half_up(rr["Leq"], 1), key=(rr["point_id"], rr["round"])))
+    else:
+        items = [dict(m, key=(m["point_id"], m["period"])) for m in measured]
+    for m in items:
+        key = m.pop("key")
         calc = model.get(key)
         if calc is None:
-            comp.append({"point_id": key[0], "period": key[1], "Leq_meas": m["Leq"], "Leq_calc": "", "diff": "",
-                         "note": "계산값 없음"})
+            comp.append({"point_id": key[0], "period": m["period"], "round": m.get("round", ""), "Leq_meas": m["Leq"],
+                         "Leq_calc": "", "diff": "", "note": "계산값 없음"})
             continue
         d = round_half_up(m["Leq"] - calc, 1)
-        comp.append({"point_id": key[0], "period": key[1], "Leq_meas": m["Leq"], "Leq_calc": calc, "diff": d,
-                     "note": "" if m["valid_flag"] == "Y" else "10분 미만 측정 포함"})
+        comp.append({"point_id": key[0], "period": m["period"], "round": m.get("round", ""), "Leq_meas": m["Leq"],
+                     "Leq_calc": calc, "diff": d, "note": "" if m["valid_flag"] == "Y" else "10분 미만 측정 포함"})
         diffs.append((f"{key[0]}/{key[1]}", m["Leq"] - calc))
     return comp, diff_stats(diffs)
 
@@ -235,18 +269,22 @@ def write_csv(path, fields, rows):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="야장 xlsx → 측정점별 L_Aeq, 모델 비교")
     ap.add_argument("fieldbook")
-    ap.add_argument("--model", help="모델 결과 CSV(point_id, period, Leq_calc)")
+    ap.add_argument("--model", help="모델 결과 CSV(point_id, period, Leq_calc[, round]). round 가 있으면 회차별 비교")
     ap.add_argument("--out", default=str(Path(__file__).resolve().parents[1] / "data"))
     a = ap.parse_args(argv)
     wb = load_workbook(a.fieldbook, data_only=False)
-    measured = summarize(read_points(wb), read_noise(wb))
+    noise = read_noise(wb)
+    measured = summarize(read_points(wb), noise)
+    rounds = combine_rounds(noise)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     write_csv(out / "measured_levels.csv", OUT_FIELDS, measured)
-    print(f"측정점·시간대 {len(measured)}개 → {out / 'measured_levels.csv'}")
+    write_csv(out / "measured_rounds.csv", ROUND_FIELDS,
+              [dict(r, Leq=round_half_up(r["Leq"], 1), minutes=round_half_up(r["minutes"], 1)) for r in rounds])
+    print(f"측정점·시간대 {len(measured)}개 → {out / 'measured_levels.csv'}, 회차 {len(rounds)}개 → measured_rounds.csv")
     if a.model:
-        comp, stats = compare(measured, read_model(a.model))
-        write_csv(out / "comparison.csv", ["point_id", "period", "Leq_meas", "Leq_calc", "diff", "note"], comp)
+        comp, stats = compare(measured, read_model(a.model), rounds)
+        write_csv(out / "comparison.csv", ["point_id", "period", "round", "Leq_meas", "Leq_calc", "diff", "note"], comp)
         write_csv(out / "comparison_summary.csv", list(stats), [stats])
         print(f"비교 {stats['n']}개: 평균 차이 {stats['mean_diff']} dB, 표준편차 {stats['sd_diff']} dB, "
               f"최대 {stats['max_abs_diff']} dB ({stats['max_abs_point']})")

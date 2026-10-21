@@ -19,7 +19,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from survey_points import POINTS  # noqa: E402
+from survey_points import DEVICES, POINTS, VEH_CLASSES  # noqa: E402
 
 AI_NOTE = "본 문서는 생성형 AI(Claude)를 활용하여 작성되었음"
 FONT = "맑은 고딕"
@@ -36,9 +36,9 @@ N_SIGNAL = 40
 N_SPEED = 200
 N_WEATHER = 80
 ROUNDS = ["D1", "D2", "D3", "D4", "N1", "N2"]
-DEVICES = ["SLM-1", "SLM-2", "SLM-3", "SLM-4"]
-ROADS = ["사가정로 서측", "사가정로 동측", "전농로 남측", "전농로25길 북측", "사가정로5길", "전농로29길", "사가정로17길", "기타"]
-VEH = ["1 승용·승합", "2 소형화물", "3 버스", "4 중형화물", "5 대형화물", "6 이륜차"]
+ROADS = ["사가정로 동측(A1 앞)", "전농로 남측(A2 앞)", "사가정로 서측", "전농로25길 북측", "기타"]
+COUNTED = ROADS[:2]   # 두 팀이 계수하는 단면
+VEH = [v[0] for v in VEH_CLASSES]
 H0 = 4            # 머리글 행(데이터는 H0+1부터)
 
 
@@ -148,7 +148,7 @@ def sheet_overview(wb, L):
     setup(ws, "1. 측정 개요", [16, 14, 16, 16, 16, 16, 16, 18, 22], landscape=False)
     r = H0
     items = [("측정일", "yyyy-mm-dd"), ("요일", None), ("예비일 사용 여부·이유", None), ("시나리오(A/B/C)", None),
-             ("측정자(총괄·기록)", None), ("측정자(SLM-1~4)", None), ("교통 계수 담당", None),
+             ("측정자(총괄·기록)", None), ("측정자(1팀·2팀)", None), ("교통 계수 담당", None),
              ("기상 개요(맑음/흐림 등)", None), ("시각 동기 기준 시계", None), ("교정 전후 허용 편차(dB)", "0.0")]
     for name, fmt in items:
         fixed(ws.cell(r, 1), name, bold=True)
@@ -186,7 +186,7 @@ def sheet_overview(wb, L):
             calc(ws.cell(r, 7), f'=IF(OR(E{r}="",F{r}=""),"",ROUND(F{r}-E{r},1))', "0.0")
             calc(ws.cell(r, 8), f'=IF(G{r}="","",IF({thr}="","기준 미정",IF(ABS(G{r})<={thr},"적합","무효 후보")))')
             inp(ws.cell(r, 9))
-    dv_num(ws, f"D{r - 23}:F{r}", 30, 140)
+    dv_num(ws, f"D{r - len(ROUNDS) * len(DEVICES) + 1}:F{r}", 30, 140)
     ws.freeze_panes = None
 
 
@@ -204,17 +204,16 @@ def sheet_points(wb, L):
         fixed(ws.cell(r, 1), p["point_id"], bold=True)
         fixed(ws.cell(r, 2), p["type"])
         inp(ws.cell(r, 3), p["location_desc"])
-        for c in (4, 5):
-            inp(ws.cell(r, c), fmt="0.000000")
-        for c in (6, 7):
-            inp(ws.cell(r, c), fmt="0.0")
+        num = lambda k: float(p[k]) if p.get(k) else None  # noqa: E731
+        inp(ws.cell(r, 4), num("lon_wgs84"), "0.000000"); inp(ws.cell(r, 5), num("lat_wgs84"), "0.000000")
+        inp(ws.cell(r, 6), num("x_epsg5186"), "0.0"); inp(ws.cell(r, 7), num("y_epsg5186"), "0.0")
         inp(ws.cell(r, 8), float(p["height_m"]) if p["height_m"] else None, "0.0")
-        for c in (9, 10, 11):
-            inp(ws.cell(r, c), fmt="0.0")
+        inp(ws.cell(r, 9), num("dist_carriageway_edge_m"), "0.0")
+        inp(ws.cell(r, 10), num("dist_road_centerline_m"), "0.0"); inp(ws.cell(r, 11), num("dist_reflector_m"), "0.0")
         inp(ws.cell(r, 12), p["area_class"])
         for c in range(13, 17):
             inp(ws.cell(r, c))
-        inp(ws.cell(r, 17))
+        inp(ws.cell(r, 17), "estimated" if p.get("x_epsg5186") else None)   # 지도 판독값 — 현장 실측 후 measured
         ws.row_dimensions[r].height = 30
     for _ in range(3):     # 추가 측정점용 빈 행
         r += 1
@@ -231,7 +230,7 @@ NOISE_COLS = [("측정점", 8), ("회차", 7), ("시간대", 7), ("날짜", 11),
               ("시작 시각", 9), ("종료 시각", 9), ("측정시간(분)", 9),
               ("LAeq", 8), ("LAmax", 8), ("LAmin", 8), ("L10", 8), ("L50", 8), ("L90", 8), ("배경소음(참고)", 9),
               ("풍속(m/s)", 8), ("방풍망(Y/N)", 9), ("이상 소음(시각·코드·메모)", 32), ("유효(Y/N)", 8), ("무효 사유", 18),
-              ("시간 요건(10분)", 10), ("풍속 판정", 22), ("교통량 참조", 12), ("basis", 10),
+              ("시간 요건(10분)", 10), ("풍속 판정", 22), ("회차 중복", 18), ("교통량 참조", 12), ("basis", 10),
               ("에너지 가중값", 12), ("가중 시간", 9), ("유효 LAeq(1/0)", 9)]
 NOISE_HEAD = [n for n, _ in NOISE_COLS]
 NC = {n: get_column_letter(i) for i, (n, _) in enumerate(NOISE_COLS, start=1)}
@@ -256,6 +255,9 @@ def sheet_noise(wb, L, pt_ref):
         # 측정시간은 반올림하지 않음(process_measurements.py 와 같은 값). 표시만 소수 첫째 자리
         calc(ws.cell(r, c["측정시간(분)"]), f'=IF(OR({st}{r}="",{en}{r}=""),"",MOD({en}{r}-{st}{r},1)*1440)', "0.0")
         calc(ws.cell(r, c["시간 요건(10분)"]), f'=IF({du}{r}="","",IF({du}{r}>=10,"충족","10분 미만"))')
+        pt = NC["측정점"]
+        calc(ws.cell(r, c["회차 중복"]), f'=IF(OR({pt}{r}="",{rd}{r}=""),"",IF(COUNTIFS(${pt}${first}:${pt}${last},{pt}{r},'
+                                     f'${rd}${first}:${rd}${last},{rd}{r})>1,"같은 회차 여러 행",""))')
         calc(ws.cell(r, c["풍속 판정"]),
              f'=IF({ws_}{r}="","",IF({ws_}{r}>5,"5 m/s 초과(무효)",IF({ws_}{r}>=2,'
              f'IF(UPPER({wsc}{r})="N","경고: 방풍망 필수인데 미부착","방풍망 필수"),"적합")))')
@@ -304,7 +306,7 @@ def sheet_traffic(wb, L):
     dv_list(ws, L["계수방법"], f"O{first}:O{last}")
     dv_list(ws, L["basis"], f"P{first}:P{last}")
     dv_num(ws, f"G{first}:L{last}", 0, 2000)
-    ws.cell(3, 1, "계수하지 못한 구간은 0을 넣지 말고 비워 둔다(미계수). 차종 → 소프트웨어 차종(Pkw/Lkw1/Lkw2) 대응은 6_계산 시트에서 입력.").font = font(False, 9, "C00000")
+    ws.cell(3, 1, "계수하지 못한 구간은 0을 넣지 말고 비워 둔다(미계수). 계수 차종과 RLS-19 차량군(Pkw/Lkw1/Lkw2) 대응은 6_계산 시트 아래쪽 표.").font = font(False, 9, "C00000")
     ws.freeze_panes = f"G{first}"
     return first, last
 
@@ -421,7 +423,7 @@ def sheet_calc(wb, L, n_first, n_last, t_first, t_last, sp_first, sp_last):
     S = "'4b_신호속도'!"
     sc = lambda col: f"{S}${col}${sp_first}:${col}${sp_last}"  # noqa: E731
     for rd in ROUNDS:
-        for road in ROADS[:4]:
+        for road in COUNTED:
             r += 1
             fixed(ws.cell(r, 1), rd); fixed(ws.cell(r, 2), road)
             cond = f'{tc("A")},$A{r},{tc("E")},$B{r}'
@@ -438,14 +440,14 @@ def sheet_calc(wb, L, n_first, n_last, t_first, t_last, sp_first, sp_last):
 
     # 차종 대응
     r += 3
-    ws.cell(r, 1, "계수 차종 → 소프트웨어 차종(RLS-19) 대응 — RLS-19 원문 확인 후 입력(미확인)").font = font(True, 11, "1F3864")
+    ws.cell(r, 1, "계수 차종 → RLS-19 차량군 대응(RLS-19 2장, 소음지도 작성방법 별표 2 제12호 다목)").font = font(True, 11, "1F3864")
     r += 1
-    header(ws, r, ["계수 차종", "", "소프트웨어 차종", "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
-    for v in VEH:
+    header(ws, r, ["계수 차종", "", "예", "", "", "", "RLS-19 차량군", "", "", "", "", "", "", "", "", "", ""])
+    for label, ex, cls in VEH_CLASSES:
         r += 1
-        fixed(ws.cell(r, 1), v)
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
-        inp(ws.cell(r, 3))
+        fixed(ws.cell(r, 1), label); ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        fixed(ws.cell(r, 3), ex); ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=6)
+        fixed(ws.cell(r, 7), cls); ws.merge_cells(start_row=r, start_column=7, end_row=r, end_column=9)
     ws.freeze_panes = f"B{H0 + 1}"
 
 

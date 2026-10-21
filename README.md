@@ -61,7 +61,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 | road_type | | RLS-19 표 2: `autobahn`, `bundesstrasse`, `landesstrasse`, `gemeinde` (빈칸 값 보충용) |
 | DTV | △ | 일평균 교통량(대/일, 양방향 합) — DTV 또는 M_day·M_night 중 하나 필수 |
 | M_day, M_night | △ | 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표 2 계수. **DTV 없이 한쪽만 입력하면** 기본은 오류(문제 행을 모두 나열) — 설정 `input.traffic.missing_m: estimate` 이면 표 2 의 주·야 계수 비율로 보충(가정값, `M_*_from = est_from_…`, 서울 간선에서는 야간을 과소 추정할 수 있음) |
-| p1_day … p2_night | | Lkw1(중형화물)·Lkw2(대형화물·버스·이륜) 비율 %. 비우면 표 2 표준값 |
+| p1_day … p2_night | | Lkw1·Lkw2 비율 %. 비우면 표 2 표준값. RLS-19 2장: Lkw1 = 허용 총중량 3.5 t 초과 트레일러 없는 화물차와 버스, Lkw2 = 트레일러 부착 화물차·세미트레일러 연결차, 이륜자동차는 방출 측면에서 Lkw2(속도는 Pkw) |
 | v_pkw, v_lkw | | 차종별 속도 km/h (30 미만은 30 적용, RLS-19 2장) |
 | surface | | 노면: `ref`, `AC11`, `SMA5_8`, `SMA8_11`, `PA11`, `PA8`, `Waschbeton`, `LGA`, `LOA`, `SMA_LA8`, `DSH_V5`, `pflaster_even`, `pflaster_other` |
 | note | | 출처 메모(보고서용) |

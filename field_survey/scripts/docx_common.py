@@ -340,6 +340,17 @@ def table(doc, rows, widths_mm, header_rows=1, size=9, fills=None, align=None, m
     return t
 
 
+def trim_trailing(doc):
+    """문서 끝의 빈 문단(표 뒤 간격용)을 지운다 — 마지막 쪽이 꽉 찼을 때 빈 쪽이 생기지 않게."""
+    body = doc.element.body
+    while True:
+        last = body[-2] if len(body) >= 2 else None            # 마지막 요소는 sectPr
+        if last is None or last.tag != qn("w:p") or "".join(last.itertext()).strip() or last.findall(".//" + qn("w:br")):
+            break
+        body.remove(last)
+    return doc
+
+
 def keep_together(t):
     """표가 쪽에서 나뉘지 않게: 마지막 행을 뺀 모든 칸 문단에 '다음 단락과 함께'를 건다(행 나눔 금지는 table()에서 이미 설정)."""
     for row in t.rows[:-1]:

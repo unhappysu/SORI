@@ -1,0 +1,549 @@
+%% 전농사거리 소음현황조사 결과보고서(양식)
+%% 컴파일: xelatex (목차·전체 쪽수 반영을 위해 2회)
+%% 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음.
+\documentclass[10.5pt,a4paper]{article}
+\usepackage[a4paper,top=22mm,bottom=24mm,left=22mm,right=22mm,headsep=6mm,footskip=10mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xetexko}
+\IfFontExistsTF{Noto Serif CJK KR}{%
+  \setmainfont{Noto Serif CJK KR}\setsansfont{Noto Sans CJK KR}%
+  \setmainhangulfont{Noto Serif CJK KR}\setsanshangulfont{Noto Sans CJK KR}%
+  \setmonohangulfont{Noto Sans CJK KR}[Scale=0.85]}{%
+  \setmainfont{Times New Roman}\setsansfont{Apple SD Gothic Neo}%
+  \setmainhangulfont{AppleMyungjo}[AutoFakeBold=2.5]\setsanshangulfont{Apple SD Gothic Neo}%
+  \setmonohangulfont{Apple SD Gothic Neo}[Scale=0.85]}
+\IfFontExistsTF{DejaVu Sans Mono}{\setmonofont{DejaVu Sans Mono}[Scale=0.82]}{%
+  \setmonofont{DejaVuSansMono.ttf}[Scale=0.82,BoldFont=DejaVuSansMono-Bold.ttf]}
+
+\usepackage{amsmath,amssymb}
+\usepackage{array,booktabs,longtable,tabularx,makecell}
+\usepackage[table]{xcolor}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{needspace}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage[font=small,labelsep=colon,skip=4pt]{caption}
+\usepackage[hidelinks]{hyperref}
+\linespread{1.3}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\setlist{itemsep=0.15em,topsep=0.3em,leftmargin=1.6em}
+\captionsetup[table]{name=표}
+\captionsetup[figure]{name=그림}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+\definecolor{navy}{HTML}{1F3864}
+\definecolor{headfill}{HTML}{D9E2F3}
+\definecolor{inp}{HTML}{FFF8DC}
+\definecolor{lab}{HTML}{F2F2F2}
+\definecolor{team1}{HTML}{DDEBF7}
+\definecolor{team2}{HTML}{E2EFDA}
+\renewcommand{\thesection}{\arabic{section}.}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+\titleformat{\section}{\sffamily\Large\bfseries\color{navy}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\sffamily\large\bfseries\color{navy}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\sffamily\normalsize\bfseries}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.1em}{0.5em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.4em}
+\newcommand{\Laeq}{\ensuremath{L_{\mathrm{Aeq}}}}
+\newcommand{\TBD}{\textcolor{gray}{[측정 후 기입]}}
+\newcommand{\IN}{[\quad]}
+\newcommand{\hd}[1]{\cellcolor{headfill}\textbf{\sffamily #1}}
+\newcommand{\ip}{\cellcolor{inp}}
+\newcommand{\lb}{\cellcolor{lab}}
+\newcommand{\hr}[1]{\rule[-0.35\dimexpr#1\relax]{0pt}{#1}}
+\newcommand{\notebox}[2][lab]{\par\noindent\colorbox{#1}{\parbox{\dimexpr\linewidth-2\fboxsep}{\small #2}}\par}
+\renewcommand{\contentsname}{목차}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\sffamily 결과보고서}
+\fancyhead[R]{\small\sffamily 전농사거리 소음현황조사}
+\fancyfoot[L]{\scriptsize\sffamily\color{gray} 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음}
+\fancyfoot[R]{\small\sffamily \thepage\ / \pageref*{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[L]{\scriptsize\sffamily\color{gray} 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음}%
+  \fancyfoot[R]{\small\sffamily \thepage\ / \pageref*{LastPage}}\renewcommand{\headrulewidth}{0pt}}
+\begin{document}
+\begin{titlepage}
+\centering\vspace*{40mm}
+{\sffamily\Huge\bfseries\color{navy} 전농사거리 소음현황조사 결과보고서\par}
+\vspace{6mm}
+{\sffamily\large 현재 소음도 평가와 소음지도 시뮬레이션 검증 --- 보고서 양식\par}
+\vspace{18mm}
+{\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{>{\raggedright\arraybackslash}p{38mm}>{\raggedright\arraybackslash}p{90mm}}
+\toprule
+\cellcolor{headfill}\textbf{\sffamily 과목} & 소음진동설계 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 대상} & 전농사거리(사가정로 $\times$ 전농로) 주변 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 측정일} & \TBD \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 작성일} & \IN \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 작성자} & \IN \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 문서 상태} & 양식(결과 미기입) \\
+\bottomrule
+\end{tabular}}
+\vfill
+\notebox{\textbf{본 문서는 생성형 AI(Claude)를 활용하여 작성되었음.} 기준값·조항은 국가법령정보센터 원문으로 확인한 것만 적었고, 원문에서 확인하지 못한 값은
+`미확인'으로 표시하였다. 측정 결과는 포함하지 않는다.}
+\end{titlepage}
+\tableofcontents
+\clearpage
+\needspace{10\baselineskip}\section{요약}
+\notebox[inp]{작성 요령: 3--6문장으로 적는다. 측정하지 않은 값은 쓰지 않고, 평가하지 못한 항목은 `평가 불가'와 이유를 적는다.}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.3200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.6800\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{10mm}측정 일시·지점 수 & \ip{}\TBD \\ \midrule
+\hr{10mm}법정 평가 결과(목적 가) & \ip{}\TBD \\ \midrule
+\hr{10mm}시뮬레이션 비교 결과(목적 나) & \ip{}\TBD \\ \midrule
+\hr{10mm}주요 한계 & \ip{}\TBD \\ \midrule
+\hr{10mm}소음지도 작업에 대한 시사점 & \ip{}\TBD \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{10\baselineskip}\section{조사 개요}
+\needspace{8\baselineskip}\subsection{목적}
+\begin{itemize}
+\item 가. 현재 소음도 조사: 전농사거리 주변의 소음피해 현황을 국내 기준과 비교·평가
+\item 나. 시뮬레이션 검증: 측정값을 소음지도 소프트웨어(RLS-19 + ISO 9613-2) 계산값과 같은 위치·조건에서 비교
+\end{itemize}
+\needspace{8\baselineskip}\subsection{일시·인원·장비}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.3200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.6800\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}측정일·요일 & \ip{}\TBD \\ \midrule
+\hr{9mm}예비일 사용 여부·이유 & \ip{}\TBD \\ \midrule
+\hr{9mm}회차별 시각 & \ip{}\TBD \\ \midrule
+\hr{9mm}조사 인원·역할(2팀) & \ip{}\TBD \\ \midrule
+\hr{9mm}측정점 & A1 사가정로(하우스토리 아파트 앞), A2 전농로 남측(사가정로12길 5 주택 앞) \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1700\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2500\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{장비 ID} & \hd{팀·측정점} & \hd{모델} & \hd{일련번호} & \hd{등급} & \hd{교정기(모델·표시값)} \\ \midrule
+\endfirsthead
+\toprule
+\hd{장비 ID} & \hd{팀·측정점} & \hd{모델} & \hd{일련번호} & \hd{등급} & \hd{교정기(모델·표시값)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}SLM-1 & 1팀 · A1 & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{9mm}SLM-2 & 2팀 · A2 & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{8\baselineskip}\subsection{적용 기준}
+\footnotesize
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.4600\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.3800\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{구분} & \hd{문서} & \hd{현행본(2026-10-19·21 확인)} \\ \midrule
+\endfirsthead
+\toprule
+\hd{구분} & \hd{문서} & \hd{현행본(2026-10-19·21 확인)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정방법 & 소음·진동공정시험기준 ES 03301.1c, ES 03304.1d, ES 03300.c & 국립환경과학원고시 제2026-39호(2026-09-14) \\ \midrule
+환경기준 & 환경정책기본법 시행령 [별표 1] 2. 소음 & 대통령령 제36726호(2026-10-08 시행) \\ \midrule
+관리기준 & 소음·진동관리법 시행규칙 [별표 11] 1. 도로 & 기후에너지환경부령 제42호(2026-06-22 시행) \\ \midrule
+측정점 선정·검증 & 소음지도의 작성방법 별표 2(제12호 다목, 제14호 라목, 제15호) & 기후에너지환경부고시 제2026-19호(2026-01-18 시행) \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 보고서 제출 시점에 개정 여부를 다시 확인한다: 확인일 \IN\par}
+\needspace{10\baselineskip}\section{측정 방법}
+\needspace{8\baselineskip}\subsection{측정 조건}
+\footnotesize
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.2400\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.7600\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{항목} & \hd{적용 내용} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{적용 내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정기 설정 & A 특성, 동특성 빠름(fast), 샘플주기 1초 이하 \\ \midrule
+측정시간 & 회차당 30분 연속(환경기준 5분 이상, 도로교통 10분 이상 충족), 낮 4회·밤 2회 \\ \midrule
+측정 위치 & 주거 건물 외벽에서 도로 방향 1.0 m, 지면 위 1.5 m(A1·A2) \\ \midrule
+교정 & 회차 시작 전 교정, 회차 끝난 뒤 점검(부록 B) \\ \midrule
+기상 조건 & 풍속 2 m/s 이상 방풍망, 5 m/s 초과 측정 금지 \\ \midrule
+평균 방법 & 법정 평가: 산술평균(원문 규정). 시뮬레이션 비교: 측정시간 가중 에너지평균(자체 설정) \\ \midrule
+배경소음 보정 & 적용 방법에 조항이 없어 보정하지 않음 \\ \midrule
+회차 간 시간 간격 요건 & 수동 확인 --- 환경기준 낮 2시간 이상 간격 4회·밤 2시간 간격 2회(ES 03301.1c 5.3), 도로교통 4시간 이상 간격 2회(ES 03304.1d 5.3.2·5.3.3). 야장·처리 스크립트는 자동 확인하지 않음. 확인 결과: \TBD \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{8\baselineskip}\subsection{계획 대비 변경 사항}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.2200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.2200\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{항목} & \hd{계획} & \hd{실제} & \hd{변경 이유} & \hd{결과에 미치는 영향} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{계획} & \hd{실제} & \hd{변경 이유} & \hd{결과에 미치는 영향} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\ip{}\hr{10mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{10mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{10mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{10mm} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{8\baselineskip}\subsection{무효 처리한 측정}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.1300\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.5500\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{측정점} & \hd{회차} & \hd{무효 사유(풍속·교정·이상 소음 등)} & \hd{재측정 여부} \\ \midrule
+\endfirsthead
+\toprule
+\hd{측정점} & \hd{회차} & \hd{무효 사유(풍속·교정·이상 소음 등)} & \hd{재측정 여부} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\ip{}\hr{9mm} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{9mm} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{9mm} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{10\baselineskip}\section{측정 결과}
+\needspace{8\baselineskip}\subsection{측정점 위치도}
+\par\noindent\fcolorbox{gray}{white}{\parbox[c][70mm][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\centering\color{gray}[그림 자리] 측정점 위치도(축척·방위 표시) --- 측정계획서 그림 4-1을 현장 실측 좌표로 고쳐 넣음}}\par
+\needspace{8\baselineskip}\subsection{측정점별 결과표}
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1800\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1800\linewidth-2\tabcolsep\relax}}
+\caption{측정점별 회차별 \Laeq{} (단위 dB(A), 유효 측정만)}\\
+\toprule
+\hd{측정점} & \hd{D1} & \hd{D2} & \hd{D3} & \hd{D4} & \hd{N1} & \hd{N2} & \hd{낮 산술평균} & \hd{밤 산술평균} \\ \midrule
+\endfirsthead
+\toprule
+\hd{측정점} & \hd{D1} & \hd{D2} & \hd{D3} & \hd{D4} & \hd{N1} & \hd{N2} & \hd{낮 산술평균} & \hd{밤 산술평균} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}A1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{9mm}A2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\normalsize
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2400\linewidth-2\tabcolsep\relax}}
+\caption{측정점별 통계 지표(낮 회차 평균, 장비가 제공한 값만)}\\
+\toprule
+\hd{측정점} & \hd{\Laeq} & \hd{$L_{\mathrm{Amax}}$} & \hd{$L_{\mathrm{Amin}}$} & \hd{$L_{10}$} & \hd{$L_{50}$} & \hd{$L_{90}$} & \hd{비고} \\ \midrule
+\endfirsthead
+\toprule
+\hd{측정점} & \hd{\Laeq} & \hd{$L_{\mathrm{Amax}}$} & \hd{$L_{\mathrm{Amin}}$} & \hd{$L_{10}$} & \hd{$L_{50}$} & \hd{$L_{90}$} & \hd{비고} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}A1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{9mm}A2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\normalsize
+\needspace{8\baselineskip}\subsection{시간대별 변화}
+\par\noindent\fcolorbox{gray}{white}{\parbox[c][62mm][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\centering\color{gray}[그림 자리] 측정점별 회차별 \Laeq{} 와 같은 시각의 교통량(시간당 환산) 그래프}}\par
+\needspace{8\baselineskip}\subsection{동시 교통량·기상}
+\footnotesize
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.0700\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.0900\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}}
+\caption{회차별 측정점 앞 도로 교통량(대/h, 양방향, 계수 차종별) --- 야장 6\_계산 시트 요약}\\
+\toprule
+\hd{회차} & \hd{도로} & \hd{승용·승합} & \hd{소·중형 화물} & \hd{버스} & \hd{대형 화물} & \hd{트레일러} & \hd{이륜차} & \hd{평균 속도} \\ \midrule
+\endfirsthead
+\toprule
+\hd{회차} & \hd{도로} & \hd{승용·승합} & \hd{소·중형 화물} & \hd{버스} & \hd{대형 화물} & \hd{트레일러} & \hd{이륜차} & \hd{평균 속도} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+D1 & 사가정로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D1 & 전농로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D2 & 사가정로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D2 & 전농로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D3 & 사가정로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D3 & 전농로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D4 & 사가정로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D4 & 전농로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N1 & 사가정로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N1 & 전농로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N2 & 사가정로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N2 & 전농로 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\normalsize
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1500\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1300\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1500\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1500\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1500\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1700\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{회차} & \hd{풍속(m/s)} & \hd{풍향} & \hd{기온(°C)} & \hd{습도(\%)} & \hd{노면} & \hd{신호 주기(s)} \\ \midrule
+\endfirsthead
+\toprule
+\hd{회차} & \hd{풍속(m/s)} & \hd{풍향} & \hd{기온(°C)} & \hd{습도(\%)} & \hd{노면} & \hd{신호 주기(s)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+D1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D3 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D4 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{10\baselineskip}\section{기준 비교 평가(목적 가)}
+\needspace{8\baselineskip}\subsection{적용 지역 구분과 기준값}
+용도지역은 토지이음(eum.go.kr) 토지이용계획으로 확인한 결과를 적는다. 학교·종합병원 등 부지경계 50 m 이내 여부도 함께 적는다.
+\footnotesize
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1500\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1900\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{측정점} & \hd{용도지역} & \hd{50 m 규정} & \hd{별표 1 구분} & \hd{별표 1 기준 낮/밤} & \hd{별표 11 구분} & \hd{별표 11 기준 주간/야간} \\ \midrule
+\endfirsthead
+\toprule
+\hd{측정점} & \hd{용도지역} & \hd{50 m 규정} & \hd{별표 1 구분} & \hd{별표 1 기준 낮/밤} & \hd{별표 11 구분} & \hd{별표 11 기준 주간/야간} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}A1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{9mm}A2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{8\baselineskip}\subsection{소음 환경기준 비교}
+\footnotesize
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1100\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}}
+\caption{측정소음도(산술평균, 정수)와 환경기준 비교(dB(A))}\\
+\toprule
+\hd{측정점} & \hd{낮 측정소음도} & \hd{낮 기준} & \hd{낮 판정} & \hd{밤 측정소음도} & \hd{밤 기준} & \hd{밤 판정} & \hd{횟수 충족} \\ \midrule
+\endfirsthead
+\toprule
+\hd{측정점} & \hd{낮 측정소음도} & \hd{낮 기준} & \hd{낮 판정} & \hd{밤 측정소음도} & \hd{밤 기준} & \hd{밤 판정} & \hd{횟수 충족} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}A1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{9mm}A2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\normalsize
+\needspace{8\baselineskip}\subsection{교통소음 관리기준(도로) 비교}
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.4000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{구분} & \hd{대상 지점} & \hd{측정소음도(지점별 산술평균의 산술평균)} & \hd{기준} & \hd{판정} \\ \midrule
+\endfirsthead
+\toprule
+\hd{구분} & \hd{대상 지점} & \hd{측정소음도(지점별 산술평균의 산술평균)} & \hd{기준} & \hd{판정} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{9mm}주간 & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{9mm}야간 & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{8\baselineskip}\subsection{평가 의견}
+\notebox[inp]{\TBD\ --- 초과 지점, 초과 폭, 시간대별 특징. 평가하지 못한 시간대(예: 야간 미측정)는 `평가 불가'로 적는다.}
+\needspace{10\baselineskip}\section{시뮬레이션 비교(목적 나)}
+\needspace{8\baselineskip}\subsection{비교 조건}
+\footnotesize
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.2800\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.7200\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+모델 버전·설정 파일 & \ip{}\TBD \\ \midrule
+입력 교통량 & \ip{}회차별 동시 계수값(시간당 환산) --- 계수하지 못한 도로: \TBD \\ \midrule
+계수 차종 → Pkw/Lkw1/Lkw2 & \ip{}측정계획서 표(RLS-19 2장, 소음지도 작성방법 별표 2 제12호 다목). 이륜차 처리: \TBD \\ \midrule
+수음점 위치·높이 & 측정점과 같은 좌표·높이(점 수음점 A1·A2), 자기 벽면 반사 포함 \\ \midrule
+측정값 평균 & 측정시간 가중 에너지평균(자체 설정) \\ \midrule
+이상 소음 구간 처리 & \ip{}\TBD \\ \midrule
+판정 기준 & 소음지도의 작성방법 별표 2 제15호: 오차 평균 $\pm$3 dB, 표준편차 3 이하(원칙), 지점별 $\pm$5 dB 이상이면 원인 분석 \\ \midrule
+비교 단위 & 표 아래는 측정점 $\times$ 시간대. 모델을 회차별 동시 교통량으로 계산하면 측정점 $\times$ 회차(최대 12개)로도 비교(부록 E) \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{8\baselineskip}\subsection{측정값과 계산값}
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1700\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1700\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.3200\linewidth-2\tabcolsep\relax}}
+\caption{측정 \Laeq{}와 계산 \Laeq{} 비교(dB(A), 차이 = 측정 $-$ 계산)}\\
+\toprule
+\hd{측정점} & \hd{시간대} & \hd{측정 \Laeq} & \hd{계산 \Laeq} & \hd{차이} & \hd{비고} \\ \midrule
+\endfirsthead
+\toprule
+\hd{측정점} & \hd{시간대} & \hd{측정 \Laeq} & \hd{계산 \Laeq} & \hd{차이} & \hd{비고} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{8mm}A1 & 낮 & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{8mm}A1 & 밤 & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{8mm}A2 & 낮 & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\hr{8mm}A2 & 밤 & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\normalsize
+\needspace{8\baselineskip}\subsection{차이 통계}
+\needspace{14\baselineskip}
+차이 $d_i = L_{\text{측정},i} - L_{\text{계산},i}$, 비교 수 $n$. 평균 차이와 표준편차(표본)는 다음과 같다.
+\begin{equation*} \bar d = \frac{1}{n}\sum_{i=1}^{n} d_i, \qquad s = \sqrt{\frac{\sum_{i=1}^{n}\left(d_i-\bar d\right)^2}{n-1}} \end{equation*}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.2400\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.4200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.1800\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{지표} & \hd{값(dB)} & \hd{고시 기준(별표 2 제15호)} & \hd{판정} \\ \midrule
+\endfirsthead
+\toprule
+\hd{지표} & \hd{값(dB)} & \hd{고시 기준(별표 2 제15호)} & \hd{판정} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{8mm}비교 수 $n$ & \ip{} & --- & --- \\ \midrule
+\hr{8mm}평균 차이 & \ip{} & $\pm$3 dB 이내(양수면 모델이 낮게 계산) & \ip{} \\ \midrule
+\hr{8mm}표준편차 & \ip{} & 3 이하 & \ip{} \\ \midrule
+\hr{8mm}최대 차이(절댓값) & \ip{} & $\pm$5 dB 이상이면 그 지점 원인 분석 & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 측정점이 2곳이라 측정점 사이의 공간 변동은 평가할 수 없고, 표준편차는 주로 회차에 따른 변동을 나타낸다(7장).\par}
+\par\noindent\fcolorbox{gray}{white}{\parbox[c][65mm][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\centering\color{gray}[그림 자리] 측정 \Laeq(가로축) 대 계산 \Laeq(세로축) 산점도와 1:1 선}}\par
+\needspace{8\baselineskip}\subsection{차이 원인 검토}
+\footnotesize
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.5000\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.3400\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{검토 항목} & \hd{확인 내용} & \hd{영향 방향·크기(추정이면 `추정')} \\ \midrule
+\endfirsthead
+\toprule
+\hd{검토 항목} & \hd{확인 내용} & \hd{영향 방향·크기(추정이면 `추정')} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+교통량 입력 & 동시 계수값과 모델 입력의 일치, 미계수 도로 & \ip{} \\ \midrule
+차종 구분 & 계수 차종 → Pkw/Lkw1/Lkw2 대응, 이륜차 처리 & \ip{} \\ \midrule
+반사 & 측정점 주변 반사면과 모델 반사 차수, 외벽 이격 1.0 m & \ip{} \\ \midrule
+신호 대기 & 정지·출발, 교차로 보정(RLS-19, 120 m 안 --- A1·A2 모두 해당) & \ip{} \\ \midrule
+배경소음 & 도로 외 소음(이상 소음 코드) 포함 구간 & \ip{} \\ \midrule
+기상 & 풍속·풍향, 노면, 기온·습도와 모델 설정(propagation.temperature\_C 15 °C·humidity\_pct 70 \%, 코드 기본값) & \ip{} \\ \midrule
+주행속도 & 측정 속도와 모델 입력 속도(교통량 파일에 속도가 없으면 간선 50·그 밖 30 km/h, input.traffic.default\_speed\_main/minor) & \ip{} \\ \midrule
+기타 &  & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{10\baselineskip}\section{불확실성 및 한계}
+\footnotesize
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.2000\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.8000\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정기 & \ip{}클래스 등급, 교정 전후 편차(부록 B) \TBD \\ \midrule
+측정 지점 수 & 2지점(사가정로·전농로 각 1). 고시의 `교통소음한도 초과 건물·공동주택 단지의 50\,\% 이상 지점' 요건은 충족하지 못함. 그 밖의 접근로 교통량은 계수하지 않아 모델 가정값 \\ \midrule
+측정 횟수·시간 & \ip{}회차 수, 회차당 30분의 대표성 \TBD \\ \midrule
+교통량 & \ip{}계수 방법(영상/현장), 5분 계수 오차 \TBD \\ \midrule
+위치·좌표 & \ip{}GPS 오차, 모델 수음점과의 위치 차이 \TBD \\ \midrule
+기상 & \ip{}측정 중 풍속 변화, 노면 \TBD \\ \midrule
+모델 & \ip{}가정값 입력(차로 수·노면·종단경사 등), 반사 차수 \TBD \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\needspace{10\baselineskip}\section{결론 및 소음지도 작업에 대한 시사점}
+\needspace{8\baselineskip}\subsection{결론}
+\notebox[inp]{\TBD}
+\needspace{8\baselineskip}\subsection{소음지도 작업에 대한 시사점}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.2600\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.7400\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{구분} & \hd{내용} \\ \midrule
+\endfirsthead
+\toprule
+\hd{구분} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\hr{11mm}입력 자료 보완 & \ip{}\TBD \\ \midrule
+\hr{11mm}모델 설정 조정 검토 & \ip{}\TBD \\ \midrule
+\hr{11mm}추가 측정 필요 & \ip{}\TBD \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\clearpage\section*{부록 A. 원자료 목록}\addcontentsline{toc}{section}{부록 A. 원자료 목록}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{\dimexpr 0.3000\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.1700\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.2500\linewidth-2\tabcolsep\relax}>{\raggedright\arraybackslash}p{\dimexpr 0.1600\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{파일명} & \hd{종류} & \hd{측정점·회차} & \hd{보관 위치} & \hd{비고} \\ \midrule
+\endfirsthead
+\toprule
+\hd{파일명} & \hd{종류} & \hd{측정점·회차} & \hd{보관 위치} & \hd{비고} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+\ip{}\hr{8mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{8mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{8mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{8mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{8mm} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+\ip{}\hr{8mm} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\section*{부록 B. 교정 기록}\addcontentsline{toc}{section}{부록 B. 교정 기록}
+\small
+\begin{longtable}{>{\centering\arraybackslash}p{\dimexpr 0.1000\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1200\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.1400\linewidth-2\tabcolsep\relax}>{\centering\arraybackslash}p{\dimexpr 0.2200\linewidth-2\tabcolsep\relax}}
+\toprule
+\hd{회차} & \hd{장비} & \hd{교정 전} & \hd{교정 후} & \hd{회차 후} & \hd{차이} & \hd{판정} \\ \midrule
+\endfirsthead
+\toprule
+\hd{회차} & \hd{장비} & \hd{교정 전} & \hd{교정 후} & \hd{회차 후} & \hd{차이} & \hd{판정} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+D1 & SLM-1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D1 & SLM-2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D2 & SLM-1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D2 & SLM-2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D3 & SLM-1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D3 & SLM-2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D4 & SLM-1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+D4 & SLM-2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N1 & SLM-1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N1 & SLM-2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N2 & SLM-1 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\ \midrule
+N2 & SLM-2 & \ip{} & \ip{} & \ip{} & \ip{} & \ip{} \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 교정 전후 허용 편차는 공정시험기준에 규정이 없어(미확인) 본 조사에서 정한 값을 적는다: \IN\ dB\par}
+\section*{부록 C. 현장 사진}\addcontentsline{toc}{section}{부록 C. 현장 사진}
+\par\noindent\fcolorbox{gray}{white}{\parbox[c][48mm][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\centering\color{gray}[그림 자리] A1 설치 모습·주변(사진 번호 \IN)}}\par
+\vspace{2mm}
+\par\noindent\fcolorbox{gray}{white}{\parbox[c][48mm][c]{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\centering\color{gray}[그림 자리] A2 설치 모습·주변(사진 번호 \IN)}}\par
+\vspace{2mm}
+{\small 얼굴·번호판은 흐리게 처리한다.\par}
+\section*{부록 D. 교통량 원자료}\addcontentsline{toc}{section}{부록 D. 교통량 원자료}
+야장(소음측정\_야장.xlsx) 4\_교통량·4b\_신호속도 시트를 첨부하거나, 회차별 5분 계수표를 표로 옮긴다.
+\section*{부록 E. 회차별 비교표}\addcontentsline{toc}{section}{부록 E. 회차별 비교표}
+process\_measurements.py 에 round 열이 있는 모델 결과를 넣어 만든 comparison.csv(측정점·회차별 측정값, 계산값, 차이)와 measured\_rounds.csv 를 첨부한다.
+
+\end{document}

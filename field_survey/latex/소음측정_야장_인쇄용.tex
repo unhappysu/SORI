@@ -1,0 +1,369 @@
+%% 소음측정 야장(인쇄용)
+%% 컴파일: xelatex (목차·전체 쪽수 반영을 위해 2회)
+%% 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음.
+\documentclass[10.5pt,a4paper]{article}
+\usepackage[a4paper,top=22mm,bottom=24mm,left=22mm,right=22mm,headsep=6mm,footskip=10mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xetexko}
+\IfFontExistsTF{Noto Serif CJK KR}{%
+  \setmainfont{Noto Serif CJK KR}\setsansfont{Noto Sans CJK KR}%
+  \setmainhangulfont{Noto Serif CJK KR}\setsanshangulfont{Noto Sans CJK KR}%
+  \setmonohangulfont{Noto Sans CJK KR}[Scale=0.85]}{%
+  \setmainfont{Times New Roman}\setsansfont{Apple SD Gothic Neo}%
+  \setmainhangulfont{AppleMyungjo}[AutoFakeBold=2.5]\setsanshangulfont{Apple SD Gothic Neo}%
+  \setmonohangulfont{Apple SD Gothic Neo}[Scale=0.85]}
+\IfFontExistsTF{DejaVu Sans Mono}{\setmonofont{DejaVu Sans Mono}[Scale=0.82]}{%
+  \setmonofont{DejaVuSansMono.ttf}[Scale=0.82,BoldFont=DejaVuSansMono-Bold.ttf]}
+\renewcommand{\familydefault}{\sfdefault}\IfFontExistsTF{Noto Sans CJK KR}{\setmainhangulfont{Noto Sans CJK KR}}{\setmainhangulfont{Apple SD Gothic Neo}}
+\usepackage{amsmath,amssymb}
+\usepackage{array,booktabs,longtable,tabularx,makecell}
+\usepackage[table]{xcolor}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{needspace}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage[font=small,labelsep=colon,skip=4pt]{caption}
+\usepackage[hidelinks]{hyperref}
+\linespread{1.3}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\setlist{itemsep=0.15em,topsep=0.3em,leftmargin=1.6em}
+\captionsetup[table]{name=표}
+\captionsetup[figure]{name=그림}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+\definecolor{navy}{HTML}{1F3864}
+\definecolor{headfill}{HTML}{D9E2F3}
+\definecolor{inp}{HTML}{FFF8DC}
+\definecolor{lab}{HTML}{F2F2F2}
+\definecolor{team1}{HTML}{DDEBF7}
+\definecolor{team2}{HTML}{E2EFDA}
+\renewcommand{\thesection}{\arabic{section}.}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+\titleformat{\section}{\sffamily\Large\bfseries\color{navy}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\sffamily\large\bfseries\color{navy}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\sffamily\normalsize\bfseries}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.1em}{0.5em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.4em}
+\newcommand{\Laeq}{\ensuremath{L_{\mathrm{Aeq}}}}
+\newcommand{\TBD}{\textcolor{gray}{[측정 후 기입]}}
+\newcommand{\IN}{[\quad]}
+\newcommand{\hd}[1]{\cellcolor{headfill}\textbf{\sffamily #1}}
+\newcommand{\ip}{\cellcolor{inp}}
+\newcommand{\lb}{\cellcolor{lab}}
+\newcommand{\hr}[1]{\rule[-0.35\dimexpr#1\relax]{0pt}{#1}}
+\newcommand{\notebox}[2][lab]{\par\noindent\colorbox{#1}{\parbox{\dimexpr\linewidth-2\fboxsep}{\small #2}}\par}
+\renewcommand{\contentsname}{목차}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\sffamily 소음측정 야장}
+\fancyhead[R]{\small\sffamily 전농사거리 소음현황조사}
+\fancyfoot[L]{\scriptsize\sffamily\color{gray} 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음}
+\fancyfoot[R]{\small\sffamily \thepage\ / \pageref*{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[L]{\scriptsize\sffamily\color{gray} 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음}%
+  \fancyfoot[R]{\small\sffamily \thepage\ / \pageref*{LastPage}}\renewcommand{\headrulewidth}{0pt}}
+\begin{document}
+\renewcommand{\arraystretch}{1.15}
+{\sffamily\LARGE\bfseries\color{navy} 소음측정 야장 --- 현장 기록용\par}\vspace{2mm}
+\notebox{\textbf{본 문서는 생성형 AI(Claude)를 활용하여 작성되었음.} 숫자는 소수 첫째 자리까지, 시각은 기준 시계(초 단위)로 적는다. 모르는 칸은 비워 두고 추정값은 `추정'이라고 쓴다. 기입 후 소음측정\_야장.xlsx에 옮겨 적는다.}
+\section*{1. 측정 개요}
+\small
+\begin{longtable}{|>{\raggedright\arraybackslash}p{\dimexpr 0.1872\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.3054\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.1872\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.3054\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{항목} & \hd{기입} & \hd{항목} & \hd{기입} \\ \hline
+\endfirsthead
+\hline
+\hd{항목} & \hd{기입} & \hd{항목} & \hd{기입} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{11mm}\lb 측정일 &  & \lb 요일 &  \\ \hline
+\hr{11mm}\lb 예비일 사용·이유 &  & \lb 기준 시계 &  \\ \hline
+\hr{11mm}\lb 1팀(A1) 측정자 &  & \lb 2팀(A2) 측정자 &  \\ \hline
+\hr{11mm}\lb 1팀 교통량 계수 &  & \lb 2팀 교통량 계수 &  \\ \hline
+\hr{11mm}\lb 1팀 기록·안전 &  & \lb 2팀 기록·안전 &  \\ \hline
+\hr{11mm}\lb 기상 개요 &  & \lb 총괄(회차 연락) &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\section*{장비와 시각 동기}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1970\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1872\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.2167\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1576\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{장비 ID} & \hd{모델} & \hd{일련번호} & \hd{등급} & \hd{1초 \Laeq{} 저장} & \hd{시각 오차(초)} \\ \hline
+\endfirsthead
+\hline
+\hd{장비 ID} & \hd{모델} & \hd{일련번호} & \hd{등급} & \hd{1초 \Laeq{} 저장} & \hd{시각 오차(초)} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{11mm}SLM-1 &  &  &  & $\square$ 예\ \ $\square$ 아니오 &  \\ \hline
+\hr{11mm}SLM-2 &  &  &  & $\square$ 예\ \ $\square$ 아니오 &  \\ \hline
+\hr{11mm}교정기 &  &  & 표시값 & dB &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 시각 동기: 측정 시작 전과 하루 끝에 각 장비 화면과 기준 시계를 함께 찍은 사진 번호 → 시작 \underline{\hspace{20mm}}\quad 끝 \underline{\hspace{20mm}}\par}
+\clearpage\section*{2. 교정 기록}
+{\small 회차 시작 전 교정, 회차 끝난 뒤 점검. 단위 dB. 교정 전후 허용 편차는 공정시험기준에 규정이 없어(미확인) 판정 기준은 따로 정한다.\par}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.0788\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1675\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1379\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1379\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1379\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.2266\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{회차} & \hd{장비} & \hd{날짜·시각} & \hd{교정 전 지시값} & \hd{교정 후 지시값} & \hd{회차 후 지시값} & \hd{메모} \\ \hline
+\endfirsthead
+\hline
+\hd{회차} & \hd{장비} & \hd{날짜·시각} & \hd{교정 전 지시값} & \hd{교정 후 지시값} & \hd{회차 후 지시값} & \hd{메모} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{11mm}D1 & SLM-1 &  &  &  &  &  \\ \hline
+\hr{11mm}D1 & SLM-2 &  &  &  &  &  \\ \hline
+\hr{11mm}D2 & SLM-1 &  &  &  &  &  \\ \hline
+\hr{11mm}D2 & SLM-2 &  &  &  &  &  \\ \hline
+\hr{11mm}D3 & SLM-1 &  &  &  &  &  \\ \hline
+\hr{11mm}D3 & SLM-2 &  &  &  &  &  \\ \hline
+\hr{11mm}D4 & SLM-1 &  &  &  &  &  \\ \hline
+\hr{11mm}D4 & SLM-2 &  &  &  &  &  \\ \hline
+\hr{11mm}N1 & SLM-1 &  &  &  &  &  \\ \hline
+\hr{11mm}N1 & SLM-2 &  &  &  &  &  \\ \hline
+\hr{11mm}N2 & SLM-1 &  &  &  &  &  \\ \hline
+\hr{11mm}N2 & SLM-2 &  &  &  &  &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\clearpage\section*{3. 측정점 정보}
+{\small 좌표는 스마트폰 GPS(WGS84) 소수 6자리, 거리는 거리측정기·줄자로 잰 값(m). 계획 위치(지도 판독): A1 37.577467, 127.058450; A2 37.576881, 127.057503.\par}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.0690\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1675\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1675\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0886\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1182\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1182\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1182\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1379\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{ID} & \hd{경도} & \hd{위도} & \hd{높이(m)} & \hd{차도 끝(m)} & \hd{중심선(m)} & \hd{외벽 이격(m)} & \hd{사진 번호} \\ \hline
+\endfirsthead
+\hline
+\hd{ID} & \hd{경도} & \hd{위도} & \hd{높이(m)} & \hd{차도 끝(m)} & \hd{중심선(m)} & \hd{외벽 이격(m)} & \hd{사진 번호} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{13mm}A1 &  &  &  &  &  &  &  \\ \hline
+\hr{13mm}A2 &  &  &  &  &  &  &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\subsection*{주변 상황(반사면·차폐물·주요 소음원·지역 구분)}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.0788\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.9062\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{ID} & \hd{주변 상황} \\ \hline
+\endfirsthead
+\hline
+\hd{ID} & \hd{주변 상황} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{28mm}A1 &  \\ \hline
+\hr{28mm}A2 &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\clearpage\section*{4. 소음 기록 카드 (1/3 --- 필요한 만큼 복사)}
+{\small 단위 dB(A). 회차당 30분 연속 측정. 이상 소음 코드: H 경적, S 사이렌, M 이륜차 급가속, C 공사, V 대화·확성기, A 항공기, B 버스 정차, O 기타.\par}\vspace{2mm}
+\noindent\begin{tabular}{|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{20mm}|p{26mm}|}
+\hline
+\hr{9.5mm}측정점 & & 회차 & & 장비 & \\ \hline
+\hr{9.5mm}날짜 & & 시작 시각 & & 종료 시각 & \\ \hline
+\hr{9.5mm}측정자 & \multicolumn{3}{l|}{} & 방풍망 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{9.5mm}\Laeq & & $L_{\mathrm{Amax}}$ & & $L_{\mathrm{Amin}}$ & \\ \hline
+\hr{9.5mm}$L_{10}$ & & $L_{50}$ & & $L_{90}$ & \\ \hline
+\hr{9.5mm}풍속(m/s) & & 배경소음\newline(참고) & & 유효 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{24mm}이상 소음\newline(시각·코드) & \multicolumn{5}{l|}{} \\ \hline
+\hr{11mm}무효 사유\newline·메모 & \multicolumn{5}{l|}{} \\ \hline
+\end{tabular}\par
+\vspace{8mm}
+\noindent\begin{tabular}{|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{20mm}|p{26mm}|}
+\hline
+\hr{9.5mm}측정점 & & 회차 & & 장비 & \\ \hline
+\hr{9.5mm}날짜 & & 시작 시각 & & 종료 시각 & \\ \hline
+\hr{9.5mm}측정자 & \multicolumn{3}{l|}{} & 방풍망 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{9.5mm}\Laeq & & $L_{\mathrm{Amax}}$ & & $L_{\mathrm{Amin}}$ & \\ \hline
+\hr{9.5mm}$L_{10}$ & & $L_{50}$ & & $L_{90}$ & \\ \hline
+\hr{9.5mm}풍속(m/s) & & 배경소음\newline(참고) & & 유효 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{24mm}이상 소음\newline(시각·코드) & \multicolumn{5}{l|}{} \\ \hline
+\hr{11mm}무효 사유\newline·메모 & \multicolumn{5}{l|}{} \\ \hline
+\end{tabular}\par
+\clearpage\section*{4. 소음 기록 카드 (2/3 --- 필요한 만큼 복사)}
+{\small 단위 dB(A). 회차당 30분 연속 측정. 이상 소음 코드: H 경적, S 사이렌, M 이륜차 급가속, C 공사, V 대화·확성기, A 항공기, B 버스 정차, O 기타.\par}\vspace{2mm}
+\noindent\begin{tabular}{|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{20mm}|p{26mm}|}
+\hline
+\hr{9.5mm}측정점 & & 회차 & & 장비 & \\ \hline
+\hr{9.5mm}날짜 & & 시작 시각 & & 종료 시각 & \\ \hline
+\hr{9.5mm}측정자 & \multicolumn{3}{l|}{} & 방풍망 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{9.5mm}\Laeq & & $L_{\mathrm{Amax}}$ & & $L_{\mathrm{Amin}}$ & \\ \hline
+\hr{9.5mm}$L_{10}$ & & $L_{50}$ & & $L_{90}$ & \\ \hline
+\hr{9.5mm}풍속(m/s) & & 배경소음\newline(참고) & & 유효 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{24mm}이상 소음\newline(시각·코드) & \multicolumn{5}{l|}{} \\ \hline
+\hr{11mm}무효 사유\newline·메모 & \multicolumn{5}{l|}{} \\ \hline
+\end{tabular}\par
+\vspace{8mm}
+\noindent\begin{tabular}{|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{20mm}|p{26mm}|}
+\hline
+\hr{9.5mm}측정점 & & 회차 & & 장비 & \\ \hline
+\hr{9.5mm}날짜 & & 시작 시각 & & 종료 시각 & \\ \hline
+\hr{9.5mm}측정자 & \multicolumn{3}{l|}{} & 방풍망 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{9.5mm}\Laeq & & $L_{\mathrm{Amax}}$ & & $L_{\mathrm{Amin}}$ & \\ \hline
+\hr{9.5mm}$L_{10}$ & & $L_{50}$ & & $L_{90}$ & \\ \hline
+\hr{9.5mm}풍속(m/s) & & 배경소음\newline(참고) & & 유효 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{24mm}이상 소음\newline(시각·코드) & \multicolumn{5}{l|}{} \\ \hline
+\hr{11mm}무효 사유\newline·메모 & \multicolumn{5}{l|}{} \\ \hline
+\end{tabular}\par
+\clearpage\section*{4. 소음 기록 카드 (3/3 --- 필요한 만큼 복사)}
+{\small 단위 dB(A). 회차당 30분 연속 측정. 이상 소음 코드: H 경적, S 사이렌, M 이륜차 급가속, C 공사, V 대화·확성기, A 항공기, B 버스 정차, O 기타.\par}\vspace{2mm}
+\noindent\begin{tabular}{|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{20mm}|p{26mm}|}
+\hline
+\hr{9.5mm}측정점 & & 회차 & & 장비 & \\ \hline
+\hr{9.5mm}날짜 & & 시작 시각 & & 종료 시각 & \\ \hline
+\hr{9.5mm}측정자 & \multicolumn{3}{l|}{} & 방풍망 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{9.5mm}\Laeq & & $L_{\mathrm{Amax}}$ & & $L_{\mathrm{Amin}}$ & \\ \hline
+\hr{9.5mm}$L_{10}$ & & $L_{50}$ & & $L_{90}$ & \\ \hline
+\hr{9.5mm}풍속(m/s) & & 배경소음\newline(참고) & & 유효 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{24mm}이상 소음\newline(시각·코드) & \multicolumn{5}{l|}{} \\ \hline
+\hr{11mm}무효 사유\newline·메모 & \multicolumn{5}{l|}{} \\ \hline
+\end{tabular}\par
+\vspace{8mm}
+\noindent\begin{tabular}{|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{22mm}|p{28mm}|>{\raggedright\arraybackslash\columncolor{lab}}p{20mm}|p{26mm}|}
+\hline
+\hr{9.5mm}측정점 & & 회차 & & 장비 & \\ \hline
+\hr{9.5mm}날짜 & & 시작 시각 & & 종료 시각 & \\ \hline
+\hr{9.5mm}측정자 & \multicolumn{3}{l|}{} & 방풍망 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{9.5mm}\Laeq & & $L_{\mathrm{Amax}}$ & & $L_{\mathrm{Amin}}$ & \\ \hline
+\hr{9.5mm}$L_{10}$ & & $L_{50}$ & & $L_{90}$ & \\ \hline
+\hr{9.5mm}풍속(m/s) & & 배경소음\newline(참고) & & 유효 & $\square$ Y\quad$\square$ N \\ \hline
+\hr{24mm}이상 소음\newline(시각·코드) & \multicolumn{5}{l|}{} \\ \hline
+\hr{11mm}무효 사유\newline·메모 & \multicolumn{5}{l|}{} \\ \hline
+\end{tabular}\par
+\clearpage\section*{5. 교통량 계수표 (5분 단위, 한 회차)}
+\small
+\begin{longtable}{|>{\raggedright\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.1970\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.1970\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.1379\linewidth-2\tabcolsep\relax}|>{\raggedright\arraybackslash}p{\dimexpr 0.1970\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{항목} & \hd{기입} & \hd{항목} & \hd{기입} & \hd{항목} & \hd{기입} \\ \hline
+\endfirsthead
+\hline
+\hd{항목} & \hd{기입} & \hd{항목} & \hd{기입} & \hd{항목} & \hd{기입} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{9mm}\lb 회차 &  & \lb 날짜 &  & \lb 팀·측정점 &  \\ \hline
+\hr{9mm}\lb 도로 &  & \lb 방향 ① &  & \lb 방향 ② &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 한 장 = 한 회차(30분) $\times$ 측정점 앞 도로 양방향. 이륜차는 따로 센다. 세지 못한 구간은 0이 아니라 빗금(/)으로 표시.\par}
+\footnotesize
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0690\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1576\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{구간} & \hd{방향} & \hd{승용·승합} & \hd{소·중형 화물} & \hd{버스} & \hd{대형 화물} & \hd{트레일러} & \hd{이륜차} & \hd{정체} \\ \hline
+\endfirsthead
+\hline
+\hd{구간} & \hd{방향} & \hd{승용·승합} & \hd{소·중형 화물} & \hd{버스} & \hd{대형 화물} & \hd{트레일러} & \hd{이륜차} & \hd{정체} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{12mm}+0--5분 & ① &  &  &  &  &  &  &  \\ \hline
+\hr{12mm} & ② &  &  &  &  &  &  &  \\ \hline
+\hr{12mm}+5--10분 & ① &  &  &  &  &  &  &  \\ \hline
+\hr{12mm} & ② &  &  &  &  &  &  &  \\ \hline
+\hr{12mm}+10--15분 & ① &  &  &  &  &  &  &  \\ \hline
+\hr{12mm} & ② &  &  &  &  &  &  &  \\ \hline
+\hr{12mm}+15--20분 & ① &  &  &  &  &  &  &  \\ \hline
+\hr{12mm} & ② &  &  &  &  &  &  &  \\ \hline
+\hr{12mm}+20--25분 & ① &  &  &  &  &  &  &  \\ \hline
+\hr{12mm} & ② &  &  &  &  &  &  &  \\ \hline
+\hr{12mm}+25--30분 & ① &  &  &  &  &  &  &  \\ \hline
+\hr{12mm} & ② &  &  &  &  &  &  &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\clearpage\section*{6. 신호 주기·주행속도}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1182\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1576\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1527\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1527\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1527\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1527\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{회차} & \hd{시각} & \hd{주기 길이(s)} & \hd{녹색 ①(s)} & \hd{녹색 ②(s)} & \hd{녹색 ③(s)} & \hd{녹색 ④(s)} \\ \hline
+\endfirsthead
+\hline
+\hd{회차} & \hd{시각} & \hd{주기 길이(s)} & \hd{녹색 ①(s)} & \hd{녹색 ②(s)} & \hd{녹색 ③(s)} & \hd{녹색 ④(s)} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 녹색 ①--④: 교차로 접근로별(사가정로 서·동, 전농로 남, 전농로25길 북). 주행속도(자체 방법): 정한 구간 거리를 신호에 막히지 않은 차량이 지나는 시간, 속도 = 3.6 $\times$ 거리 / 시간 (km/h).\par}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.0886\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1576\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0886\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1379\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{회차} & \hd{도로} & \hd{방향} & \hd{구간 거리(m)} & \hd{통과 시간(s)} & \hd{통과 시간(s)} & \hd{통과 시간(s)} & \hd{통과 시간(s)} \\ \hline
+\endfirsthead
+\hline
+\hd{회차} & \hd{도로} & \hd{방향} & \hd{구간 거리(m)} & \hd{통과 시간(s)} & \hd{통과 시간(s)} & \hd{통과 시간(s)} & \hd{통과 시간(s)} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\ \hline
+\hr{9mm} &  &  &  &  &  &  &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\clearpage\section*{7. 기상 기록}
+{\small 풍속은 마이크로폰 높이. 2 m/s 이상 방풍망 필수, 5 m/s 초과 측정 금지(공정시험기준). 비·노면 젖음 시 연기(본 조사 자체 기준).\par}
+\small
+\begin{longtable}{|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1182\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1084\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.0985\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|>{\centering\arraybackslash}p{\dimexpr 0.1280\linewidth-2\tabcolsep\relax}|}
+\hline
+\hd{날짜} & \hd{시각} & \hd{측정점} & \hd{풍속(m/s)} & \hd{풍향} & \hd{기온(°C)} & \hd{습도(\%)} & \hd{노면} & \hd{강우} \\ \hline
+\endfirsthead
+\hline
+\hd{날짜} & \hd{시각} & \hd{측정점} & \hd{풍속(m/s)} & \hd{풍향} & \hd{기온(°C)} & \hd{습도(\%)} & \hd{노면} & \hd{강우} \\ \hline
+\endhead
+\hline
+\endlastfoot
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\ \hline
+\hr{10mm} &  &  &  &  &  &  &  &  \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+\end{document}

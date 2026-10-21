@@ -16,11 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import docx_common  # noqa: E402
 from docx.shared import Mm  # noqa: E402
 from docx_common import AI_NOTE, NOTE_FILL, h, new_document, note_box, page_break, para, table  # noqa: E402
-from survey_points import POINTS  # noqa: E402
+from survey_points import DEVICES, POINTS, TEAMS, VEH  # noqa: E402
 
 ROUNDS = ["D1", "D2", "D3", "D4", "N1", "N2"]
-DEVICES = ["SLM-1", "SLM-2", "SLM-3", "SLM-4"]
-VEH = ["승용·승합", "소형화물", "버스", "중형화물", "대형화물", "이륜차"]
 N_CARD_PAGES = 3       # 소음 기록 카드 쪽 수(쪽당 2장) — 필요한 만큼 복사해 씀
 LABEL = NOTE_FILL
 
@@ -51,9 +49,11 @@ def page_overview(doc):
     note_box(doc, f"**{AI_NOTE}.** 숫자는 소수 첫째 자리까지, 시각은 기준 시계(초 단위)로 적는다. "
                   "모르는 칸은 비워 두고 추정값을 적을 때는 '추정'이라고 쓴다. 기입 후 소음측정_야장.xlsx에 옮겨 적는다.")
     h(doc, "1. 측정 개요", 2)
-    rows = [["측정일", "", "요일", ""], ["시나리오(A/B/C)", "", "예비일 사용·이유", ""],
-            ["총괄·기록", "", "교통 계수 담당", ""], ["SLM-1 담당", "", "SLM-2 담당", ""],
-            ["SLM-3 담당", "", "SLM-4 담당", ""], ["기상 개요", "", "기준 시계", ""]]
+    t1, t2 = list(TEAMS.items())
+    rows = [["측정일", "", "요일", ""], ["예비일 사용·이유", "", "기준 시계", ""],
+            [f"{t1[0]}({t1[1][0]}) 측정자", "", f"{t2[0]}({t2[1][0]}) 측정자", ""],
+            [f"{t1[0]} 교통량 계수", "", f"{t2[0]} 교통량 계수", ""],
+            [f"{t1[0]} 기록·안전", "", f"{t2[0]} 기록·안전", ""], ["기상 개요", "", "총괄(회차 연락)", ""]]
     table(doc, rows, [30, 53, 30, 53], header_rows=0, size=9.5, min_height_mm=11,
           fills={(r, c): LABEL for r in range(len(rows)) for c in (0, 2)})
     h(doc, "장비와 시각 동기", 2)
@@ -74,13 +74,15 @@ def page_calibration(doc):
     for rd in ROUNDS:
         for d in DEVICES:
             rows.append([rd, d, "", "", "", "", ""])
-    table(doc, rows, [14, 18, 30, 22, 22, 22, 38], size=9, min_height_mm=8.0, align="ccccccc")
+    table(doc, rows, [14, 18, 30, 22, 22, 22, 38], size=9, min_height_mm=11, align="ccccccc")
     page_break(doc)
 
 
 def page_points(doc):
     h(doc, "3. 측정점 정보", 1)
-    para(doc, "좌표는 스마트폰 GPS(WGS84) 소수 6자리. 거리는 거리측정기·줄자로 잰 값(m).", size=9.5)
+    para(doc, "좌표는 스마트폰 GPS(WGS84) 소수 6자리. 거리는 거리측정기·줄자로 잰 값(m). 계획 위치(지도 판독): "
+              + "; ".join(f"{p['point_id']} {p['lat_wgs84']}, {p['lon_wgs84']} — {p['location_desc'].split('.')[0]}" for p in POINTS),
+         size=9)
     rows = [["ID", "경도(WGS84)", "위도(WGS84)", "높이\n(m)", "차도 끝\n거리(m)", "도로 중심선\n거리(m)",
              "반사면\n이격(m)", "사진 번호"]]
     for p in POINTS:
@@ -124,12 +126,14 @@ def pages_noise(doc):
 
 
 def page_traffic(doc):
-    head_block(doc, "5. 교통량 계수표 (5분 단위)", ["회차", "날짜", "계수 방법", "도로·접근로", "방향", "계수자"])
-    para(doc, "한 장 = 접근로 1곳 × 방향 1개. 이륜차는 따로 센다. 세지 못한 구간은 0이 아니라 빗금(/)으로 표시.",
-         size=9)
-    rows = [["구간 시작", *VEH, "정체\n원활/서행/정체"]]
-    rows += [["", "", "", "", "", "", "", ""] for _ in range(18)]
-    table(doc, rows, [20, 20, 20, 18, 20, 20, 20, 28], size=9, min_height_mm=9.6, align="cccccccc")
+    head_block(doc, "5. 교통량 계수표 (5분 단위, 한 회차)", ["회차", "날짜", "팀·측정점", "도로", "방향 ①", "방향 ②"])
+    para(doc, "한 장 = 한 회차(30분) × 측정점 앞 도로 양방향. 방향 ①·②에 진행 방향(예: 동행·서행)을 적는다. "
+              "이륜차는 따로 센다. 세지 못한 구간은 0이 아니라 빗금(/)으로 표시.", size=9)
+    rows = [["구간", "방향", *VEH, "정체\n원활/서행/정체"]]
+    for k in range(6):
+        for d in ("①", "②"):
+            rows.append([f"+{k * 5}~{k * 5 + 5}분" if d == "①" else "", d, "", "", "", "", "", "", ""])
+    table(doc, rows, [18, 12, 19, 19, 19, 19, 19, 19, 22], size=8.5, min_height_mm=13, align="c" * 9)
     page_break(doc)
 
 
@@ -161,6 +165,7 @@ def build(out_path):
     pages_noise(doc)
     page_traffic(doc)
     page_signal_weather(doc)
+    docx_common.trim_trailing(doc)
     doc.save(out_path)
     return out_path
 
