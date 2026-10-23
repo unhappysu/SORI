@@ -3,6 +3,8 @@
 AI(Claude)를 활용하여 제작하였음.
 
 실행: python3 field_measurement/2026-10-22/scripts/analyze.py
+(전체 재현 순서: analyze.py → wav_check.py → analyze.py → model_compare.py. 두 번째 analyze.py 는
+ wav_check.py 가 만든 녹음 순음 지표로 지점2 경적 후보를 선별한다.)
 입력: ../raw_copy/ (원본 복사본, 해시는 ../SHA256SUMS_원본.txt)
 출력: ../results/*.csv, ../figures/*.png, ../model_validation/*
 난수를 쓰지 않으므로 다시 실행하면 같은 결과가 나온다.
@@ -50,9 +52,14 @@ P1_EVENTS = [
 # 지점2 야장 힌트(손글씨 판독, 불확실): 2회 16:31 사이렌, 3회 16:4? 경적 2회
 P2_HINT = {2: ("16:31:00", "16:31:59", "사이렌(야장 16:31)"), 3: ("16:41:00", "16:51:00", "경적 2회(야장 16:4?, 시각 판독 불가)")}
 
+SIREN_WIN = ("16:31:40", "16:32:10")   # 지점2 기기 시각, 녹음 스펙트로그램에서 읽은 사이렌 지속 구간
+HORN_TONAL_PCT = 20.0  # 경적 후보 선별: 녹음 0.25 s 프레임 중 순음 돌출 15 dB 이상 비율(%)
 PEAK_DB = 10.0      # 후보 탐지: 1초 LAeq가 61 s 이동 중앙값보다 이만큼 이상 높을 때
 MERGE_S = 3         # 이 간격 안의 피크는 하나의 후보로 묶음
 PAD_S = 1           # 후보 구간 앞뒤 여유
+EVENT_SEARCH_S = 60  # 지점1 야장 이벤트: 기록 시각 앞뒤로 피크를 찾는 범위
+EVENT_EDGE_DB = 6.0  # 지점1 이벤트 제외 구간: 100 ms LAFmax가 61 s 중앙값 + 이 값 이상인 연속 구간
+CLOCK_OFFSET_S = 1.6  # 추정 시계 차이(지점2가 늦음, 사이렌 녹음 교차상관 1.59 s). 그림·보정에는 쓰지 않고 상대 지점 확인에만 사용
 
 
 def T(hms):
@@ -177,28 +184,69 @@ def main():
         row["비고"] = max_note
         metric_rows.append(row)
 
-    # 지점1: 야장 기록 이벤트 제외
+    # 지점1: 야장 기록 이벤트를 실제 피크와 대조해 제외 구간을 정한다(사용자 지시 2026-10-23)
+    # 야장 시각 ±EVENT_SEARCH_S 안에서 1초 이동 LAeq가 61 s 이동 중앙값보다 PEAK_DB 이상 돌출한 피크 중
+    # 야장 구간에 가장 가까운 것을 고르고, 100 ms LAFmax가 (중앙값 + EVENT_EDGE_DB) 이상인 연속 구간을 제외한다.
     for rnd, lo, hi, what in P1_EVENTS:
         s = S[(1, rnd)]
-        m = overlap_mask(s, T(lo), T(hi))
-        seg = s.lmax[m]
+        b = S[(2, rnd)]
+        ta, la = moving_1s(s)
+        med = rolling_median(la, 601)                  # 0.1 s 간격 → 601개 = 61 s
+        prom = la - med
+        win = (ta >= T(lo) - np.timedelta64(EVENT_SEARCH_S * 1000, "ms")) & \
+              (ta <= T(hi) + np.timedelta64(EVENT_SEARCH_S * 1000, "ms"))
+        cand = np.where(win & (prom >= PEAK_DB))[0]
+        note_mid = T(lo) + (T(hi) - T(lo)) / 2
+        m_note = overlap_mask(s, T(lo), T(hi))
+        if len(cand) == 0:
+            event_rows.append({"지점": 1, "회차": rnd, "구분": "대조 실패(미제외)", "시작": lo, "끝": hi,
+                               "길이_s": 0, "구간_LAFmax": r1(np.nanmax(s.lmax[m_note])), "내용": what,
+                               "근거": f"야장 시각 ±{EVENT_SEARCH_S} s 안에 돌출 피크 없음", "상대지점_동시각": "", "비고": ""})
+            continue
+        # 같은 피크에 속한 연속 샘플은 묶어서 최대값 위치를 쓴다
+        k = cand[np.argmin(np.abs((ta[cand] - note_mid) / np.timedelta64(1, "ms")))]
+        grp = cand[np.abs(cand - k) <= 30]
+        k = grp[np.argmax(la[grp])]
+        t_peak = ta[k] - np.timedelta64(500, "ms")      # 1초 이동창의 중앙
+        # 100 ms 자료에서 피크 주변 연속 구간
+        # 피크 ±1 s 안에서 100 ms LAFmax 최대 샘플을 찾고, LAFmax ≥ 중앙값 + EVENT_EDGE_DB 인 연속 구간으로 넓힌다
+        near = np.where(np.abs((s.t_end - t_peak) / np.timedelta64(1, "ms")) <= 1000)[0]
+        i0 = int(near[np.nanargmax(s.lmax[near])])
+        thr = med[k] + EVENT_EDGE_DB
+        a0 = i0
+        while a0 > 0 and s.lmax[a0 - 1] >= thr and i0 - a0 < 50:
+            a0 -= 1
+        a1 = i0
+        while a1 < len(s.lmax) - 1 and s.lmax[a1 + 1] >= thr and a1 - i0 < 50:
+            a1 += 1
+        m = np.zeros(len(s.leq), bool)
+        m[a0: a1 + 1] = True
         excl.setdefault((1, rnd), np.zeros(len(s.leq), bool))
         excl[(1, rnd)] |= m
-        event_rows.append({"지점": 1, "회차": rnd, "구분": "제외(야장 기록)", "시작": lo, "끝": hi,
-                           "길이_s": round(m.sum() * s.dt, 1), "구간_LAFmax": r1(np.nanmax(seg)),
-                           "내용": what, "근거": "지점1 야장 6절 이벤트 기록(기준 시계: 네이버 시계)",
-                           "지점1_동시각": "", "비고": ""})
-    # 지점1 1회 야장 구간에 뚜렷한 피크가 없어 근처 피크를 함께 기록(제외에는 쓰지 않음)
-    s = S[(1, 1)]
-    m = overlap_mask(s, T("16:21:33"), T("16:21:35"))
-    m_note = overlap_mask(s, T("16:21:00"), T("16:21:03"))
-    event_rows.append({"지점": 1, "회차": 1, "구분": "참고(미제외)", "시작": "16:21:33", "끝": "16:21:35",
-                       "길이_s": 2.0, "구간_LAFmax": r1(np.nanmax(s.lmax[m])),
-                       "내용": "야장 시각 약 30 s 뒤의 돌출 피크",
-                       "근거": f"야장 16:21:00~03 구간의 LAFmax는 {np.nanmax(s.lmax[m_note]):.1f} dB로 주변과 차이가 작음",
-                       "지점1_동시각": "", "비고": "오토바이 실제 통과 시각이 이쪽일 가능성. 확정하지 않음"})
+        t0 = s.t_end[a0] - np.timedelta64(100, "ms")
+        t1 = s.t_end[a1]
+        shift = (t_peak - note_mid) / np.timedelta64(1, "ms") / 1000
+        # 지점2(약 1.6 s 늦은 시계)에서 같은 시각의 레벨: 보도 위 오토바이라면 지점2에는 작게 나타나야 함
+        tb = b.t_end + np.timedelta64(int(CLOCK_OFFSET_S * 1000), "ms")
+        wb = (tb >= t0 - np.timedelta64(1000, "ms")) & (tb <= t1 + np.timedelta64(1000, "ms"))
+        b_txt = f"지점2 같은 시각(시계차 {CLOCK_OFFSET_S} s 반영) 1초 LAeq 최대 {b.leq[wb].max():.1f} dB, 지점2 중앙값 {np.median(b.leq):.1f}"
+        event_rows.append({"지점": 1, "회차": rnd, "구분": "제외(야장 기록 + 피크 대조)", "시작": fmt(t0), "끝": fmt(t1),
+                           "길이_s": round(m.sum() * s.dt, 1), "구간_LAFmax": r1(np.nanmax(s.lmax[m])),
+                           "내용": f"{what}. 야장 기록 {lo}~{hi}",
+                           "근거": f"야장 시각 ±{EVENT_SEARCH_S} s 안 가장 가까운 돌출 피크(중앙값 +{prom[k]:.1f} dB), "
+                                   f"피크 {fmt(t_peak)} = 야장 구간 중앙에서 {shift:+.1f} s. 제외 구간 = 100 ms LAFmax ≥ 중앙값 + {EVENT_EDGE_DB:.0f} dB 연속 구간. "
+                                   f"야장 구간 자체의 LAFmax {np.nanmax(s.lmax[m_note]):.1f} dB",
+                           "상대지점_동시각": b_txt, "비고": ""})
 
     # 지점2: 피크 후보 자동 탐지(확정 아님) + 지점1 동시각 확인
+    # wav_check.py 가 만든 녹음 순음 지표가 있으면 경적 후보 선별에 쓴다(없으면 야장 힌트만)
+    tonal = {}
+    tpath = RES / "특이사항_후보_음색지표.csv"
+    if tpath.exists():
+        with open(tpath, encoding="utf-8-sig") as f:
+            for row in csv.DictReader(x for x in f if not x.startswith("#")):
+                if row["지점"] == "2":
+                    tonal[row["시작"]] = float(row["순음프레임_비율_%"])
     for r in (1, 2, 3):
         b = S[(2, r)]
         a = S[(1, r)]
@@ -211,7 +259,16 @@ def main():
             a_peak = la[win].max() if win.any() else np.nan
             a_t = fmt(ta[win][np.argmax(la[win])] - np.timedelta64(500, "ms")) if win.any() else ""
             hint = P2_HINT.get(r)
-            used = bool(hint and T(hint[0]) <= c["t_peak"] <= T(hint[1]))
+            in_hint = bool(hint and T(hint[0]) <= c["t_peak"] <= T(hint[1]))
+            tf = tonal.get(fmt(c["lo"]))
+            if r == 2:
+                # 사이렌: 녹음 스펙트로그램에서 확인한 지속 구간(SIREN_WIN)을 따로 제외하므로 후보 구간은 표시만
+                used = False
+            elif tonal:
+                # 경적: 야장 힌트 구간 안 + 녹음 순음 프레임 비율 ≥ HORN_TONAL_PCT 인 후보만 제외(참고값)
+                used = in_hint and tf is not None and tf >= HORN_TONAL_PCT
+            else:
+                used = in_hint
             if used:
                 excl[(2, r)] |= overlap_mask(b, c["lo"], c["hi"])
             event_rows.append({
@@ -219,9 +276,21 @@ def main():
                 "시작": fmt(c["lo"]), "끝": fmt(c["hi"]),
                 "길이_s": round((c["hi"] - c["lo"]) / np.timedelta64(1, "s"), 1),
                 "구간_LAFmax": "", "내용": f"1초 LAeq 최대 {c['L_peak']:.1f} dB (중앙값 +{c['excess']:.1f})",
-                "근거": f"자동 탐지(61 s 이동 중앙값 +{PEAK_DB:.0f} dB 이상). " + (f"야장 힌트 '{hint[2]}' 구간 안" if used else "야장 힌트와 대응 안 됨"),
-                "지점1_동시각": f"±3 s 내 1초 LAeq 최대 {a_peak:.1f} dB @ {a_t} (지점1 중앙값 {med_a:.1f})",
+                "근거": f"자동 탐지(61 s 이동 중앙값 +{PEAK_DB:.0f} dB 이상). "
+                        + (f"야장 힌트 '{hint[2]}' 구간 안" if in_hint else "야장 힌트와 대응 안 됨")
+                        + (f". 녹음 순음 프레임 {tf:.0f} %" if tf is not None else ""),
+                "상대지점_동시각": f"±3 s 내 1초 LAeq 최대 {a_peak:.1f} dB @ {a_t} (지점1 중앙값 {med_a:.1f})",
                 "비고": "확정 아님"})
+
+    # 지점2 2회 사이렌: 녹음 스펙트로그램(figures/사이렌후보_스펙트로그램_2회.png)에서 확인한 지속 구간을 제외(참고값)
+    b = S[(2, 2)]
+    m = overlap_mask(b, T(SIREN_WIN[0]), T(SIREN_WIN[1]))
+    excl[(2, 2)] |= m
+    event_rows.append({"지점": 2, "회차": 2, "구분": "제외(녹음 확인 사이렌, 참고값)", "시작": SIREN_WIN[0], "끝": SIREN_WIN[1],
+                       "길이_s": round(m.sum() * b.dt, 1), "구간_LAFmax": "",
+                       "내용": "사이렌: 1 kHz 순음과 오르내리는 스윕(yelp/hi-lo) 패턴",
+                       "근거": "야장 '16:31 사이렌' + WAV 스펙트로그램에서 두 지점 모두 같은 패턴(지점1은 약 1.6 s 늦게 기록)",
+                       "상대지점_동시각": "지점1 녹음에도 같은 사이렌 패턴", "비고": "구간 경계는 눈으로 읽은 값(±2 s)"})
 
     # 특이사항 제외 LAeq (원래 값은 그대로 두고 병기)
     for row in metric_rows:
@@ -232,7 +301,8 @@ def main():
         if m.any():
             row["LAeq_특이사항제외"] = r1(energy_mean(s.leq[:n][~m]))
             row["제외_길이_s"] = round(m.sum() * s.dt, 1)
-            row["제외_근거"] = "야장 기록" if p == 1 else "자동 탐지 후보(야장 힌트 대응) — 참고값"
+            row["제외_근거"] = ("야장 기록 + 피크 대조" if p == 1 else
+                               "녹음 확인 사이렌 구간 — 참고값" if r == 2 else "야장 힌트 + 녹음 순음 후보(경적) — 참고값")
         else:
             row["LAeq_특이사항제외"] = row["LAeq_재계산"]
             row["제외_길이_s"] = 0
@@ -263,7 +333,7 @@ def main():
     fields += ["LAeq_전체파일_재계산", "LAeq_특이사항제외", "제외_길이_s", "제외_근거", "비고"]
     write_csv(RES / "회차별_소음지표.csv", metric_rows, fields)
     write_csv(RES / "특이사항_구간.csv", event_rows,
-              ["지점", "회차", "구분", "시작", "끝", "길이_s", "구간_LAFmax", "내용", "근거", "지점1_동시각", "비고"])
+              ["지점", "회차", "구분", "시작", "끝", "길이_s", "구간_LAFmax", "내용", "근거", "상대지점_동시각", "비고"])
     write_csv(RES / "시계차이_추정.csv", clock_rows,
               ["회차", "방법", "추정_차이_s(지점1-지점2)", "상관계수_최대", "상관계수_차이0", "비고"])
 
@@ -350,10 +420,13 @@ def main():
             lo, hi = T(e["시작"]), T(e["끝"])
             if e["지점"] == 1 and e["구분"].startswith("제외"):
                 ax.axvspan(lo, hi, color=COLOR[1], alpha=0.25, lw=0)
-                ax.annotate(f"지점1 오토바이(야장 {e['시작'][:8]})", (lo, 88), fontsize=7.5, color="#333", ha="center")
+                ax.annotate(f"지점1 오토바이(피크 대조 {e['시작'][:8]})", (lo, 88), fontsize=7.5, color="#333", ha="center")
             elif e["지점"] == 1:
                 ax.axvspan(lo, hi, facecolor="none", edgecolor=COLOR[1], hatch="///", lw=0.6)
                 ax.annotate("지점1 참고 피크", (lo, 86), fontsize=7.5, color="#333", ha="center")
+            elif e["구분"].startswith("제외"):
+                ax.axvspan(lo, hi, color=COLOR[2], alpha=0.18, lw=0)
+                ax.annotate("지점2 사이렌(녹음 확인)", (lo, 88), fontsize=7.5, color="#333", ha="left")
             else:
                 k += 1
                 ax.axvspan(lo, hi, facecolor="none", edgecolor=COLOR[2], hatch="\\\\\\", lw=0.6)
@@ -366,7 +439,7 @@ def main():
         ax.set_ylim(50, 90)
         ax.xaxis.set_major_formatter(hm)
         ax.legend(loc="lower left", fontsize=8, frameon=True, facecolor="white", edgecolor="none", framealpha=0.9, ncol=2)
-        fig.text(0.99, 0.01, f"{AI_NOTE} · 각 기기 내부 시계 그대로(시계 보정 미적용, 지점2가 약 1.5 s 늦음) · "
+        fig.text(0.99, 0.01, f"{AI_NOTE} · 각 기기 내부 시계 그대로(시계 보정 미적용, 지점2가 약 1.6 s 늦음) · "
                  "주황 빗금: 지점2 자동 탐지 후보(확정 아님, 번호는 특이사항_구간.csv 순서)",
                  ha="right", fontsize=7, color="#666")
         fig.tight_layout(rect=(0, 0.03, 1, 1))
@@ -427,7 +500,11 @@ def main():
     def add(group, item, value, unit, source, note=""):
         mv.append({"구분": group, "항목": item, "값": value, "단위": unit, "출처": source, "비고": note})
 
-    gps_warn = "GPS ±9~18 m이고 좌표가 소수 셋째 자리(약 ±50 m)로 반올림됨 → 수치지도에서 주소·도로끝선 거리로 재확인 필요"
+    gps_warn = "GPS ±9~18 m이고 좌표가 소수 셋째 자리(약 ±50 m)로 반올림됨 → 모델에는 쓰지 않고 수치지도 기반 좌표(아래)를 씀"
+    mp = {}
+    if (BASE / "model" / "points.csv").exists():
+        with open(BASE / "model" / "points.csv", encoding="utf-8") as f:
+            mp = {int(r["point_id"][1]): r for r in csv.DictReader(f)}
     recv = {1: dict(name="사가정로 123 앞(도로 북측)", lat=37.577, lon=127.058, alt=27.9, acc=18, edge=4.213, h=1.309,
                     osm=(37.5779, 127.0586), bld=1.001),
             2: dict(name="전농동SK아파트상가입구(도로 남측, 사가정로 148)", lat=37.578, lon=127.059, alt=33.7, acc=9,
@@ -445,6 +522,16 @@ def main():
         add(g, "도로끝선(연석)까지 거리", v["edge"], "m", "실측", "")
         if v["bld"]:
             add(g, "가장 가까운 건물 경계까지", v["bld"], "m", "실측", "야장 기재. 반사음 영향 가능")
+        if p in mp:
+            r = mp[p]
+            src = "수치지도 사가정로 중심선·보도 경계(A0033320) + 실측 도로끝선 거리. scripts/model_compare.py"
+            add(g, "모델 좌표 x (EPSG:5186)", r["x"], "m", "외부자료", src)
+            add(g, "모델 좌표 y (EPSG:5186)", r["y"], "m", "외부자료", src)
+            add(g, "모델 좌표 위도·경도", f'{r["lat"]}, {r["lon"]}', "deg", "외부자료", src)
+            add(g, "중심선→도로끝선 / 중심선→수음점", f'{r["curb_from_centerline_m"]} / {r["receiver_from_centerline_m"]}', "m",
+                "외부자료", "도로끝선 = 수치지도 보도 안쪽 경계")
+            add(g, "수음점→건물 벽(수치지도)", r["building_from_receiver_m"], "m", "외부자료",
+                "야장 값과 비교용(지점1 1.001 m 기재)")
     for p in (1, 2):
         g = f"교통_{TRAFFIC[p]['direction']}"
         for r in (1, 2, 3):
@@ -455,13 +542,14 @@ def main():
         add(g, "3회 평균 Q", rows["Q_대/h"], "대/h", "현장기록", "")
         add(g, "3회 평균 p", rows["p_%"], "%", "현장기록", "")
         add(g, "차종 구분", "Pkw / Lkw1 = 화물차 전부 / Lkw2 = 0", "", "가정", "화물차를 모두 RLS-19 Lkw1로 보고 Lkw2는 0대로 가정")
-        add(g, "계수 차로", "지점 쪽 가까운 차로 방향", "", "가정", "야장 방향 칸 공란. 폴더명(상행/하행)과 지도 판정이 반대 — 확인 필요")
+        add(g, "계수 차로", "지점 쪽 가까운 차로 방향", "", "현장기록", "방향은 지도 기준으로 확정(사용자 지시 2026-10-23). 원시자료 폴더명의 상행/하행 표기는 반대로 붙어 있음")
     rows = [x for x in trows if x["회차"] == "평균" and x["구분"] == "양방향 합계"][0]
     add("교통_양방향", "3회 평균 Q", rows["Q_대/h"], "대/h", "현장기록", "")
     add("교통_양방향", "3회 평균 p", rows["p_%"], "%", "현장기록", "")
-    add("교통_공통", "차량 속도", "미측정", "", "가정", "모델 비교 때는 가정값을 쓴다. 예: 50 km/h(서울 도심 일반도로 제한속도, 현장 표지 확인 필요)")
-    add("교통_공통", "모델 사용 속도(가정)", 50, "km/h", "가정", "제한속도 기준 가정. 실제 주행속도 아님")
-    add("교통_공통", "신호 교차로", "전농사거리 중심에서 약 70 m", "", "외부자료", "OSM 도로선 기준 추정. RLS-19 교차로 보정 검토")
+    add("교통_공통", "차량 주행속도", "미측정", "", "현장기록", "")
+    add("교통_공통", "모델 사용 속도 = 규정(최고) 속도", 50, "km/h", "외부자료",
+        "사가정로 제한속도 50 km/h(OSM maxspeed=50, 서울 안전속도 5030). 승용차·화물차 모두 적용. 실제 주행속도 아님(최고속도 가정)")
+    add("교통_공통", "신호 교차로", "전농사거리 중심에서 지점1 약 88 m, 지점2 약 100 m", "", "외부자료", "수치지도 도로중심선 거리. RLS-19 교차로 보정(120 m 이내) 대상")
     add("기상", "풍속", 1.8, "m/s", "외부자료", "인근 기상정보(네이버 지도 날씨), 현장 미실측")
     add("기상", "기온", 15, "°C", "외부자료", "인근 기상정보(네이버 지도 날씨), 현장 미실측")
     add("기상", "습도", "미기록", "%", "외부자료", "")
@@ -476,7 +564,7 @@ def main():
     add("측정조건", "교정", "양 지점 모두 실시(94 dB, 1 kHz 교정기)", "", "현장기록",
         "지점2 야장: 측정 전 93.7, 측정 후 94 dB. 지점1 수치는 미기록")
     add("측정조건", "방풍망", "양 지점 장착", "", "현장기록", "기기 WS-10 보정 설정과 일치")
-    add("측정조건", "두 소음계 시계 차이", "약 1.5 s(지점2가 늦음, 추정)", "s", "실측", "보정 미적용. 10분 LAeq 영향은 무시 가능")
+    add("측정조건", "두 소음계 시계 차이", "약 1.6 s(지점2가 늦음, 추정)", "s", "실측", "1초 LAeq 교차상관 1.4~1.7 s, 사이렌 녹음 교차상관 1.59 s. 보정 미적용. 10분 LAeq 영향은 무시 가능")
     write_csv(MV / "모델검증_입력자료.csv", mv, ["구분", "항목", "값", "단위", "출처", "비고"])
 
     print("완료:", RES, FIG, MV)

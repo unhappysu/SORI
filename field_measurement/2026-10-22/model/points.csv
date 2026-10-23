@@ -1,0 +1,3 @@
+point_id,x,y,h,lon,lat,s_along_m,curb_from_centerline_m,receiver_from_centerline_m,building_from_receiver_m
+P1,205192.18,553140.81,1.309,127.058779,37.577802,88.0,10.67,14.88,1.01
+P2,205208.1,553115.46,1.312,127.058959,37.577573,100.0,9.23,12.55,2.93
