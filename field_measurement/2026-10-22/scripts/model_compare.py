@@ -134,7 +134,7 @@ def traffic_rows(scen):
                  p1_day=round(p1, 2), p2_day=0, p1_night=round(p1, 2), p2_night=0, v_pkw=opt["v"], v_lkw=opt["v"],
                  surface=opt["surface"],
                  basis="measured",
-                 note="현장 계수(16시대, 양방향). 화물차 전부 Lkw1·Lkw2 0 가정. 속도 = 규정 속도. 야간은 가정")]
+                 note="현장 계수(16시대, 양방향). 화물차(이륜차 포함) 전부 Lkw1·Lkw2 0 가정. 속도 = 규정 속도. 야간은 가정")]
     rows += saga_ufid_rows(split_east, round(q, 1), qn, round(p1, 2), opt["v"], opt["surface"])
     for name, md, mn, note in OTHER_ROADS:
         rows.append(dict(key=name, key_type="name", road_type="gemeinde", M_day=md, M_night=mn,
@@ -192,7 +192,7 @@ def sensitivity(model_avg):
         ("노면 AC11(밀입도 아스팔트콘크리트, 표 4a)", q, p, 0, 50, 50, "AC11"),
         ("속도 30 km/h + 노면 AC11", q, p, 0, 30, 30, "AC11"),
         ("속도 30 km/h + 노면 AC11 + 화물차 절반 Pkw", q, p / 2, 0, 30, 30, "AC11"),
-        ("화물차 전부 Lkw2(상한 확인용)", q, 0, p, 50, 50, "ref"),
+        ("화물차 전부 Lkw2(이륜차 비중의 상한, RLS-19는 이륜차를 Lkw2로 봄)", q, 0, p, 50, 50, "ref"),
     ]
     meas = {pid: 10 * np.log10(np.mean([10 ** (MEASURED[pid][r] / 10) for r in (1, 2, 3)])) for pid in (1, 2)}
     rows = []
@@ -296,7 +296,7 @@ def plot_zoom_map():
     cb = fig.colorbar(im, ax=ax, shrink=0.8, ticks=levels)
     cb.set_label("LrT (dB(A)), 격자 높이 4 m")
     ax.set_title("사가정로 측정점 주변 소음지도 — 측정 교통량(16시대 3회 평균) 입력\n"
-                 "Q 2,540 대/h, 화물차 25.8 %(Lkw1), 50 km/h(규정 속도). 다른 도로는 가정 교통량", loc="left", fontsize=9.5)
+                 "Q 2,540 대/h, 화물차 25.8 %(이륜차 포함, Lkw1), 50 km/h(규정 속도). 다른 도로는 가정 교통량", loc="left", fontsize=9.5)
     fig.text(0.99, 0.01, f"{AI_NOTE} · 격자 2.5 m · 측정점 표기값은 마이크 높이 1.3 m 계산값", ha="right", fontsize=7, color="#666")
     fig.tight_layout(rect=(0, 0.02, 1, 1))
     fig.savefig(BASE / "figures" / "소음지도_측정점주변_AVG.png", dpi=170)
