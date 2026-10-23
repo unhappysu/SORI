@@ -10,7 +10,7 @@
 sh field_measurement/2026-10-22/scripts/run_all.sh
 ```
 
-- 전체 소요 시간은 약 5분이다.
+- 전체 소요 시간은 약 7분이다.
 - `--skip-map`을 붙이면 소음지도 재계산을 건너뛴다.
 - 원시자료 복사본 `raw_copy/`는 git에 넣지 않는다. 원본에서 다시 복사한 뒤 `SHA256SUMS_원본.txt`로 확인한다.
 
@@ -44,4 +44,4 @@ cd field_measurement/2026-10-22/raw_copy && shasum -a 256 -c ../SHA256SUMS_원�
 | `results/` | 지표·교통량·특이사항·시계 차이·모델 비교·민감도 CSV |
 | `figures/` | 시계열, 지점 비교, 산점도, 스펙트로그램, 모델 비교, 소음지도(PNG/PDF) |
 | `model_validation/` | 모델 검증용 입력자료(출처 열 포함) |
-| `model/` | noisemap 계산 폴더(시나리오별 `config.yaml`·`traffic.csv`, `points.csv`). `*/output/`은 git 무시 대상이며 3D 뷰어 `AVG/output/noise3d.html`도 여기에 있다 |
+| `model/` | noisemap 계산 폴더(시나리오별 `config.yaml`·`traffic.csv`, `points.csv`). `*/output/`은 git 무시 대상이며 3D 뷰어 `AVG_v50/output/noise3d.html`도 여기에 있다. 시나리오 폴더 = `<회차>_v<속도>`(R1~R3·AVG × 30/40/50 km/h) |

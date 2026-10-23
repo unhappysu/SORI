@@ -1,10 +1,11 @@
-# AI(Claude)를 활용하여 제작하였음. baseline/config.yaml 과 같은 조건 + 측정점(점 수음점)
+# AI(Claude)를 활용하여 제작하였음. baseline/config.yaml 과 같은 조건 + 측정점(점 수음점) + 노면 AC11
 project: {name: "사가정로_측정비교", output_dir: "output"}
 crs: 5186
 input:
   map: {folders: ["/Users/gustnbijou_/Downloads/3-2/소음진동설계/전농사거리_수치지도"]}
   traffic: {path: "traffic.csv"}
   road_alias: {"전농로25길": "전농로"}
+  surface_map: {"아스팔트": "AC11", "아스팔트콘크리트": "AC11"}
 receivers:
   center: [205108.0, 553110.0]
   grid: {enabled: false, size: [480.0, 520.0], step: 2.5, heights: [4.0]}
