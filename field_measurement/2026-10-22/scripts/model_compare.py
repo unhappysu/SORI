@@ -8,16 +8,17 @@ AI(Claude)를 활용하여 제작하였음.
   R1~R3 = 회차별 10분 계수 × 6, AVG = 3회 계수 평균 × 6(= 30분 합계 × 2).
 - 공통 조건(2026-10-23 사용자 지시)
   · 노면: 수치지도 '아스팔트'·'아스팔트콘크리트' → RLS-19 표 4a AC11(설정 surface_map). 모든 아스팔트 도로에 적용.
-  · 교차로 보정: 가장 가까운 '신호' 교차로까지 거리로 D_K = 3·max(1 − x/120, 0)을 다시 매긴다(아래 apply_signal_dk).
+  · 교차로 보정: noisemap 설정 input.junctions.dk_rule = nearest_signal(커밋 216882d).
+    가장 가까운 신호·회전교차로 기준 D_K = KKT·max(1 − x/120, 0)와 기본 판정 값 중 큰 쪽.
   · 지점2 수음점: 야장 판독값대로 건물 벽에서 1.13 m 앞.
 - 소음지도: AVG_v50(규정 속도) 교통량으로 격자·파사드 전체 계산(run) → plot.
 
-교차로 보정을 build 뒤에 다시 매기는 이유
-- noisemap 은 RLS-19 3.3.7 을 '그 음원선의 가장 가까운 교차점'으로 구현한다. 측정점 부근에서 가장 가까운 교차점은
-  전농로14길(1차로, 폭 3.3 m) 접속부와 동쪽 이면도로 접속부(유형 other)라서 전농사거리 신호교차로 보정이 0 dB 가 된다.
-- run 은 build 가 쓴 output/sources.csv 의 LWp·LW 를 그대로 읽고, D_K 는 RLS-19 식 (5)에서 모든 차종 LW 에 같은 값으로
-  더해지므로 LW′ 도 정확히 ΔD_K 만큼 변한다. 그래서 sources.csv 의 D_K·LWp·LW 를 고친 뒤 run 하면 코드 수정 없이 같은 결과가 된다.
-- noisemap 기본 판정 결과(point_result_default.csv)도 함께 남겨 차이를 보고한다.
+교차로 보정 규칙
+- noisemap 기본(dk_rule = nearest)은 RLS-19 3.3.7 을 '그 음원선의 가장 가까운 교차점'으로 구현한다. 측정점 부근에서는
+  전농로14길(1차로, 폭 3.3 m) 접속부 등 other 유형이 잡혀 전농사거리 신호교차로 보정이 0 dB 가 된다.
+- 그래서 dk_rule = nearest_signal 로 계산한다. 비교를 위해 각 시나리오를 기본 규칙으로도 build·점 계산해
+  output/point_result_default.csv 로 남긴다(최종 config.yaml·output 은 nearest_signal 결과).
+- 이전 판(커밋 bf31537)은 build 뒤 sources.csv 를 고쳐 같은 계산을 했고, 측정점 값은 1e-12 dB 이내로 같다(216882d 보고).
 
 수음점 좌표(수치지도 기준)
 - 도로끝선 = 수치지도 보도(A0033320) 안쪽 경계. 사가정로 중심선(UFID …465)에서 북측 10.7 m, 남측 9.2 m.
@@ -56,7 +57,6 @@ SPEEDS = (30.0, 40.0, 50.0)     # 사가정로 주행속도 시나리오(승용�
 ROUNDS = ("R1", "R2", "R3", "AVG")
 MAP_SCEN = "AVG_v50"
 SURFACE_MAP = {"아스팔트": "AC11", "아스팔트콘크리트": "AC11"}
-SIGNAL_KKT = 3.0                # RLS-19 표 5, 신호교차로
 
 # 측정하지 않은 도로: 기존 시나리오 A_diurnal 과 같은 가정(기준선 DTV × 서울 주간 계수 0.0518)
 OTHER_ROADS = [
@@ -162,7 +162,7 @@ FIELDS = ["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "
           "v_pkw", "v_lkw", "surface", "note", "basis", "dir_split_fwd", "dir_basis"]
 
 
-def write_config(d, grid):
+def write_config(d, grid, dk_rule="nearest_signal"):
     smap = ", ".join(f'"{k}": "{v}"' for k, v in SURFACE_MAP.items())
     cfg = f"""# {AI_NOTE}. baseline/config.yaml 과 같은 조건 + 측정점(점 수음점) + 노면 AC11
 project: {{name: "사가정로_측정비교", output_dir: "output"}}
@@ -172,6 +172,7 @@ input:
   traffic: {{path: "traffic.csv"}}
   road_alias: {{"전농로25길": "전농로"}}
   surface_map: {{{smap}}}
+  junctions: {{dk_rule: {dk_rule}}}
 receivers:
   center: [205108.0, 553110.0]
   grid: {{enabled: {str(grid).lower()}, size: [480.0, 520.0], step: 2.5, heights: [4.0]}}
@@ -187,32 +188,6 @@ def nm(args, cwd):
     print("  $ python -m noisemap", " ".join(args), f"(in {cwd.name})", flush=True)
     subprocess.run([sys.executable, "-m", "noisemap", *args], cwd=cwd, env=env, check=True,
                    stdout=subprocess.DEVNULL)
-
-
-def apply_signal_dk(out):
-    """가장 가까운 신호교차로 기준으로 D_K 를 다시 매기고 LWp·LW 를 같은 차이만큼 고친다(코드 수정 없음).
-
-    D_K_new = max(D_K_noisemap, KKT_signal · max(1 − x_sig/120, 0)), x_sig = 음원점에서 가장 가까운 signal 교차점까지 거리.
-    """
-    S = pd.read_csv(out / "sources.csv")
-    if "D_K_noisemap" in S.columns:              # 이미 고친 파일이면 다시 고치지 않는다
-        return
-    J = pd.read_csv(out / "junctions_used.csv")
-    sig = J[J["type"] == "signal"][["x", "y"]].values
-    if len(sig) == 0:
-        raise RuntimeError("신호교차로가 판정되지 않음")
-    d = np.sqrt(((S[["x", "y"]].values[:, None, :] - sig[None, :, :]) ** 2).sum(-1)).min(axis=1)
-    dk_sig = SIGNAL_KKT * np.clip(1.0 - d / 120.0, 0.0, None)
-    new = np.maximum(S["D_K"].values, dk_sig)
-    delta = new - S["D_K"].values
-    S["D_K_noisemap"] = S["D_K"]
-    S["x_signal"] = d
-    S["D_K"] = new
-    for c in ("LWp_day", "LW_day", "LWp_night", "LW_night"):
-        S[c] = S[c] + delta
-    S.to_csv(out / "sources.csv", index=False)
-    pd.DataFrame([{"신호교차점_수": len(sig), "보정_바뀐_음원": int((delta > 0).sum()), "음원_전체": len(S),
-                   "ΔD_K_최대_dB": round(float(delta.max()), 3)}]).to_csv(out / "signal_dk_patch.csv", index=False)
 
 
 def meas_for(rnd, pid):
@@ -374,12 +349,13 @@ def main():
                 w.writeheader()
                 for r in rows:
                     w.writerow({k: r.get(k, "") for k in FIELDS})
-            write_config(d, grid=map_run)
             out = d / "output"
+            write_config(d, grid=False, dk_rule="nearest")           # noisemap 기본 교차점 판정(비교용)
             nm(["build", "-c", "config.yaml"], d)
-            nm(["run", "-c", "config.yaml", "--points"], d)          # noisemap 기본 교차점 판정
+            nm(["run", "-c", "config.yaml", "--points"], d)
             shutil.copyfile(out / "point_result.csv", out / "point_result_default.csv")
-            apply_signal_dk(out)                                     # 신호교차로 보정으로 다시 매김
+            write_config(d, grid=map_run)                            # 신호교차로 기준(dk_rule = nearest_signal)
+            nm(["build", "-c", "config.yaml"], d)
             nm(["run", "-c", "config.yaml"] + ([] if map_run else ["--points"]), d)
             if map_run:
                 nm(["plot", "-c", "config.yaml"], d)

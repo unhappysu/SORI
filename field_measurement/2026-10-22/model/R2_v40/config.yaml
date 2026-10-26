@@ -6,6 +6,7 @@ input:
   traffic: {path: "traffic.csv"}
   road_alias: {"전농로25길": "전농로"}
   surface_map: {"아스팔트": "AC11", "아스팔트콘크리트": "AC11"}
+  junctions: {dk_rule: nearest_signal}
 receivers:
   center: [205108.0, 553110.0]
   grid: {enabled: false, size: [480.0, 520.0], step: 2.5, heights: [4.0]}
