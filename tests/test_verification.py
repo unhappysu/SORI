@@ -205,6 +205,50 @@ def test_junction_membership():
     assert set(reach[0]) & set(sig.index)
 
 
+def test_dk_rule_nearest_signal():
+    # 간선 A(6차로)·B(6차로)가 (0,0) 신호교차로, 간선 A 의 x = −90 에 폭 좁은 이면도로(1차로) T자 접속(other).
+    # nearest: x = −100 음원점은 가장 가까운 교차점 = 이면도로 접속부(10 m, other) → D_K = 0
+    # nearest_signal: 신호교차로까지 100 m → D_K = 3 · (1 − 100/120), 기존 값과 큰 쪽
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from noisemap import build, config
+    cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
+    assert cfg["input"]["junctions"]["dk_rule"] == "nearest"
+    rd = gpd.GeoDataFrame({"lanes": [6, 6, 6, 6, 1], "axis": ["A", "A", "B", "B", "_u"], "fid": range(5)},
+                          geometry=[LineString([(-300, 0), (0, 0)]), LineString([(0, 0), (300, 0)]),
+                                    LineString([(0, -300), (0, 0)]), LineString([(0, 0), (0, 300)]),
+                                    LineString([(-90, 0), (-90, 80)])])
+    J, reach = build.junctions(cfg, rd)
+    Jxy, Jt = J[["x", "y"]].values, J.type.values
+    assert sorted(Jt) == ["other", "signal"]
+    pts = np.array([[-100.0, 0.0], [-30.0, 0.0], [-90.0, 70.0], [-200.0, 0.0]])
+    # nearest (현행 build_sources 와 같은 선택): 도로 A(fid 0) 가 속한 교차점 중 가장 가까운 것
+    def nearest(fid, p):
+        js = sorted(reach[fid]); d = np.hypot(Jxy[js, 0] - p[0], Jxy[js, 1] - p[1]); k = int(np.argmin(d))
+        return R.D_K(float(d[k]), Jt[js][k])
+    dk_near = np.array([nearest(0, pts[0]), nearest(0, pts[1]), nearest(4, pts[2]), nearest(0, pts[3])])
+    assert dk_near[0] == 0.0                                   # 이면도로 접속부가 신호교차로 보정을 가림
+    assert dk_near[1] == pytest.approx(3 * (1 - 30 / 120))    # 신호교차로가 더 가까우면 그대로
+    assert dk_near[2] == 0.0                                   # 이면도로는 신호교차로 미소속
+    dk_s, x_s, k_s = build.dk_nearest_signal(pts[:, 0], pts[:, 1], Jxy, Jt)
+    dk_new = np.maximum(dk_near, dk_s)
+    assert dk_new[0] == pytest.approx(3 * (1 - 100 / 120)) and x_s[0] == pytest.approx(100.0)
+    assert k_s[0] == "signal"
+    assert dk_new[1] == dk_near[1]                             # 기존 값보다 작아지지 않음·같은 교차점이면 동일
+    assert dk_new[2] == pytest.approx(3 * (1 - math.hypot(90, 70) / 120))   # 도로 소속과 무관(거리만)
+    assert dk_new[3] == 0.0 and k_s[3] == "other" and x_s[3] == 999.0      # 120 m 밖
+    assert (dk_new >= dk_near).all()
+    # 회전교차로(KKT 2)와 신호교차로(KKT 3)가 함께 있으면 D_K 가 큰 쪽
+    dk2, x2, k2 = build.dk_nearest_signal([0.0], [0.0], np.array([[0.0, 10.0], [0.0, 60.0]]),
+                                          np.array(["roundabout", "signal"]))
+    assert dk2[0] == pytest.approx(2 * (1 - 10 / 120)) and k2[0] == "roundabout"   # 1.83 > 1.5
+    dk3, _, k3 = build.dk_nearest_signal([0.0], [0.0], np.array([[0.0, 50.0], [0.0, 60.0]]),
+                                         np.array(["roundabout", "signal"]))
+    assert dk3[0] == pytest.approx(3 * (1 - 60 / 120)) and k3[0] == "signal"       # 1.5 > 1.17
+    with pytest.raises(ValueError):
+        config._validate(config._merge(cfg, {"input": {"junctions": {"dk_rule": "signal"}}}))
+
+
 # ======================================================================= 실제 자료에서 발견된 문제 회귀시험
 def test_name_traffic_not_applied_to_narrow_same_name_piece():
     from noisemap import inputs, config

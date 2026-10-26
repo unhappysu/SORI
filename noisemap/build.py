@@ -235,6 +235,23 @@ def junctions(cfg, road):
     return J, reach
 
 
+def dk_nearest_signal(px, py, Jxy, Jtype):
+    """dk_rule: nearest_signal 의 신호·회전교차로 기준 D_K.
+    도로 소속과 무관하게 모든 signal·roundabout 교차점 중 KKT · max(1 − x/120, 0) 이 가장 큰 값.
+    반환 (D_K, x, 유형) — 대상 교차점이 없으면 (0, 999, "other")."""
+    px = np.asarray(px, float); py = np.asarray(py, float)
+    dk = np.zeros(len(px)); xs = np.full(len(px), 999.0); ks = np.full(len(px), "other", dtype=object)
+    for t in ("signal", "roundabout"):
+        m = np.asarray(Jtype) == t
+        if not m.any():
+            continue
+        d = np.hypot(px[:, None] - Jxy[m, 0][None, :], py[:, None] - Jxy[m, 1][None, :]).min(axis=1)
+        v = rls19.KKT[t] * np.clip(1.0 - d / 120.0, 0.0, None)
+        better = v > dk
+        dk[better] = v[better]; xs[better] = d[better]; ks[better] = t
+    return dk, xs, ks
+
+
 # ====================================================================== 음원선
 def _d_edge(nd):
     """Bild 6: 바깥 차로 가장자리에서 음원선까지 거리(차로폭 배수).
@@ -425,6 +442,12 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
     S["h_beb"] = hb; S["w"] = ww
     S["D_refl"] = [rls19.D_refl(h, w) for h, w in zip(hb, ww)]
     S["D_K"] = [rls19.D_K(x, kt) for x, kt in zip(S.x_knot, S.kt)]
+    if cfg["input"]["junctions"].get("dk_rule", "nearest") == "nearest_signal":
+        # 가까운 소도로 접속부(other)가 신호교차로 보정을 가리지 않도록: 신호·회전교차로 기준 값과 큰 쪽
+        dk_s, x_s, k_s = dk_nearest_signal(S.x.values, S.y.values, Jxy, Jtype)
+        S["D_K_nearest"] = S["D_K"]
+        S["x_signal"] = x_s; S["kt_signal"] = k_s
+        S["D_K"] = np.maximum(S["D_K"].values, dk_s)
     for per in ("day", "night"):
         lw = []
         for r in S.itertuples():
@@ -553,6 +576,10 @@ def main(cfg):
     if cfg["input"]["traffic"].get("missing_m", "error") != "error":             # 옵션을 켠 경우에만 기록
         est = T.M_day_from.str.startswith("est_") | T.M_night_from.str.startswith("est_")
         info["traffic_m_estimated"] = {"roads": int(est.sum()), "keys": sorted(set(T._key[est]))}
+    if cfg["input"]["junctions"].get("dk_rule", "nearest") != "nearest":         # 옵션을 켠 경우에만 기록
+        up = S.D_K > S.D_K_nearest
+        info["dk_rule"] = {"rule": cfg["input"]["junctions"]["dk_rule"], "sources_raised": int(up.sum()),
+                           "dD_K_max": round(float((S.D_K - S.D_K_nearest).max()), 3) if len(S) else 0.0}
     if cfg["input"]["traffic"].get("oneway_name_traffic", "apply") != "apply":   # 옵션을 켠 경우에만 기록
         info["roads_oneway_name_fallback"] = int((T.traffic_src == "fallback_oneway").sum())
     if ov is not None:                             # 확인값 파일을 지정한 경우에만 기록(기본 출력은 그대로)

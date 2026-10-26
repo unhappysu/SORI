@@ -63,6 +63,8 @@ DEFAULTS = {
             "auto_type": "signal",
             "cluster_radius": 25.0,
             "user_match_radius": 30.0,
+            "dk_rule": "nearest",                  # D_K 기준 교차점: nearest = 그 음원선이 속한 가장 가까운 교차점(현행)
+                                                   # nearest_signal = 위 값과 가장 가까운 signal·roundabout 교차점 기준 값 중 큰 쪽
         },
         "ground": {
             "method": "general",                   # general: ISO 9613-2 7.3.1 / alternative: 7.3.2(식 10)
@@ -182,6 +184,8 @@ def _validate(c):
         raise ValueError("input.traffic.missing_m 는 error 또는 estimate")
     if c["input"]["traffic"]["oneway_name_traffic"] not in ("apply", "fallback"):
         raise ValueError("input.traffic.oneway_name_traffic 는 apply 또는 fallback")
+    if c["input"]["junctions"]["dk_rule"] not in ("nearest", "nearest_signal"):
+        raise ValueError("input.junctions.dk_rule 는 nearest 또는 nearest_signal")
     m = c["model"]
     if m["source_ground"] not in ("dtm_at_source", "road_profile"):
         raise ValueError("model.source_ground 는 dtm_at_source 또는 road_profile")
