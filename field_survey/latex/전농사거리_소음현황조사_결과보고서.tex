@@ -1,0 +1,572 @@
+%% 전농사거리 소음현황조사 결과보고서(제출본)
+%% 컴파일: xelatex (목차·전체 쪽수 반영을 위해 2회)
+%% 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음.
+\documentclass[10.5pt,a4paper]{article}
+\usepackage[a4paper,top=22mm,bottom=24mm,left=22mm,right=22mm,headsep=6mm,footskip=10mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xetexko}
+\IfFontExistsTF{Noto Serif CJK KR}{%
+  \setmainfont{Noto Serif CJK KR}\setsansfont{Noto Sans CJK KR}%
+  \setmainhangulfont{Noto Serif CJK KR}\setsanshangulfont{Noto Sans CJK KR}%
+  \setmonohangulfont{Noto Sans CJK KR}[Scale=0.85]}{%
+  \setmainfont{Times New Roman}\setsansfont{Apple SD Gothic Neo}%
+  \setmainhangulfont{AppleMyungjo}[AutoFakeBold=2.5]\setsanshangulfont{Apple SD Gothic Neo}%
+  \setmonohangulfont{Apple SD Gothic Neo}[Scale=0.85]}
+\IfFontExistsTF{DejaVu Sans Mono}{\setmonofont{DejaVu Sans Mono}[Scale=0.82]}{%
+  \setmonofont{DejaVuSansMono.ttf}[Scale=0.82,BoldFont=DejaVuSansMono-Bold.ttf]}
+
+\usepackage{amsmath,amssymb}
+\usepackage{array,booktabs,longtable,tabularx,makecell}
+\usepackage[table]{xcolor}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{needspace}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage[font=small,labelsep=colon,skip=4pt]{caption}
+\usepackage[hidelinks]{hyperref}
+\linespread{1.3}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\setlist{itemsep=0.15em,topsep=0.3em,leftmargin=1.6em}
+\captionsetup[table]{name=표}
+\captionsetup[figure]{name=그림}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+\definecolor{navy}{HTML}{1F3864}
+\definecolor{headfill}{HTML}{D9E2F3}
+\definecolor{inp}{HTML}{FFF8DC}
+\definecolor{lab}{HTML}{F2F2F2}
+\definecolor{team1}{HTML}{DDEBF7}
+\definecolor{team2}{HTML}{E2EFDA}
+\renewcommand{\thesection}{\arabic{section}.}
+\renewcommand{\thesubsection}{\arabic{section}.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+\titleformat{\section}{\sffamily\Large\bfseries\color{navy}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\sffamily\large\bfseries\color{navy}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\sffamily\normalsize\bfseries}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.1em}{0.5em}
+\titlespacing*{\subsection}{0pt}{0.9em}{0.4em}
+\newcommand{\Laeq}{\ensuremath{L_{\mathrm{Aeq}}}}
+\newcommand{\TBD}{\textcolor{gray}{[측정 후 기입]}}
+\newcommand{\IN}{[\quad]}
+\newcommand{\hd}[1]{\cellcolor{headfill}\textbf{\sffamily #1}}
+\newcommand{\ip}{\cellcolor{inp}}
+\newcommand{\lb}{\cellcolor{lab}}
+\newcommand{\hr}[1]{\rule[-0.35\dimexpr#1\relax]{0pt}{#1}}
+\newcommand{\notebox}[2][lab]{\par\noindent\colorbox{#1}{\parbox{\dimexpr\linewidth-2\fboxsep}{\small #2}}\par}
+\renewcommand{\contentsname}{목차}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\sffamily 결과보고서}
+\fancyhead[R]{\small\sffamily 전농사거리 소음현황조사}
+\fancyfoot[L]{\scriptsize\sffamily\color{gray} 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음}
+\fancyfoot[R]{\small\sffamily \thepage\ / \pageref*{LastPage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[L]{\scriptsize\sffamily\color{gray} 본 문서는 생성형 AI(Claude)를 활용하여 작성되었음}%
+  \fancyfoot[R]{\small\sffamily \thepage\ / \pageref*{LastPage}}\renewcommand{\headrulewidth}{0pt}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{\dimexpr #1\linewidth-2\tabcolsep\relax}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{\dimexpr #1\linewidth-2\tabcolsep\relax}}
+\newcommand{\mn}{\ensuremath{-}}
+\newcommand{\NA}{\textcolor{gray}{미측정}}
+\graphicspath{{../../field_measurement/2026-10-22/figures/}}
+\begin{document}
+\begin{titlepage}
+\centering\vspace*{40mm}
+{\sffamily\Huge\bfseries\color{navy} 전농사거리 소음현황조사 결과보고서\par}
+\vspace{6mm}
+{\sffamily\large 현재 소음도 평가와 소음지도 시뮬레이션 검증\par}
+\vspace{18mm}
+{\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{>{\raggedright\arraybackslash}p{38mm}>{\raggedright\arraybackslash}p{90mm}}
+\toprule
+\cellcolor{headfill}\textbf{\sffamily 과목} & 소음진동설계 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 대상} & 전농사거리 동쪽 접근로(사가정로) 도로변 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 측정일} & 2026년 10월 22일(목) 16:15--16:51 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 작성일} & 2026년 10월 27일 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 작성자} & 전현수 \\ \midrule
+\cellcolor{headfill}\textbf{\sffamily 문서 상태} & 제출본 \\
+\bottomrule
+\end{tabular}}
+\vfill
+\notebox{\textbf{본 문서는 생성형 AI(Claude)를 활용하여 작성되었음.} 측정값과 계산값은 저장소의 분석 결과(field\_measurement/2026-10-22, 02\_분석보고서.md 및 results/*.csv)를 옮긴 것이다. 기준값·조항은 측정계획서에서 국가법령정보센터 원문으로 확인한 값을 썼다. 확인하지 못한 항목은 `미확인', 측정하지 않은 항목은 `미측정'으로 표시했다.}
+\end{titlepage}
+\tableofcontents
+\clearpage
+
+%% ------------------------------------------------------------------
+\section{요약}
+\small
+\begin{longtable}{L{0.24}L{0.76}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정 일시·지점 수 & 2026-10-22(목) 16:15--16:51. 사가정로 양쪽 도로변 2지점(지점1 북측 사가정로 123 앞, 지점2 남측 사가정로 148 앞)에서 10분씩 3회 동시 측정했다. 교통량도 같은 시간에 계수했다. \\ \midrule
+법정 평가 결과(목적 가) & 낮 측정소음도(산술평균, 정수)는 두 지점 모두 69 dB(A)다. 용도지역은 미확인이라 조건부로 판정했다. 도로변 ``가·나''지역(기준 65)이면 4 dB 초과이고, ``다''지역(기준 70)이면 기준 이하다. 도로 관리기준은 주간 69 dB(A)로, 가목(68)이면 1 dB 초과이고 나목(73)이면 기준 이하다. 다만 측정 횟수와 회차 간격 요건을 채우지 못했다(낮 3회, 13분 간격). 따라서 이 값은 \textbf{참고 평가}다. 밤 시간대는 측정하지 않아 \textbf{평가 불가}다. \\ \midrule
+시뮬레이션 비교 결과(목적 나) & 측정 교통량과 규정 속도 50 km/h를 넣은 모델(RLS-19 + ISO 9613-2)은 측정값보다 높게 계산했다. 차이는 측정 $-$ 계산 평균 $-$8.3 dB, 표준편차 0.67 dB($n=6$)다. 고시 기준(평균 $\pm$3 dB)을 넘는다. 속도를 30 km/h로 낮춰도 $-$5.7 dB가 남는다. 지점 간 차이(지점2 $-$ 지점1)는 측정 +0.5 dB, 모델 +0.7 dB로 비슷하다. \\ \midrule
+주요 한계 & 평일 오후 한 시간대에서만 10분씩 3회 측정했다. 다음 항목은 측정하지 않았다: 주행속도, 이륜차 별도 계수, 노면 종류, 현장 기상. 지점1 교정 수치는 기록되지 않았다. 측정 지점은 사가정로 한 도로뿐이다. \\ \midrule
+소음지도 작업에 대한 시사점 & 이 구간에서는 모델의 절대 레벨이 측정보다 5--8 dB 높다. 차이의 대부분은 입력 가정에 따라 달라진다: 노면, 속도, 차종 분류. 따라서 소음지도 결과를 쓰기 전에 다음 세 가지를 실측하고 다시 검증해야 한다: 주행속도, 3.5 t 기준 화물차와 이륜차 분리 계수, 노면 종류. \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+%% ------------------------------------------------------------------
+\section{조사 개요}
+\subsection{목적}
+\begin{itemize}
+\item 가. 현재 소음도 조사: 전농사거리 주변의 소음피해 현황을 국내 기준과 비교·평가
+\item 나. 시뮬레이션 검증: 측정값을 소음지도 소프트웨어(RLS-19 + ISO 9613-2) 계산값과 같은 위치·조건에서 비교
+\end{itemize}
+
+\subsection{일시·인원·장비}
+\small
+\begin{longtable}{L{0.26}L{0.74}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정일·요일 & 2026-10-22(목), 평일 \\ \midrule
+예비일 사용 여부·이유 & 사용하지 않음 \\ \midrule
+회차별 시각 & 1회 16:15--16:25, 2회 16:28--16:38, 3회 16:41--16:51(각 10분, 두 지점 동시). 두 소음계의 시작 시각은 2--3 s 차이 난다 \\ \midrule
+조사 인원·역할(2팀) & 총 5명: 김도협, 송기명, 임양록, 임영택, 전현수(가나다순). 2개 조로 나뉘어 지점1과 지점2에서 동시에 측정했다. 원자료 폴더 이름으로 보면 지점1 소음계는 임양록, 지점2 소음계는 임영택이 맡았다. 그 밖의 조 배정과 역할은 기록되지 않았다 \\ \midrule
+측정점 & 지점1: 사가정로 123 앞, 도로 북측 보도. 건물 벽에서 1.001 m, 도로끝선까지 4.213 m, 마이크 높이 1.309 m. 지점2: 전농동SK아파트 상가 입구(사가정로 148) 앞, 도로 남측 보도. 건물 벽에서 1.13 m(야장 판독), 도로끝선까지 3.321 m, 마이크 높이 1.312 m. 전농사거리 중심에서 지점1은 약 88 m, 지점2는 약 100 m 떨어져 있다 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+\small
+\begin{longtable}{C{0.13}C{0.15}C{0.20}C{0.14}C{0.10}C{0.28}}
+\toprule
+\hd{장비 ID} & \hd{조·측정점} & \hd{모델} & \hd{일련번호} & \hd{등급} & \hd{교정기(표시값)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+SLM-1 & 1조 · 지점1 & RION NL-62 (1/3옥타브 NX-62RT) & 511765 & 클래스 1 & 94 dB, 1 kHz. 교정 수치 미기록 \\ \midrule
+SLM-2 & 2조 · 지점2 & RION NL-62 (1/3옥타브 NX-62RT) & 511778 & 클래스 1 & 94 dB, 1 kHz. 측정 전 93.7, 측정 후 94.0 dB \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 두 소음계 모두 방풍망을 달았다(WS-10 보정 설정, 사용자 확인). 교정기 모델명은 기록되지 않았다.\par}
+
+\subsection{적용 기준}
+\footnotesize
+\begin{longtable}{L{0.16}L{0.46}L{0.38}}
+\toprule
+\hd{구분} & \hd{문서} & \hd{현행본(2026-10-19·21 확인)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정방법 & 소음·진동공정시험기준 ES 03301.1c, ES 03304.1d, ES 03300.c & 국립환경과학원고시 제2026-39호(2026-09-14) \\ \midrule
+환경기준 & 환경정책기본법 시행령 [별표 1] 2. 소음 & 대통령령 제36726호(2026-10-08 시행) \\ \midrule
+관리기준 & 소음·진동관리법 시행규칙 [별표 11] 1. 도로 & 기후에너지환경부령 제42호(2026-06-22 시행) \\ \midrule
+측정점 선정·검증 & 소음지도의 작성방법 별표 2(제12호 다목, 제14호 라목, 제15호) & 기후에너지환경부고시 제2026-19호(2026-01-18 시행) \\ \midrule
+도로 소음 계산 & RLS-19(Richtlinien für den Lärmschutz an Straßen, 2019) + ISO 9613-2 & 소음지도 소프트웨어 구현 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 개정 여부 재확인: 측정계획서 작성 시(2026-10-19·21) 확인한 현행본을 그대로 썼다. 제출 시점에 다시 확인하지는 않았다.\par}
+
+%% ------------------------------------------------------------------
+\section{측정 방법}
+\subsection{측정 조건}
+\footnotesize
+\begin{longtable}{L{0.22}L{0.78}}
+\toprule
+\hd{항목} & \hd{적용 내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정기 설정 & A 특성, 동특성 빠름(F). 저장 간격은 지점1이 100 ms(LAeq, LAFmax, LAFmin), 지점2가 1 s(1초 LAeq). 통계레벨은 두 기기 모두 1초 Leq로 계산한다. 밴드 가중은 지점1 A, 지점2 Z다 \\ \midrule
+측정시간 & 회차당 10분 연속. 환경기준(5분 이상)과 도로교통(10분 이상) 요건을 충족한다. 측정은 낮 3회만 했다. 분석 구간은 기기의 10분 Leq 블록과 같게 잡았다. 10분을 넘긴 초과분(0.4--3.4 s)은 뺐다 \\ \midrule
+측정 위치 & 건물 벽에서 도로 방향으로 1.0 m(지점1)와 1.13 m(지점2) 떨어진 보도 위다. 지면 위 1.31 m로, 1.2--1.5 m 범위 안이다 \\ \midrule
+교정 & 측정 전후 94 dB, 1 kHz로 교정했다(두 지점). 수치는 지점2만 기록돼 있다(부록 B) \\ \midrule
+기상 조건 & 풍속 1.8 m/s, 기온 15 °C. 인근 기상정보(네이버 지도 날씨)로, 현장에서 실측하지 않았다. 5 m/s 초과 조건은 아니었다. 방풍망은 장착했다 \\ \midrule
+평균 방법 & 법정 평가: 산술평균(ES 03301.1c 5.3, ES 03304.1d 7.1.1.2), 최종값은 정수. 시뮬레이션 비교: 같은 10분 시간을 가중한 에너지평균(자체 설정) \\ \midrule
+배경소음 보정 & 적용 방법에 조항이 없어 보정하지 않았다 \\ \midrule
+회차 간 시간 간격 요건 & 수동으로 확인했다. 환경기준은 낮에 2시간 이상 간격으로 4회 이상 측정해야 한다(ES 03301.1c 5.3). 도로교통은 4시간 이상 간격으로 2회 이상 측정해야 한다(ES 03304.1d 5.3). 확인 결과: \textbf{두 요건 모두 충족하지 못했다.} 회차 시작 간격은 13분이고 측정은 낮 3회다 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+\subsection{계획 대비 변경 사항}
+\footnotesize
+\begin{longtable}{L{0.13}L{0.22}L{0.22}L{0.19}L{0.24}}
+\toprule
+\hd{항목} & \hd{계획} & \hd{실제} & \hd{변경 이유} & \hd{결과에 미치는 영향} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정점 & A1 사가정로 남측(하우스토리 아파트 앞), A2 전농로 남측(사가정로12길 5 앞) & 사가정로 한 단면 부근의 북측(지점1)과 남측(지점2) & 기록 없음 & 전농로는 측정하지 못했다. 그래서 고시의 `도로당 한 지점 이상' 요건을 충족하지 못한다. 대신 상·하행 양쪽을 비교할 수 있다 \\ \midrule
+회차·시간 & 낮 4회와 밤 2회, 회차당 30분, 시작 간격 4시간 & 낮 3회, 회차당 10분, 시작 간격 13분 & 기록 없음 & 법정 평가는 참고 평가가 됐다. 밤 시간대는 평가 불가다. 한 시간대만 측정해 대표성이 낮다 \\ \midrule
+교통량 계수 & 5종 구분(승용·승합, 소·중형 화물, 버스, 대형 화물, 트레일러, 이륜차 별도), 5분 단위, 평균 속도와 신호 주기 기록 & 승용차와 화물차 2종으로 10분 계수했다. 이륜차는 화물차에 포함됐다. 속도와 신호 주기는 기록하지 않았다 & 기록 없음 & RLS-19 차종 대응(Pkw, Lkw1, Lkw2)이 불확실하다. 모델에서는 화물차 전부를 Lkw1로 넣었다(6.4) \\ \midrule
+기상 & 현장 실측(풍속, 풍향, 기온, 습도, 노면) & 인근 기상정보의 풍속과 기온만 있다 & 기록 없음 & 영향은 작다고 본다(풍속 1.8 m/s). 노면 종류는 미확인이다 \\ \midrule
+측정 높이 & 지면 위 1.5 m & 1.309 m와 1.312 m & 기록 없음 & 규정 범위(1.2--1.5 m) 안이다. 모델 수음점에도 같은 높이를 넣었다 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+\subsection{무효 처리한 측정}
+무효로 처리한 회차는 \textbf{없다}. 이상 소음 구간은 원래 \Laeq 를 그대로 쓰고, 해당 구간을 뺀 값을 참고로 함께 적었다(표 \ref{tab:event}).
+\footnotesize
+\begin{longtable}{C{0.08}C{0.07}L{0.22}L{0.39}L{0.24}}
+\caption{이상 소음 구간과 제외 \Laeq(참고값)}\label{tab:event}\\
+\toprule
+\hd{지점} & \hd{회차} & \hd{구간(기기 시각)} & \hd{근거} & \hd{처리} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+1 & 1 & 16:21:33.8--34.6 (0.8 s) & 보도 위 오토바이. 야장 시각보다 32 s 뒤의 돌출 피크(LAFmax 83.1 dB)로 구간을 정했다 & 68.12 → 68.08 \\ \midrule
+1 & 2 & 16:29:20.5--23.4 (2.9 s) & 오토바이(야장 시각과 일치, 녹음에 엔진 배음) & 68.3 → 68.2 \\ \midrule
+2 & 2 & 16:31:40--16:32:10 (31 s) & 사이렌. 두 지점 녹음에 같은 스윕 무늬가 나타난다 & 68.98 → 68.87 (지점1: 68.26 → 67.98) \\ \midrule
+2 & 3 & 16:43:14.7--17.7, 16:45:23.7--29.7 & 야장 기록 `경적 2회'. 녹음의 순음 성분으로 선별했다 & 69.3 → 68.7 \\
+\end{longtable}
+\normalsize
+{\small 같은 녹음 파일에서 지점2의 야장에 적힌 \Laeq{} 값(71.8, 70.6, 65.2)은 10분 블록 뒤의 초과분(0.4--3.4 s) 값이므로 쓰지 않았다.\par}
+
+%% ------------------------------------------------------------------
+\section{측정 결과}
+\subsection{측정점 위치도}
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.78\linewidth]{소음지도_측정점주변_AVG.png}
+\caption{측정점 위치(EPSG:5186 좌표)와 주변 계산 소음도(측정 교통량 3회 평균, 50 km/h, 격자 높이 4 m). 지점1 (205192.18, 553140.81), 지점2 (205208.36, 553113.68). 수음점 위치는 수치지도의 보도 경계와 현장에서 잰 도로끝선·건물 거리로 정했다. GPS 기록은 소수 셋째 자리(약 $\pm$50 m)까지만 있어 쓰지 않았다}
+\end{figure}
+
+\subsection{측정점별 결과표}
+\small
+\begin{longtable}{C{0.16}C{0.13}C{0.13}C{0.13}C{0.10}C{0.10}C{0.25}}
+\caption{측정점별 회차별 \Laeq{} (단위 dB(A), 10분 측정, 유효 측정만)}\\
+\toprule
+\hd{측정점} & \hd{1회} & \hd{2회} & \hd{3회} & \hd{N1} & \hd{N2} & \hd{낮 산술평균 (에너지평균)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+지점1 & 68.1 & 68.3 & 69.2 & \NA & \NA & 68.5 (68.6) \\ \midrule
+지점2 & 68.9 & 69.0 & 69.3 & \NA & \NA & 69.1 (69.1) \\
+\end{longtable}
+\normalsize
+\small
+\begin{longtable}{C{0.10}C{0.11}C{0.11}C{0.11}C{0.11}C{0.11}C{0.11}L{0.24}}
+\caption{측정점별 통계 지표(dB(A), 3회 산술평균, 기기 저장값)}\\
+\toprule
+\hd{측정점} & \hd{\Laeq} & \hd{$L_{\mathrm{Amax}}$} & \hd{$L_{\mathrm{Amin}}$} & \hd{$L_{10}$} & \hd{$L_{50}$} & \hd{$L_{90}$} & \hd{비고} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+지점1 & 68.5 & 82.7 & 57.0 & 71.9 & 66.6 & 61.4 & 100 ms 자료로 다시 계산한 값과 0.04 dB 이내로 같다 \\ \midrule
+지점2 & 69.1 & 83.8 & 55.5 & 72.3 & 66.9 & 60.3 & $L_{\mathrm{Amax}}$와 $L_{\mathrm{Amin}}$은 기기값만 있다(1 s 저장) \\
+\end{longtable}
+\normalsize
+{\small 회차별 값은 부록 E에 있다. 표준편차(회차 간)는 지점1 0.59 dB, 지점2 0.21 dB다. 같은 시각의 지점 간 차이(지점1 $-$ 지점2)는 $-$0.8, $-$0.7, $-$0.1 dB다. 두 기기의 교정 편차를 생각하면 1 dB 미만의 차이는 해석하지 않는다.\par}
+
+\subsection{시간대별 변화}
+측정은 16시대 한 시간 안에서만 했다. 그래서 하루 중 시간대별 변화는 알 수 없다. 아래 그림은 회차별 \Laeq 와 같은 시각의 교통량이다.
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.62\linewidth]{지점별_LAeq_비교.png}\par\vspace{2mm}
+\includegraphics[width=0.95\linewidth]{교통량_LAeq_산점도.png}
+\caption{회차별 \Laeq(위)와 시간당 교통량 대비 \Laeq(아래). $n=3$이고 \Laeq 변동 폭이 1 dB 정도라, 교통량과의 관계는 해석하지 않는다}
+\end{figure}
+
+\subsection{동시 교통량·기상}
+\footnotesize
+\begin{longtable}{C{0.08}L{0.30}C{0.11}C{0.15}C{0.10}C{0.12}C{0.14}}
+\caption{회차별 사가정로 교통량(10분 계수 $\times$ 6, 대/h). 화물차에 이륜차 포함}\\
+\toprule
+\hd{회차} & \hd{방향(계수 조)} & \hd{승용차} & \hd{화물차(이륜차 포함)} & \hd{합계} & \hd{화물차 비율} & \hd{평균 속도} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+1 & 상행(서행, 지점1 조) & 888 & 198 & 1086 & 18.2 \% & \NA \\
+  & 하행(동행, 지점2 조) & 1080 & 456 & 1536 & 29.7 \% & \NA \\
+  & \textbf{양방향} & 1968 & 654 & \textbf{2622} & 24.9 \% & \NA \\ \midrule
+2 & 상행 & 828 & 324 & 1152 & 28.1 \% & \NA \\
+  & 하행 & 1080 & 408 & 1488 & 27.4 \% & \NA \\
+  & \textbf{양방향} & 1908 & 732 & \textbf{2640} & 27.7 \% & \NA \\ \midrule
+3 & 상행 & 798 & 282 & 1080 & 26.1 \% & \NA \\
+  & 하행 & 978 & 300 & 1278 & 23.5 \% & \NA \\
+  & \textbf{양방향} & 1776 & 582 & \textbf{2358} & 24.7 \% & \NA \\ \midrule
+평균 & \textbf{양방향} & 1884 & 656 & \textbf{2540} & 25.8 \% & \NA \\
+\end{longtable}
+\normalsize
+{\small 상행·하행은 지도 기준으로 판정했다. 도로명주소 번지로 보면 지점1은 북측이고 그쪽 가까운 차로가 서쪽(도심) 방향이다. 원자료 폴더 이름은 이와 반대로 붙어 있다. 각 조는 자기 쪽 가까운 차로를 셌다. 전농로 등 다른 도로는 계수하지 않았다.\par}
+\small
+\begin{longtable}{C{0.10}C{0.12}C{0.10}C{0.11}C{0.10}C{0.22}C{0.25}}
+\toprule
+\hd{회차} & \hd{풍속(m/s)} & \hd{풍향} & \hd{기온(°C)} & \hd{습도(\%)} & \hd{노면} & \hd{신호 주기(s)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+1--3 & 1.8 & 미기록 & 15 & 미기록 & 미확인(건조 여부 미기록) & \NA \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 풍속과 기온은 인근 기상정보(네이버 지도 날씨)이며 현장에서 실측하지 않았다. 세 회차에 같은 값을 적었다.\par}
+
+%% ------------------------------------------------------------------
+\section{기준 비교 평가(목적 가)}
+\subsection{적용 지역 구분과 기준값}
+용도지역은 \textbf{확인하지 못했다(미확인)}. 그래서 두 측정점에 해당할 수 있는 구분을 모두 적고 조건부로 판정했다. 두 측정점은 사가정로 도로끝선에서 3--4 m 떨어져 있다. 따라서 도로단에서 `차선수 $\times$ 10 m' 안에 있는 도로변지역이다(ES 03301.1c 5.1.1 주 1). 학교·병원 등 부지경계 50 m 이내인지도 확인하지 않았다.
+\needspace{9\baselineskip}
+\footnotesize
+\begin{longtable}{C{0.09}C{0.14}C{0.10}C{0.17}C{0.14}C{0.18}C{0.18}}
+\toprule
+\hd{측정점} & \hd{용도지역} & \hd{50 m 규정} & \hd{별표 1 구분} & \hd{별표 1 기준 낮/밤} & \hd{별표 11 구분} & \hd{별표 11 기준 주간/야간} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+지점1·2 & 미확인 & 미확인 & 도로변 ``가·나''(주거지역이면) & 65 / 55 & 가목(주거지역이면) & 68 / 58 \\ \midrule
+지점1·2 & 미확인 & 미확인 & 도로변 ``다''(상업지역이면) & 70 / 60 & 나목(상업지역이면) & 73 / 63 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+\subsection{소음 환경기준 비교}
+\footnotesize
+\begin{longtable}{C{0.09}C{0.12}C{0.15}C{0.18}C{0.10}C{0.10}C{0.08}C{0.18}}
+\caption{측정소음도(산술평균, 정수)와 환경기준 비교(dB(A)) --- 참고 평가}\\
+\toprule
+\hd{측정점} & \hd{낮 측정소음도} & \hd{낮 기준} & \hd{낮 판정} & \hd{밤 측정소음도} & \hd{밤 기준} & \hd{밤 판정} & \hd{횟수 충족} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+지점1 & 69 (68.5) & 65(가·나)\newline 70(다) & +4 초과(가·나)\newline 기준 이하(다) & \NA & 55 / 60 & 평가 불가 & 미충족(낮 3회, 13분 간격) \\ \midrule
+지점2 & 69 (69.1) & 65(가·나)\newline 70(다) & +4 초과(가·나)\newline 기준 이하(다) & \NA & 55 / 60 & 평가 불가 & 미충족(낮 3회, 13분 간격) \\
+\end{longtable}
+\normalsize
+
+\subsection{교통소음 관리기준(도로) 비교}
+\small
+\begin{longtable}{C{0.10}C{0.18}C{0.30}C{0.14}C{0.28}}
+\toprule
+\hd{구분} & \hd{대상 지점} & \hd{측정소음도(지점별 산술평균의 산술평균)} & \hd{기준} & \hd{판정} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+주간 & 지점1, 지점2 & (68.5 + 69.1) / 2 = 68.8 → \textbf{69} & 68(가)\newline 73(나) & +1 초과(가), 기준 이하(나) --- 참고 평가 \\ \midrule
+야간 & --- & \NA & 58 / 63 & 평가 불가 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+\subsection{평가 의견}
+\begin{itemize}
+\item 두 지점의 낮 측정소음도는 69 dB(A)로 같다. 회차 간 변동은 1.1 dB 이하로 작다. 주거지역(도로변 ``가·나''지역, 별표 11 가목)이라면 환경기준을 4 dB, 도로 관리기준을 1 dB 넘는다. 상업지역(``다''지역, 나목)이라면 두 기준 모두 이하다. \textbf{판정은 용도지역 확인(토지이음) 뒤에 확정해야 한다.}
+\item 측정은 평일 16시대에 10분씩 3회, 13분 간격으로 했다. 공정시험기준의 측정 횟수·간격 요건(환경기준: 낮 2시간 이상 간격 4회, 도로교통: 4시간 이상 간격 2회)을 채우지 못했다. 그래서 위 판정은 법정 평가가 아니라 \textbf{참고 평가}다.
+\item 밤(22--06시)과 야간은 측정하지 않아 \textbf{평가 불가}다. 측정하지 않은 값을 모델값이나 추정값으로 채우지 않았다.
+\item 지점2는 상가 입구 앞이다. 그래서 도로교통 측정점 요건(피해가 예상되는 거주 건물 경계)을 충족하는지는 미확인이다.
+\item 이상 소음(사이렌, 경적, 오토바이)을 빼도 3회 평균은 0.0--0.3 dB만 낮아진다. 판정에는 영향이 없다.
+\end{itemize}
+
+%% ------------------------------------------------------------------
+\section{시뮬레이션 비교(목적 나)}
+\subsection{비교 조건}
+\footnotesize
+\begin{longtable}{L{0.24}L{0.76}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+모델 버전·설정 파일 & 소음지도 소프트웨어(RLS-19 + ISO 9613-2) 커밋 7b02e79 기준. 시나리오별 설정은 field\_measurement/2026-10-22/model/\{R1,R2,R3,AVG\}\_v\{30,40,50\}/config.yaml에 있다. 재실행 명령은 scripts/run\_all.sh다 \\ \midrule
+입력 교통량 & 사가정로에는 회차별 동시 계수값(10분 $\times$ 6)을 넣었다: R1 2622, R2 2640, R3 2358 대/h. AVG는 3회 평균 2540 대/h다. 방향 비율(하행 54.2--58.6 \%)도 실측값을 썼다. 계수하지 못한 도로는 가정값이다: 전농로 2331, 답십리로 1813, 서울시립대로 1554 대/h. 이 도로들이 측정점 레벨에 기여하는 정도는 0.3--0.5 dB다 \\ \midrule
+계수 차종 → Pkw/Lkw1/Lkw2 & 승용차는 Pkw, 화물차(이륜차 포함)는 전부 Lkw1로 넣었고 Lkw2는 0이다. RLS-19는 이륜차를 Lkw2로 다룬다. 이륜차 대수가 따로 기록되지 않아 그렇게 나누지 못했다(민감도 6.4) \\ \midrule
+속도 & 사가정로는 30, 40, 50 km/h 세 시나리오로 계산했다. \textbf{기본은 규정 속도 50 km/h}다(OSM maxspeed 50, 안전속도 5030). 실제 속도는 미측정이다. 다른 도로는 50 km/h로 넣었다 \\ \midrule
+노면·교차로 & 노면은 AC11(밀입도 아스팔트콘크리트)로 가정했다. 현장 노면은 미확인이다. 교차로 보정은 가장 가까운 신호교차로 기준으로 했다(dk\_rule: nearest\_signal). 측정점 부근 음원에 +0.5--0.8 dB가 더해진다 \\ \midrule
+수음점 위치·높이 & 측정점과 같은 좌표·높이의 점 수음점이다(4.1, 높이 1.309·1.312 m). 자기 벽면 반사도 포함했다(2차 반사까지) \\ \midrule
+기상·전파 & 기온 15 °C, 습도 70 \%(코드 기본값). 기온은 측정 당일 값과 같다 \\ \midrule
+측정값 평균 & 회차별 비교에는 각 회차의 10분 \Laeq 를 썼다. 시간대 비교에는 3회의 에너지평균(지점1 68.6, 지점2 69.1)을 썼다 \\ \midrule
+이상 소음 구간 처리 & 원래 \Laeq 를 썼다(3.3). 제외값과의 차이는 0.6 dB 이하다 \\ \midrule
+판정 기준 & 소음지도의 작성방법 별표 2 제15호: 오차 평균 $\pm$3 dB 이내, 표준편차 3 이하(원칙). 지점별 차이가 $\pm$5 dB 이상이면 원인을 분석한다 \\ \midrule
+비교 단위 & 측정점 2 $\times$ 회차 3 = 6개(회차별 동시 교통량으로 계산). 측정점별 시간대 값(3회 평균)도 함께 적었다 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+\subsection{측정값과 계산값}
+\small
+\begin{longtable}{C{0.10}C{0.12}C{0.15}C{0.15}C{0.12}L{0.36}}
+\caption{측정 \Laeq{}와 계산 \Laeq(모델 $L_{rT}$) 비교(dB(A), 차이 = 측정 $-$ 계산, 50 km/h)}\\
+\toprule
+\hd{측정점} & \hd{시간대} & \hd{측정 \Laeq} & \hd{계산 \Laeq} & \hd{차이} & \hd{비고(30 / 40 km/h일 때 차이)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+지점1 & 낮(16시대) & 68.6 & 76.8 & $-$8.2 & $-$5.6 / $-$6.6 \\ \midrule
+지점1 & 밤 & \NA & --- & 평가 불가 & 야간 교통량 미측정 \\ \midrule
+지점2 & 낮(16시대) & 69.1 & 77.5 & $-$8.4 & $-$5.7 / $-$6.8 \\ \midrule
+지점2 & 밤 & \NA & --- & 평가 불가 & 야간 교통량 미측정 \\
+\end{longtable}
+\normalsize
+
+\subsection{차이 통계}
+차이 $d_i = L_{\text{측정},i} - L_{\text{계산},i}$, 비교 수 $n$(측정점 2 $\times$ 회차 3). 평균 차이와 표준편차(표본)는 다음과 같다.
+\begin{equation*} \bar d = \frac{1}{n}\sum_{i=1}^{n} d_i, \qquad s = \sqrt{\frac{\sum_{i=1}^{n}\left(d_i-\bar d\right)^2}{n-1}} \end{equation*}
+\small
+\begin{longtable}{L{0.20}C{0.14}C{0.14}L{0.32}L{0.20}}
+\toprule
+\hd{지표} & \hd{50 km/h(기본)} & \hd{30 km/h(참고)} & \hd{고시 기준(별표 2 제15호)} & \hd{판정(50 km/h)} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+비교 수 $n$ & 6 & 6 & --- & --- \\ \midrule
+평균 차이 & $-$8.3 & $-$5.7 & $\pm$3 dB 이내(음수면 모델이 높게 계산) & \textbf{미충족} \\ \midrule
+표준편차 & 0.67 & 0.67 & 3 이하 & 충족 \\ \midrule
+최대 차이(절댓값) & 8.8 & 6.2 & $\pm$5 dB 이상이면 그 지점 원인 분석 & 두 지점 모두 원인 분석 대상(6.4) \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 측정점이 2곳이라 측정점 사이의 공간 변동은 평가할 수 없다. 표준편차는 주로 회차에 따른 변동을 나타낸다. 회차 간 변화의 방향도 서로 다르다. 모델에서는 교통량이 가장 적은 3회가 가장 낮고, 측정에서는 3회가 가장 높다.\par}
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{모델_측정_비교.png}
+\caption{회차별 측정 \Laeq 와 모델 $L_{rT}$(30, 40, 50 km/h). 그림의 숫자는 모델 $-$ 측정이다(본문 표의 차이와 부호가 반대)}
+\end{figure}
+
+\subsection{차이 원인 검토}
+\footnotesize
+\begin{longtable}{L{0.14}L{0.52}L{0.34}}
+\toprule
+\hd{검토 항목} & \hd{확인 내용} & \hd{영향 방향·크기(추정이면 `추정')} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+계산 검산 & 모델 직접음을 손계산과 비교했다(0.2 dB 이내 일치). 계산 오류는 아니다 & --- \\ \midrule
+교통량 입력 & 사가정로는 동시 계수값과 일치시켰다. 다른 도로는 가정값이다 & 다른 도로 기여는 0.3--0.5 dB(계산) \\ \midrule
+차종 구분 & 화물차 계수에 이륜차와 소형 화물차(3.5 t 이하 포함 가능)가 섞여 있다. 이를 전부 Lkw1로 넣었다 & 화물차 절반을 Pkw로 보면 $-$1.1, 전부 Pkw면 $-$2.6, 전부 Lkw2면 +1.7 dB(근사) \\ \midrule
+노면 & 현장 노면은 미확인이다. AC11로 넣었다(기본 매핑 대비 $-$2.2 dB) & 노면 가정에 따라 $\pm$2 dB 정도(추정) \\ \midrule
+주행속도 & 미측정이다. 규정 속도 50 km/h로 넣었다. 측정점은 신호교차로 접근부(90--100 m)라 실제 평균 속도는 이보다 낮았을 가능성이 크다 & 50 → 30 km/h에서 $-$2.6 dB(계산) \\ \midrule
+신호 대기 & RLS-19는 모든 차량이 같은 속도로 달린다고 본다. 정지·가감속은 식에 없다. 교차로 보정 $D_K$(신호교차로, 120 m 안)는 반영했다 & 정지 차량 비중만큼 모델이 높게 계산됨(추정) \\ \midrule
+반사 & 지점1은 건물 벽 1.0 m 앞이고, 모델도 같은 위치에 벽 반사를 포함했다. 지점2는 수치지도의 도로끝선--건물 간격(6.25 m)이 현장(4.45 m)과 다르다 & 지점2 위치를 도로끝선 기준으로 바꾸면 +0.4 dB(계산) \\ \midrule
+배경소음 & 사이렌, 경적, 오토바이 구간은 측정값을 높이는 쪽이다 & 0.0--0.6 dB(측정) \\ \midrule
+기상 & 풍속 1.8 m/s, 기온 15 °C로 모델 설정과 같다. 풍향과 습도는 미기록이다. 수음점이 음원에서 4--30 m 거리라 기상 영향은 작다 & 작음(추정) \\ \midrule
+기타 & RLS-19 방출식은 독일 차량·타이어 기준이라 보수적일 수 있다. 차도 쪽 주정차 차량이 마이크(1.3 m)를 가렸을 수도 있다 & 위 항목들을 낮은 쪽으로 다 가정해도 약 +4.5 dB(모델이 높음)가 남는다(추정) \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+%% ------------------------------------------------------------------
+\section{불확실성 및 한계}
+\footnotesize
+\begin{longtable}{L{0.17}L{0.83}}
+\toprule
+\hd{항목} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+측정기 & 클래스 1 소음계 2대(RION NL-62)를 썼다. 지점2의 교정 전후 차이는 0.3 dB(93.7 → 94.0)이고, 지점1 교정 수치는 미기록이다. 두 기기는 저장 간격(100 ms와 1 s)과 밴드 가중(A와 Z)이 달랐다. 그래서 지점2는 $L_{\mathrm{Amax}}$를 다시 계산할 수 없고, 스펙트럼도 바로 비교할 수 없다. 두 기기 시계는 약 1.6 s 차이 난다(사이렌 녹음 기준, 보정하지 않음) \\ \midrule
+측정 지점 수 & 사가정로 양쪽 2지점뿐이다. 전농로를 포함한 다른 접근로는 측정·계수하지 않았다. 그래서 고시의 `도로당 한 지점 이상'과 `교통소음한도 초과 건물의 50 \% 이상 지점' 요건을 충족하지 못한다 \\ \midrule
+측정 횟수·시간 & 평일 16시대에 10분씩 3회 측정했다. 하루 대표값(주간 전체)이나 야간으로 일반화할 수 없다 \\ \midrule
+교통량 & 각 조가 현장에서 가까운 차로를 10분 동안 셌다. 화물차와 이륜차를 구분하지 않았고 속도는 미측정이다. 계수 오차는 확인하지 않았다(영상 기록 없음) \\ \midrule
+위치·좌표 & GPS는 정확도 $\pm$9--18 m이고 좌표가 소수 셋째 자리까지만 기록됐다. 그래서 수음점은 수치지도와 현장에서 잰 거리로 정했다. 도로를 따른 위치는 $\pm$5 m 정도 불확실하다. 지점2는 수치지도와 현장 거리가 1.8 m 어긋난다 \\ \midrule
+기상 & 기상값은 인근 기상정보이고 현장 실측이 아니다. 풍향, 습도, 노면 상태는 미기록이다 \\ \midrule
+모델 & 다음 입력은 가정값이다: 노면(AC11), 속도, 차종 대응, 다른 도로 교통량. 차로 수와 건물 높이는 수치지도 값을 썼다. 반사는 2차까지 계산했다 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+%% ------------------------------------------------------------------
+\section{결론 및 소음지도 작업에 대한 시사점}
+\subsection{결론}
+\begin{enumerate}
+\item 전농사거리 동쪽 사가정로 도로변(교차로에서 약 90--100 m)의 평일 16시대 \Laeq 는 지점1 68.5 dB(A), 지점2 69.1 dB(A)다(산술평균). 정수로는 두 지점 모두 69 dB(A)다.
+\item 주거지역이라면 이 값은 환경기준(도로변 65)과 도로 관리기준(가목 68)을 넘는다. 상업지역이라면 두 기준 모두 이하다. 용도지역 확인과 측정 횟수·간격 요건이 남아 있어 \textbf{참고 평가}에 그친다. 밤 시간대는 \textbf{평가 불가}다.
+\item 측정 교통량과 규정 속도를 넣은 소음지도 모델은 측정값보다 평균 8.3 dB 높게 계산했다. 이는 고시 검증 기준(평균 $\pm$3 dB)을 충족하지 못한다. 다만 회차 간 표준편차(0.67 dB)와 두 지점 사이의 상대 차이는 측정과 잘 맞는다. 따라서 차이는 모델 전체에 걸친 일정한 치우침으로 본다.
+\item 기본 조건(50 km/h, AC11)에서 속도(30 km/h)와 차종(화물차 절반 Pkw) 가정을 낮은 쪽으로 바꾸면 차이가 3--4 dB 줄어든다. 남는 4--5 dB는 RLS-19 방출식의 보수성과 정지 차량 등으로 추정한다. 이번 측정 자료만으로는 더 나눌 수 없다.
+\end{enumerate}
+
+\subsection{소음지도 작업에 대한 시사점}
+\small
+\begin{longtable}{L{0.22}L{0.78}}
+\toprule
+\hd{구분} & \hd{내용} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+입력 자료 보완 & 사가정로 주행속도를 실측한다(스피드건 또는 영상). 노면 종류와 포장 이력을 확인한다. 차량은 RLS-19 차종(Pkw, Lkw1 3.5 t 초과, Lkw2, 이륜차 별도)에 맞춰 나눠 센다. 측정점 필지의 용도지역도 확인한다 \\ \midrule
+모델 설정 조정 검토 & 노면 매핑(아스팔트 → AC11)과 신호교차로 보정(dk\_rule: nearest\_signal)을 소음지도 기본 설정에 넣을지 검토한다. 신호 교차로 접근부의 속도를 규정 속도보다 낮게 줄지도 검토한다. 그 전까지 소음지도의 절대값은 이 구간에서 5--8 dB 높게 나올 수 있음을 함께 표시한다 \\ \midrule
+추가 측정 필요 & 공정시험기준의 횟수·간격(낮 4회, 2--4시간 간격, 야간 포함)을 지켜 다시 측정한다. 전농로 등 다른 접근로에도 측정점을 둔다. 두 소음계의 설정(저장 간격, 밴드 가중)을 같게 맞춘다. 교정 수치는 양쪽 모두 기록한다 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+
+%% ------------------------------------------------------------------
+\clearpage\section*{부록 A. 원자료 목록}\addcontentsline{toc}{section}{부록 A. 원자료 목록}
+\footnotesize
+\begin{longtable}{L{0.30}L{0.24}L{0.14}L{0.32}}
+\toprule
+\hd{파일} & \hd{종류} & \hd{지점·회차} & \hd{비고} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+Auto\_0306, 0307, 0308 & NL-62 Auto Store(설정 .rnh, AUTO\_LEQ, AUTO\_LP, SOUND .wav) & 지점1 · 1--3회 & 폴더명 `하행\_임양록'(지도 기준으로는 상행 쪽) \\ \midrule
+Auto\_0303, 0304, 0305 & 같음 & 지점2 · 1--3회 & 폴더명 `상행\_임영택'(지도 기준으로는 하행 쪽) \\ \midrule
+야장 사진 4장, 측정 기록표 & 현장 기록 & 지점1·2 & 교통량, 교정, 이벤트 시각 \\ \midrule
+SHA256SUMS\_원본.txt & 원본 해시(34개 파일) & --- & 분석은 복사본(raw\_copy)으로 했다 \\ \midrule
+results/*.csv, figures/*.png & 분석 결과 & --- & field\_measurement/2026-10-22 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 원본 보관 위치: 측정자료 원본 폴더(\texttt{[소음진동설계]\_261022\_측정자료}). 원본은 수정하지 않았다.\par}
+
+\section*{부록 B. 교정 기록}\addcontentsline{toc}{section}{부록 B. 교정 기록}
+\small
+\begin{longtable}{C{0.12}C{0.11}C{0.14}C{0.14}C{0.12}C{0.37}}
+\toprule
+\hd{회차} & \hd{장비} & \hd{측정 전} & \hd{측정 후} & \hd{차이} & \hd{판정} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+1--3회 전체 & SLM-1 & 미기록 & 미기록 & --- & 교정은 했지만(사용자 확인) 수치가 없어 편차는 미확인 \\ \midrule
+1--3회 전체 & SLM-2 & 93.7 dB & 94.0 dB & 0.3 dB & 교정기 94 dB, 1 kHz 기준. 회차별 점검 기록은 없음 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 교정 전후 허용 편차는 공정시험기준에서 규정을 찾지 못했다(미확인). 본 조사에서 따로 정하지도 않았다.\par}
+
+\section*{부록 C. 현장 사진}\addcontentsline{toc}{section}{부록 C. 현장 사진}
+측정 장비를 설치한 모습과 주변 사진은 본 보고서에 첨부하지 않았다. 원자료에는 야장 사진만 있다.
+
+\section*{부록 D. 교통량 원자료}\addcontentsline{toc}{section}{부록 D. 교통량 원자료}
+\small
+\begin{longtable}{C{0.08}C{0.16}L{0.30}C{0.14}C{0.18}C{0.14}}
+\toprule
+\hd{회차} & \hd{시각} & \hd{방향(계수 조)} & \hd{승용차} & \hd{화물차(이륜차 포함)} & \hd{합계} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+1 & 16:15--16:25 & 상행(서행), 지점1 조 & 148 & 33 & 181 \\
+1 & 16:15--16:25 & 하행(동행), 지점2 조 & 180 & 76 & 256 \\ \midrule
+2 & 16:28--16:38 & 상행(서행), 지점1 조 & 138 & 54 & 192 \\
+2 & 16:28--16:38 & 하행(동행), 지점2 조 & 180 & 68 & 248 \\ \midrule
+3 & 16:41--16:51 & 상행(서행), 지점1 조 & 133 & 47 & 180 \\
+3 & 16:41--16:51 & 하행(동행), 지점2 조 & 163 & 50 & 213 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 단위는 대/10분이다. 지점2 조의 값은 야장의 `0--5분' 칸에 적혀 있지만 10분 계수다(사용자 확인).\par}
+
+\section*{부록 E. 회차별 비교표}\addcontentsline{toc}{section}{부록 E. 회차별 비교표}
+\footnotesize
+\begin{longtable}{C{0.08}C{0.08}C{0.12}C{0.08}C{0.11}C{0.11}C{0.11}C{0.10}C{0.10}C{0.11}}
+\toprule
+\hd{지점} & \hd{회차} & \hd{Q (대/h)} & \hd{p (\%)} & \hd{측정 \Laeq} & \hd{$L_{\mathrm{Amax}}$} & \hd{$L_{90}$} & \hd{차이 30} & \hd{차이 40} & \hd{차이 50} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+1 & 1 & 2622 & 24.9 & 68.1 & 85.4 & 61.4 & $-$6.0 & $-$7.1 & $-$8.7 \\
+1 & 2 & 2640 & 27.7 & 68.3 & 79.9 & 60.8 & $-$6.2 & $-$7.2 & $-$8.8 \\
+1 & 3 & 2358 & 24.7 & 69.2 & 82.8 & 62.0 & $-$4.6 & $-$5.7 & $-$7.3 \\ \midrule
+2 & 1 & 2622 & 24.9 & 68.9 & 81.5 & 61.4 & $-$6.0 & $-$7.1 & $-$8.8 \\
+2 & 2 & 2640 & 27.7 & 69.0 & 84.9 & 60.0 & $-$6.1 & $-$7.2 & $-$8.8 \\
+2 & 3 & 2358 & 24.7 & 69.3 & 85.1 & 59.4 & $-$5.0 & $-$6.1 & $-$7.7 \\
+\end{longtable}
+\addtocounter{table}{-1}
+\normalsize
+{\small 차이는 측정 $-$ 모델 $L_{rT}$이고, 사가정로 속도 30, 40, 50 km/h일 때의 값이다. 출처는 results/모델\_측정\_비교.csv와 results/회차별\_소음지표.csv이며 소수 둘째 자리에서 반올림했다.\par}
+
+\end{document}
