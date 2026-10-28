@@ -376,7 +376,7 @@ SLM-2 & 2조 · 지점2 & RION NL-62 (1/3옥타브 NX-62RT) & 511778 & 클래스
 \endhead
 \bottomrule
 \endlastfoot
-모델 버전·설정 파일 & 소음지도 소프트웨어(RLS-19 + ISO 9613-2) 커밋 7b02e79 기준. 시나리오별 설정은 field\_measurement/2026-10-22/model/\{R1,R2,R3,AVG\}\_v\{30,40,50\}/config.yaml에 있다. 재실행 명령은 scripts/run\_all.sh다 \\ \midrule
+모델 버전·설정 파일 & 소음지도 소프트웨어 SORI v0.1(RLS-19 + ISO 9613-2). 점 계산은 커밋 7b02e79 기준이고, 6.8절 소음지도·3D 뷰어는 이름 변경(noisemap → SORI) 뒤 커밋 227dac7로 만들었다. 두 커밋의 계산식과 결과값은 같다. 시나리오별 설정은 field\_measurement/2026-10-22/model/\{R1,R2,R3,AVG\}\_v\{30,40,50\}/config.yaml에 있다. 재실행 명령은 scripts/run\_all.sh다 \\ \midrule
 입력 교통량 & 사가정로에는 회차별 동시 계수값(10분 $\times$ 6)을 넣었다: R1 2622, R2 2640, R3 2358 대/h. AVG는 3회 평균 2540 대/h다. 방향 비율(하행 54.2--58.6 \%)도 실측값을 썼다. 계수하지 못한 도로는 가정값이다: 전농로 2331, 답십리로 1813, 서울시립대로 1554 대/h. 이 값은 기준선의 가정 일교통량(DTV 45,000, 35,000, 30,000 대/일, baseline/traffic.csv `가정값(실측 아님)')에 서울 주간 계수 0.0518을 곱한 것이다(model/*/traffic.csv의 note 열). 가정 DTV 자체의 산정 근거는 저장소에 기록되어 있지 않다(근거 미기록). 이 도로들이 측정점 레벨에 기여하는 정도는 0.3--0.5 dB다 \\ \midrule
 계수 차종 → Pkw/Lkw1/Lkw2 & 승용차는 Pkw, 화물차(이륜차 포함)는 전부 Lkw1로 넣었고 Lkw2는 0이다. RLS-19는 이륜차를 Lkw2로 다룬다. 이륜차 대수가 따로 기록되지 않아 그렇게 나누지 못했다(민감도 \ref{sec:cause}) \\ \midrule
 속도 & 사가정로는 30, 40, 50 km/h 세 시나리오로 계산했다. \textbf{기본은 규정 속도 50 km/h}다(OSM maxspeed 50, 안전속도 5030). 실제 속도는 미측정이다. 다른 도로는 50 km/h로 넣었다 \\ \midrule
