@@ -9,7 +9,7 @@ input:
   junctions: {dk_rule: nearest_signal}
 receivers:
   center: [205108.0, 553110.0]
-  grid: {enabled: false, size: [480.0, 520.0], step: 2.5, heights: [4.0]}
-  facade: {enabled: false, radius: 230.0}
+  grid: {enabled: true, size: [480.0, 520.0], step: 2.5, heights: [4.0]}
+  facade: {enabled: true, radius: 230.0}
   points: {path: "../points.csv"}
 plots: {limits: {LrT: 68, LrN: 58, label: "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"}}

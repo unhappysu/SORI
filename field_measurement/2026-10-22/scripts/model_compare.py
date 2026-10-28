@@ -11,7 +11,7 @@ AI(Claude)를 활용하여 제작하였음.
   · 교차로 보정: SORI 설정 input.junctions.dk_rule = nearest_signal(커밋 216882d).
     가장 가까운 신호·회전교차로 기준 D_K = KKT·max(1 − x/120, 0)와 기본 판정 값 중 큰 쪽.
   · 지점2 수음점: 야장 판독값대로 건물 벽에서 1.13 m 앞.
-- 소음지도: AVG_v50(규정 속도) 교통량으로 격자·파사드 전체 계산(run) → plot.
+- 소음지도: AVG_v50(규정 속도)·AVG_v30 교통량으로 격자·파사드 전체 계산(run) → plot.
 
 교차로 보정 규칙
 - SORI 기본(dk_rule = nearest)은 RLS-19 3.3.7 을 '그 음원선의 가장 가까운 교차점'으로 구현한다. 측정점 부근에서는
@@ -55,7 +55,8 @@ MEASURED = {1: {1: 68.12, 2: 68.26, 3: 69.20}, 2: {1: 68.92, 2: 68.98, 3: 69.29}
 SPEED_LIMIT = 50.0              # 사가정로 규정(최고) 속도 km/h — OSM maxspeed=50, 서울 안전속도 5030
 SPEEDS = (30.0, 40.0, 50.0)     # 사가정로 주행속도 시나리오(승용차·화물차 같은 값). 다른 도로는 50 km/h
 ROUNDS = ("R1", "R2", "R3", "AVG")
-MAP_SCEN = "AVG_v50"
+MAP_SCEN = "AVG_v50"            # 본안(규정 속도). 민감도 기준값
+MAP_SCENS = (MAP_SCEN, "AVG_v30")  # 소음지도(격자·파사드·3D)까지 계산할 시나리오
 SURFACE_MAP = {"아스팔트": "AC11", "아스팔트콘크리트": "AC11"}
 
 # 측정하지 않은 도로: 기존 시나리오 A_diurnal 과 같은 가정(기준선 DTV × 서울 주간 계수 0.0518)
@@ -273,11 +274,18 @@ def plot_comparison(df):
     plt.close(fig)
 
 
-def plot_zoom_map():
-    """측정점 주변 확대 소음지도(격자 h = 4 m, AVG_v50 교통량)."""
+def map_suffix(scen):
+    """figures/ 파일 이름 꼬리. 본안(AVG_v50)은 기존 이름(_AVG) 유지."""
+    return "_AVG" if scen == MAP_SCEN else "_" + scen
+
+
+def plot_zoom_map(scen=MAP_SCEN):
+    """측정점 주변 확대 소음지도(격자 h = 4 m, AVG 교통량)."""
     plt = _plt()
     from matplotlib.colors import BoundaryNorm, ListedColormap
-    out = MODEL / MAP_SCEN / "output"
+    out = MODEL / scen / "output"
+    v = int(scen.rsplit("_v", 1)[1])
+    v_txt = f"{v} km/h" + ("(규정 속도)" if v == SPEED_LIMIT else "")
     g = pd.read_csv(out / "grid_result.csv")
     if "h" in g.columns:
         g = g[np.isclose(g["h"], 4.0)]
@@ -312,12 +320,12 @@ def plot_zoom_map():
     cb = fig.colorbar(im, ax=ax, shrink=0.8, ticks=levels)
     cb.set_label("LrT (dB(A)), 격자 높이 4 m")
     ax.set_title("사가정로 측정점 주변 소음지도 — 측정 교통량(16시대 3회 평균) 입력\n"
-                 "Q 2,540 대/h, 화물차 25.8 %(이륜차 포함, Lkw1), 50 km/h(규정 속도), 노면 AC11, 신호교차로 보정",
+                 f"Q 2,540 대/h, 화물차 25.8 %(이륜차 포함, Lkw1), {v_txt}, 노면 AC11, 신호교차로 보정",
                  loc="left", fontsize=9.5)
     fig.text(0.99, 0.01, f"{AI_NOTE} · 격자 2.5 m · 측정점 표기값은 마이크 높이 1.3 m 계산값 · 다른 도로는 가정 교통량",
              ha="right", fontsize=7, color="#666")
     fig.tight_layout(rect=(0, 0.02, 1, 1))
-    fig.savefig(BASE / "figures" / "소음지도_측정점주변_AVG.png", dpi=170)
+    fig.savefig(BASE / "figures" / f"소음지도_측정점주변{map_suffix(scen)}.png", dpi=170)
     plt.close(fig)
 
 
@@ -343,7 +351,7 @@ def main():
     for rnd in ROUNDS:
         for v in SPEEDS:
             scen = f"{rnd}_v{v:.0f}"
-            map_run = scen == MAP_SCEN and not a.skip_map
+            map_run = scen in MAP_SCENS and not a.skip_map
             if a.only_map and not map_run:
                 continue
             d = MODEL / scen
@@ -391,15 +399,18 @@ def main():
                  for r in ("P1", "P2")}
         sensitivity(avg50)
         plot_comparison(df)
-    if (MODEL / MAP_SCEN / "output" / "grid_result.csv").exists():
-        plot_zoom_map()
+    for scen in MAP_SCENS:
+        if not (MODEL / scen / "output" / "grid_result.csv").exists():
+            continue
+        plot_zoom_map(scen)
         # SORI Map 고품질 지도 중 주간(LrT) 결과를 figures/ 로 복사(model/*/output 은 git 무시 대상)
-        for src, dst in [("HQ_grid_LrT_h4m", "소음지도_격자_LrT_h4m_AVG"), ("HQ_exceed_LrT_h4m", "소음지도_기준초과_LrT_h4m_AVG"),
-                         ("HQ_facade_LrT", "소음지도_벽면_LrT_AVG")]:
+        sfx = map_suffix(scen)
+        for src, dst in [("HQ_grid_LrT_h4m", "소음지도_격자_LrT_h4m"), ("HQ_exceed_LrT_h4m", "소음지도_기준초과_LrT_h4m"),
+                         ("HQ_facade_LrT", "소음지도_벽면_LrT"), ("facade_3d_LrT", "소음지도_벽면3D_LrT")]:
             for ext in (".png", ".pdf"):
-                f = MODEL / MAP_SCEN / "output" / (src + ext)
+                f = MODEL / scen / "output" / (src + ext)
                 if f.exists():
-                    shutil.copyfile(f, BASE / "figures" / (dst + ext))
+                    shutil.copyfile(f, BASE / "figures" / (dst + sfx + ext))
 
 
 if __name__ == "__main__":

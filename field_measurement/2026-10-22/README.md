@@ -46,7 +46,7 @@ cd field_measurement/2026-10-22/raw_copy && shasum -a 256 -c ../SHA256SUMS_원�
 | `results/` | 지표·교통량·특이사항·시계 차이·모델 비교·민감도 CSV |
 | `figures/` | 시계열, 지점 비교, 산점도, 스펙트로그램, 모델 비교, 소음지도(PNG/PDF) |
 | `model_validation/` | 모델 검증용 입력자료(출처 열 포함) |
-| `model/` | SORI 계산 폴더(시나리오별 `config.yaml`·`traffic.csv`, `points.csv`). `*/output/`은 git 무시 대상이며 3D 뷰어 `AVG_v50/output/noise3d.html`도 여기에 있다. 시나리오 폴더 = `<회차>_v<속도>`(R1~R3·AVG × 30/40/50 km/h) |
+| `model/` | SORI 계산 폴더(시나리오별 `config.yaml`·`traffic.csv`, `points.csv`). `*/output/`은 git 무시 대상이며 3D 뷰어 `AVG_v50/output/noise3d.html`·`AVG_v30/output/noise3d.html`도 여기에 있다(소음지도는 이 두 시나리오만 계산). 시나리오 폴더 = `<회차>_v<속도>`(R1~R3·AVG × 30/40/50 km/h) |
 
 > 이름 변경 안내(2026-10-26): 계산 프로그램의 가칭 `noisemap` 을 **SORI**(패키지 `sori`, v0.1)로 바꿨다. 계산식·결과값은 바뀌지 않았다.
 > 이 폴더의 보고서·실험노트와 이미 만든 `results/`·`model_validation/` CSV 헤더, `figures/` 지도 하단 표기에는 당시 이름 `noisemap`(1.0.0)이 그대로 남아 있다. 스크립트를 다시 실행하면 새 이름으로 다시 생성된다.
