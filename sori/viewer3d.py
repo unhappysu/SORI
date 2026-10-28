@@ -21,7 +21,7 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE, __version__
 from .config import center, grid_bbox
-from .maps_hq import DIN_EDGES, DIN_COLS, traffic_summary
+from .maps_hq import DIN_EDGES, DIN_COLS, EXC_EDGES, EXC_COLS, DEFAULT_LIMITS, traffic_summary
 
 GROUND_BG = (226, 230, 222)
 ROAD_RGB = (150, 150, 150)
@@ -32,10 +32,10 @@ def _hex(c):
     c = c.lstrip("#"); return tuple(int(c[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def _classify(V):
-    idx = np.digitize(V, DIN_EDGES, right=True)
-    lut = np.array([_hex(c) for c in DIN_COLS], np.uint8)
-    return lut[np.clip(idx, 0, len(DIN_COLS) - 1)]
+def _classify(V, edges=DIN_EDGES, cols=DIN_COLS):
+    idx = np.digitize(V, edges, right=True)
+    lut = np.array([_hex(c) for c in cols], np.uint8)
+    return lut[np.clip(idx, 0, len(cols) - 1)]
 
 
 def _png_uri(rgb):
@@ -84,6 +84,7 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
     road_m = features.rasterize(((g, 1) for g in band), out_shape=(m, m), transform=tr, fill=0, dtype="uint8") if band else np.zeros((m, m), np.uint8)
     minor_m = features.rasterize(((g, 1) for g in mband), out_shape=(m, m), transform=tr, fill=0, dtype="uint8") if mband else np.zeros((m, m), np.uint8)
     textures = {}
+    lim = dict(DEFAULT_LIMITS, **(cfg.get("plots", {}).get("limits") or {}))
     gb = grid_bbox(cfg)
     inside = (TX >= gb[0]) & (TX <= gb[2]) & (TY >= gb[1]) & (TY <= gb[3])
     for key in ("LrT", "LrN"):
@@ -95,11 +96,12 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
         idx = distance_transform_edt(nan, return_distances=False, return_indices=True)
         Af = A[tuple(idx)]
         V = map_coordinates(Af, [(TY - gy[0]) / step, (TX - gx[0]) / step], order=1, mode="nearest")
-        rgb = _classify(V)
-        rgb[~inside] = GROUND_BG
-        rgb[minor_m == 1] = (0.55 * rgb[minor_m == 1] + 0.45 * np.array(MINOR_RGB)).astype(np.uint8)
-        rgb[road_m == 1] = ROAD_RGB
-        textures[key] = _png_uri(rgb)
+        # 등급 지도와 기준 초과 지도(초과량 = V − 기준값, maps_hq.exceed_map 과 같은 등급·색)
+        for tk, rgb in ((key, _classify(V)), (key + "_x", _classify(V - float(lim[key]), EXC_EDGES, EXC_COLS))):
+            rgb[~inside] = GROUND_BG
+            rgb[minor_m == 1] = (0.55 * rgb[minor_m == 1] + 0.45 * np.array(MINOR_RGB)).astype(np.uint8)
+            rgb[road_m == 1] = ROAD_RGB
+            textures[tk] = _png_uri(rgb)
     # ---- 건물
     view = Point(cx, cy).buffer(R)
     B = bld[bld.intersects(view)]
@@ -126,6 +128,9 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
     fac = {"q": quads.ravel().tolist(), "T": np.round(FR.LrT.values * 10).astype(int).tolist(),
            "N": np.round(FR.LrN.values * 10).astype(int).tolist(), "b": FR.bid.astype(int).tolist(),
            "fl": FR.floor.astype(int).tolist()}
+    # 기준 초과 벽면·층 수와 건물 수(반올림 전 값으로 셈, maps_hq.exceed_map 과 같은 기준)
+    xstat = {k[-1]: [int((FR[k] > float(lim[k])).sum()), int(FR.loc[FR[k] > float(lim[k]), "bid"].nunique())]
+             for k in ("LrT", "LrN")}
     # ---- 도로명 라벨
     labels = []
     big = rd[(rd.lanes >= 4) & rd.axis.str.len().gt(0) & ~rd.axis.str.startswith("_")]
@@ -145,6 +150,8 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
         "name": cfg["project"]["name"], "R": R, "n": n, "step": mesh_step,
         "zg": np.round(Zg - zref, 2).tolist(), "tex": textures, "bld": blds, "fac": fac, "labels": labels,
         "edges": DIN_EDGES, "cols": DIN_COLS, "h0": float(h0), "fh": fh,
+        "lim": {"T": float(lim["LrT"]), "N": float(lim["LrN"]), "label": lim.get("label", "")},
+        "xedges": EXC_EDGES, "xcols": EXC_COLS, "xstat": xstat,
         "meta": {"traffic": traffic, "fallback": n_fallback,
                  "notice": AI_NOTICE, "ver": __version__, "nq": int(len(FR)), "nb": int(len(has))},
     }
@@ -175,6 +182,9 @@ button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 #legend b{display:block;margin-bottom:6px;font-size:12.5px}
 .lg{display:flex;align-items:center;gap:7px;line-height:18px}
 .sw{width:22px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.25)}
+#lgx{margin-top:7px;padding-top:6px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;line-height:1.5;max-width:210px;display:none}
+#lgx b{color:var(--accent);display:inline;font-size:inherit;margin:0}
+.ex{color:var(--accent);font-weight:700}
 #info{left:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:12px 14px;width:min(330px,calc(100vw - 28px));font-size:13px;display:none}
 #info h2{font-size:14.5px;margin:0 0 4px}
 #info .big{font-size:22px;font-weight:700}
@@ -191,11 +201,11 @@ button.on{background:var(--accent);border-color:var(--accent);color:#fff}
  <h1>%%TITLE%%</h1>
  <p>지면: 격자 소음지도(높이 <span id="h0"></span> m) · 건물 벽면: 층별 소음 (외벽 앞 5 cm)<br>드래그 회전 · 오른쪽 드래그 이동 · 휠 확대 · 벽면 클릭 시 층별 값</p>
  <div class="row"><button id="bT" class="on">주간 LrT</button><button id="bN">야간 LrN</button>
- <button id="bG" class="on">지면 지도</button><button id="bO" class="on">주변 건물</button><button id="bR">시점 초기화</button></div>
+ <button id="bX">기준 초과</button><button id="bG" class="on">지면 지도</button><button id="bO" class="on">주변 건물</button><button id="bR">시점 초기화</button></div>
 </div>
-<div id="legend" class="panel"><b id="lgt">LrT [dB(A)]</b><div id="lgb"></div></div>
+<div id="legend" class="panel"><b id="lgt">LrT [dB(A)]</b><div id="lgb"></div><div id="lgx"></div></div>
 <div id="info" class="panel"><h2 id="iname"></h2><div id="isub" style="color:var(--muted);font-size:12px"></div>
- <div style="margin-top:6px">선택 층 <span id="ifl"></span>: <span class="big" id="ival"></span> dB(A)</div><div id="bars"></div></div>
+ <div style="margin-top:6px">선택 층 <span id="ifl"></span>: <span class="big" id="ival"></span> dB(A)</div><div id="iex" style="font-size:12px"></div><div id="bars"></div></div>
 <div id="foot" class="panel"></div>
 <div id="tip"></div>
 <script type="application/json" id="data">%%DATA%%</script>
@@ -207,14 +217,26 @@ document.getElementById('h0').textContent=D.h0;
 const foot=document.getElementById('foot');
 foot.innerHTML=`음원 RLS-19 · 전파 ISO 9613-2 · 수치지형도 v2.0<br>교통량: ${D.meta.traffic} 대/일 (가정값), 기타 ${D.meta.fallback}개 도로는 차로수 기준 가정값<br>벽면 ${D.meta.nq.toLocaleString()}지점 · 건물 ${D.meta.nb}동 · SORI v${D.meta.ver}<br>※ ${D.meta.notice}`;
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const cols=D.cols.map(c=>new THREE.Color(c));
+const cols=D.cols.map(c=>new THREE.Color(c)),xcols=D.xcols.map(c=>new THREE.Color(c));
 function cls(v){let i=0;while(i<D.edges.length&&v>D.edges[i])i++;return i}
-let key='T';
+function xcls(e){let i=0;while(i<D.xedges.length&&e>D.xedges[i])i++;return i}
+let key='T',ex=false;
+const lim=()=>D.lim[key];
+// 표시 모드에 따른 색: 등급(5 dB) 또는 기준 초과량(기준 이하는 회색)
+const hexOf=v=>ex?D.xcols[xcls(v-lim())]:D.cols[cls(v)];
+const colOf=v=>ex?xcols[xcls(v-lim())]:cols[cls(v)];
+const exTxt=v=>{const e=v-lim();return e>0?`기준 +${e.toFixed(1)} dB`:`기준 이하(${e.toFixed(1)})`};
 // legend
-function legend(){document.getElementById('lgt').textContent=(key==='T'?'LrT 주간':'LrN 야간')+' [dB(A)]';
- const L=document.getElementById('lgb');L.innerHTML='';const e=D.edges;
- for(let i=D.cols.length-1;i>=0;i--){const t=i===0?`≤ ${e[0]}`:i===D.cols.length-1?`> ${e[e.length-1]}`:`${e[i-1]} – ${e[i]}`;
-  L.insertAdjacentHTML('beforeend',`<div class="lg"><span class="sw" style="background:${D.cols[i]}"></span>${t}</div>`)}}
+function legend(){const L=document.getElementById('lgb'),X=document.getElementById('lgx');L.innerHTML='';
+ const nm=key==='T'?'LrT 주간':'LrN 야간';
+ if(!ex){document.getElementById('lgt').textContent=nm+' [dB(A)]';const e=D.edges;X.style.display='none';
+  for(let i=D.cols.length-1;i>=0;i--){const t=i===0?`≤ ${e[0]}`:i===D.cols.length-1?`> ${e[e.length-1]}`:`${e[i-1]} – ${e[i]}`;
+   L.insertAdjacentHTML('beforeend',`<div class="lg"><span class="sw" style="background:${D.cols[i]}"></span>${t}</div>`)}return}
+ document.getElementById('lgt').textContent=`${nm} − ${lim()} dB (기준 초과량)`;const e=D.xedges;
+ for(let i=D.xcols.length-1;i>=0;i--){const t=i===0?`기준 이하 (≤ ${lim()})`:i===D.xcols.length-1?`초과 > ${e[e.length-1]} dB`:`초과 ${e[i-1]} – ${e[i]} dB`;
+  L.insertAdjacentHTML('beforeend',`<div class="lg"><span class="sw" style="background:${D.xcols[i]}"></span>${t}</div>`)}
+ const [nf,nb]=D.xstat[key],nt=D.meta.nq;X.style.display='block';
+ X.innerHTML=`초과 벽면·층 <b>${nf.toLocaleString()}</b> / ${nt.toLocaleString()} (${(100*nf/nt).toFixed(1)} %)<br>초과 건물 <b>${nb}</b>동 / ${D.meta.nb}동<br>${D.lim.label}`}
 legend();
 // three
 const wrap=document.getElementById('view');
@@ -235,7 +257,7 @@ const n=D.n,W=(n-1)*D.step;
 const gg=new THREE.PlaneGeometry(W,W,n-1,n-1);gg.rotateX(-Math.PI/2);
 const gp=gg.attributes.position;for(let i=0;i<gp.count;i++)gp.setY(i,D.zg[i]);gg.computeVertexNormals();
 const loader=new THREE.TextureLoader();const tex={};
-for(const k of ['LrT','LrN']){if(D.tex[k]){const t=loader.load(D.tex[k]);t.anisotropy=8;tex[k]=t}}
+for(const k of ['LrT','LrN','LrT_x','LrN_x']){if(D.tex[k]){const t=loader.load(D.tex[k]);t.anisotropy=8;tex[k]=t}}
 const gmat=new THREE.MeshLambertMaterial({map:tex.LrT,color:0xffffff});
 const plain=new THREE.MeshLambertMaterial({color:0xdfe3dc});
 const ground=new THREE.Mesh(gg,gmat);scene.add(ground);
@@ -265,9 +287,9 @@ const fmesh=new THREE.Mesh(fg,fmat);scene.add(fmesh);
 const LP=[];for(let i=0;i<nq;i++){const x1=q[i*6],y1=q[i*6+1],x2=q[i*6+2],y2=q[i*6+3],z0=q[i*6+4];LP.push(x1,z0+0.02,-y1,x2,z0+0.02,-y2)}
 const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(LP,3));
 scene.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0x000000,transparent:true,opacity:0.18})));
-function paint(){const A=key==='T'?D.fac.T:D.fac.N;for(let i=0;i<nq;i++){const c=cols[cls(A[i]/10)];
+function paint(){const A=key==='T'?D.fac.T:D.fac.N;for(let i=0;i<nq;i++){const c=colOf(A[i]/10);
  for(let k=0;k<6;k++){FC[i*18+k*3]=c.r;FC[i*18+k*3+1]=c.g;FC[i*18+k*3+2]=c.b}}fg.attributes.color.needsUpdate=true;
- if(groundOn)gmat.map=tex[key==='T'?'LrT':'LrN'];gmat.needsUpdate=true;legend();if(sel>=0)showInfo(sel)}
+ if(groundOn)gmat.map=tex[(key==='T'?'LrT':'LrN')+(ex?'_x':'')];gmat.needsUpdate=true;legend();if(sel>=0)showInfo(sel)}
 let groundOn=true;
 // labels
 const labs=D.labels.map(l=>{const el=document.createElement('div');el.className='lab';el.textContent=l.t;document.body.appendChild(el);return{el,v:new THREE.Vector3(l.x,l.z,-l.y)}});
@@ -282,20 +304,22 @@ function showInfo(i){sel=i;const bid=D.fac.b[i],b=binfo[bid]||{},A=key==='T'?D.f
  document.getElementById('iname').textContent=b.n||`건물 #${bid}`;
  document.getElementById('isub').textContent=`${b.f||'?'}층 · ${key==='T'?'주간 LrT':'야간 LrN'} · 클릭한 벽면 기준`;
  document.getElementById('ifl').textContent=D.fac.fl[i]+'층';document.getElementById('ival').textContent=(A[i]/10).toFixed(1);
+ document.getElementById('iex').innerHTML=`<span class="${A[i]/10>lim()?'ex':''}">${exTxt(A[i]/10)}</span> · 기준 ${lim()} dB(A)`;
  const fl={};for(const j of byB[bid]){const f=D.fac.fl[j];fl[f]=Math.max(fl[f]??-99,A[j]/10)}
  const fs=Object.keys(fl).map(Number).sort((a,b)=>b-a);const mx=Math.max(...Object.values(fl)),mn=Math.min(...Object.values(fl),mx-10);
  document.getElementById('bars').innerHTML='<div style="font-size:11.5px;color:var(--muted);margin:4px 0">층별 최고값(건물 전체 벽면)</div>'+fs.map(f=>{const v=fl[f];
-  return `<div class="bar"><span>${f}층</span><i style="width:${10+90*(v-mn)/(mx-mn+1e-6)}%;background:${D.cols[cls(v)]}"></i><span>${v.toFixed(1)} dB</span></div>`}).join('')}
+  return `<div class="bar"><span>${f}층</span><i style="width:${10+90*(v-mn)/(mx-mn+1e-6)}%;background:${hexOf(v)}"></i><span class="${v>lim()?'ex':''}">${v.toFixed(1)} dB</span></div>`}).join('')}
 let down=null;renderer.domElement.addEventListener('pointerdown',e=>down=[e.clientX,e.clientY]);
 renderer.domElement.addEventListener('pointerup',e=>{if(down&&Math.hypot(e.clientX-down[0],e.clientY-down[1])<5){const i=pick(e);if(i>=0)showInfo(i);else{document.getElementById('info').style.display='none';sel=-1}}});
 const tip=document.getElementById('tip');
 renderer.domElement.addEventListener('pointermove',e=>{if(e.buttons){tip.style.display='none';return}const i=pick(e);
  if(i<0){tip.style.display='none';return}const A=key==='T'?D.fac.T:D.fac.N;tip.style.display='block';tip.style.left=(e.clientX+12)+'px';tip.style.top=(e.clientY+12)+'px';
- tip.textContent=`${(binfo[D.fac.b[i]]||{}).n||'건물 #'+D.fac.b[i]} · ${D.fac.fl[i]}층 · ${(A[i]/10).toFixed(1)} dB(A)`});
+ tip.textContent=`${(binfo[D.fac.b[i]]||{}).n||'건물 #'+D.fac.b[i]} · ${D.fac.fl[i]}층 · ${(A[i]/10).toFixed(1)} dB(A) · ${exTxt(A[i]/10)}`});
 // buttons
 const $=id=>document.getElementById(id);
 $('bT').onclick=()=>{key='T';$('bT').classList.add('on');$('bN').classList.remove('on');paint()};
 $('bN').onclick=()=>{key='N';$('bN').classList.add('on');$('bT').classList.remove('on');paint()};
+$('bX').onclick=()=>{ex=!ex;$('bX').classList.toggle('on',ex);paint()};
 $('bG').onclick=()=>{groundOn=!groundOn;$('bG').classList.toggle('on',groundOn);ground.material=groundOn?gmat:plain;paint()};
 $('bO').onclick=()=>{others.visible=!others.visible;$('bO').classList.toggle('on',others.visible)};
 $('bR').onclick=home;
