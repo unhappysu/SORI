@@ -586,6 +586,52 @@ $D_K$·$D_{\mathrm{refl}}$ 끔 & 75.68 & $-$7.13 & 76.62 & $-$7.56 \\ \midrule
 \end{longtable}
 \normalsize
 {\small 각 조합은 모델을 따로 실행한 값이다(단순 합산 아님, scripts/sensitivity\_combo.py). 측정값은 3회 에너지평균(지점1 68.56, 지점2 69.07 dB)이다. 96개 조합의 차이 범위는 $-$12.2--$-$1.3 dB이고, 고시 기준($\pm$3 dB) 안에 드는 것은 30·40 km/h에 화물차 전부 Pkw를 가정한 9개 값뿐이다. 차종 가정의 50 km/h 효과는 이전 판의 근사($-$1.1, $-$2.6, +1.7 dB)와 0.1 dB 이내로 같다.\par}
+
+\clearpage\subsection{소음지도(사가정로 50·30 km/h)}\label{sec:map}
+3회 평균 측정 교통량을 넣은 주간($L_{rT}$) 소음지도를 사가정로 속도 50 km/h(규정 속도, 시나리오 AVG\_v50)와 30 km/h(AVG\_v30)로 계산했다. 두 경우 모두 노면 AC11, 신호교차로 보정을 넣었다. 다른 도로는 가정 교통량, 50 km/h로 같다. 격자는 높이 4 m, 2.5 m 간격(25,719점)이다. 벽면 수음점은 외벽 앞 5 cm, 층별 12,327점이다. 이 지도는 측정보다 5--8 dB 높게 계산되는 조건이다(6.5절). 따라서 공간 분포 확인용으로 쓰고, 절대값은 표 \ref{tab:combo}와 함께 해석한다.
+
+\begin{longtable}{L{0.46}C{0.22}C{0.22}}
+\caption{속도별 소음지도 요약($L_{rT}$, dB(A))}\label{tab:map}\\
+\toprule
+\hd{항목} & \hd{50 km/h} & \hd{30 km/h} \\ \midrule
+\endfirsthead
+\toprule
+\hd{항목} & \hd{50 km/h} & \hd{30 km/h} \\ \midrule
+\endhead
+\bottomrule
+\endlastfoot
+격자 $L_{rT}$ 최대 & 82.2 & 80.9 \\ \midrule
+격자 중 68 dB(A) 초과 비율(면적) & 34.4 \%(약 55,300 m$^2$) & 33.0 \%(약 53,000 m$^2$) \\ \midrule
+벽면 $L_{rT}$ 최대 & 77.2 & 74.8 \\ \midrule
+벽면 수음점 중 68 dB(A) 초과 비율 & 9.9 \% & 7.5 \% \\ \midrule
+측정점 계산값(지점1 / 지점2, 높이 1.3 m) & 76.77 / 77.51 & 74.13 / 74.81 \\
+\end{longtable}
+\addtocounter{table}{-1}
+{\small 50 km/h 값에서 30 km/h 값을 뺀 차이는 격자 중앙값 0.1 dB(5--95 \% 범위 0.0--2.8 dB), 벽면 중앙값 0.6 dB(0.0--2.9 dB)다. 속도를 바꾼 도로가 사가정로뿐이어서 사가정로 변에서만 2.6--2.9 dB 줄고, 나머지 지역은 거의 같다. 30 km/h에서도 격자의 68 dB(A) 초과 비율은 1.4 \%p만 줄었다. 68 dB(A)는 교통소음 관리기준 가목(주거지역 쪽) 주간 값이다(5.3절). 지도는 용도지역과 관계없이 이 값 하나로 그렸다. 기준초과 지도는 figures/소음지도\_기준초과\_LrT\_h4m\_AVG(\_v30).png에 있다.\par}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{소음지도_격자_LrT_h4m_AVG.png}\par\vspace{2mm}
+\includegraphics[width=\linewidth]{소음지도_격자_LrT_h4m_AVG_v30.png}
+\caption{격자 소음지도($L_{rT}$, 높이 4 m). 위: 사가정로 50 km/h, 아래: 30 km/h}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{소음지도_벽면_LrT_AVG.png}\par\vspace{2mm}
+\includegraphics[width=\linewidth]{소음지도_벽면_LrT_AVG_v30.png}
+\caption{건물 벽면(파사드) 소음지도($L_{rT}$, 층별 계산값 중 최댓값). 위: 사가정로 50 km/h, 아래: 30 km/h}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\linewidth]{소음지도_벽면3D_LrT_AVG.png}\hfill
+\includegraphics[width=0.49\linewidth]{소음지도_벽면3D_LrT_AVG_v30.png}\par\vspace{2mm}
+\includegraphics[width=0.49\linewidth]{소음지도_측정점주변_AVG.png}\hfill
+\includegraphics[width=0.49\linewidth]{소음지도_측정점주변_AVG_v30.png}
+\caption{위: 측정점 주변 건물 벽면 층별 $L_{rT}$ 3D(외벽 앞 5 cm). 아래: 측정점 주변 확대 소음지도(높이 4 m). 왼쪽: 50 km/h, 오른쪽: 30 km/h. 브라우저 3D 뷰어는 model/AVG\_v50(v30)/output/noise3d.html이다}
+\end{figure}
+
 \section{불확실성 및 한계}
 \footnotesize
 \begin{longtable}{L{0.17}L{0.83}}
@@ -643,7 +689,8 @@ Auto\_0306, 0307, 0308 & NL-62 Auto Store(설정 .rnh, AUTO\_LEQ, AUTO\_LP, SOUN
 Auto\_0303, 0304, 0305 & 같음 & 지점2 · 1--3회 & 폴더명 `상행\_임영택'(지도 기준으로는 하행 쪽) \\ \midrule
 야장 사진 4장, 측정 기록표 & 현장 기록 & 지점1·2 & 교통량, 교정, 이벤트 시각 \\ \midrule
 SHA256SUMS\_원본.txt & 원본 해시(34개 파일) & --- & 분석은 복사본(raw\_copy)으로 했다 \\ \midrule
-results/*.csv, figures/*.png & 분석 결과 & --- & field\_measurement/2026-10-22 \\
+results/*.csv, figures/*.png & 분석 결과 & --- & field\_measurement/2026-10-22 \\ \midrule
+model/AVG\_v50, AVG\_v30/output/ & 소음지도 계산 원자료(grid\_result.csv, facade\_result.csv, noise3d.html, 야간 지도) & --- & git 무시 대상. scripts/model\_compare.py로 다시 만든다(\ref{sec:map}절) \\
 \end{longtable}
 \addtocounter{table}{-1}
 \normalsize
