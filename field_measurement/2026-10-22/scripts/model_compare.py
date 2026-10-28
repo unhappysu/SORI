@@ -2,7 +2,7 @@
 
 AI(Claude)를 활용하여 제작하였음.
 
-실행: python3 field_measurement/2026-10-22/scripts/model_compare.py [--skip-map | --only-map]
+실행: python3 field_measurement/2026-10-22/scripts/model_compare.py [--skip-map | --only-map | --plot-only]
 - SORI 소스코드는 수정하지 않는다. 저장소의 sori 패키지를 그대로 호출한다.
 - 시나리오: {R1, R2, R3, AVG} × 사가정로 속도 {30, 40, 50} km/h. 폴더 model/<회차>_v<속도>/
   R1~R3 = 회차별 10분 계수 × 6, AVG = 3회 계수 평균 × 6(= 30분 합계 × 2).
@@ -251,7 +251,8 @@ def plot_comparison(df):
         ax.plot(x, m, "o", ms=9, color=color[pid], mec="white", mew=1.5, label="측정 LAeq,10min", zorder=4)
         for k, v in enumerate(SPEEDS):
             y = [d[(d["회차"] == r) & (d["속도_km/h"] == v)]["모델_LrT"].iloc[0] for r in ROUNDS]
-            diff = [d[(d["회차"] == r) & (d["속도_km/h"] == v)]["차이(모델LrT-측정)"].iloc[0] for r in ROUNDS]
+            # 숫자는 보고서 본문과 같은 부호(측정 − 모델). CSV 열은 모델 − 측정이므로 부호만 바꾼다
+            diff = [-d[(d["회차"] == r) & (d["속도_km/h"] == v)]["차이(모델LrT-측정)"].iloc[0] for r in ROUNDS]
             xo = x + (k - 1) * 0.16
             ax.plot(xo, y, marker[v], ms=6.5, mfc="none", mec=color[pid], mew=1.4,
                     label=f"모델 LrT {v:.0f} km/h" + (" (규정 속도)" if v == SPEED_LIMIT else ""))
@@ -265,7 +266,7 @@ def plot_comparison(df):
     axes[0].set_ylabel("dB(A)")
     axes[0].legend(fontsize=7.5, frameon=False, loc="lower left")
     fig.suptitle("측정 LAeq 와 모델 LrT — 측정 교통량, 노면 AC11, 신호교차로 보정 반영, 사가정로 속도 30/40/50 km/h"
-                 " (숫자 = 모델 - 측정)", x=0.01, ha="left", fontsize=10)
+                 " (숫자 = 측정 - 모델)", x=0.01, ha="left", fontsize=10)
     fig.text(0.99, 0.01, AI_NOTE, ha="right", fontsize=7, color="#666")
     fig.tight_layout(rect=(0, 0.03, 1, 0.95))
     fig.savefig(BASE / "figures" / "모델_측정_비교.png", dpi=150)
@@ -324,7 +325,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-map", action="store_true", help="소음지도(격자·파사드) 계산 생략")
     ap.add_argument("--only-map", action="store_true", help="점 비교는 건너뛰고 소음지도만")
+    ap.add_argument("--plot-only", action="store_true", help="계산 없이 results/모델_측정_비교.csv 로 비교 그림만 다시 그림")
     a = ap.parse_args()
+    if a.plot_only:
+        plot_comparison(pd.read_csv(BASE / "results" / "모델_측정_비교.csv", comment="#", encoding="utf-8-sig"))
+        return
     MODEL.mkdir(exist_ok=True)
 
     pts = receiver_points()

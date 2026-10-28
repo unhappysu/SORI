@@ -4,3 +4,7 @@ __pycache__/
 *.nbc
 output/
 .DS_Store
+
+# 재생성 가능한 계산 폴더(조합 민감도·지면효과 진단, scripts/sensitivity_combo.py·ground_diag.py)
+field_measurement/2026-10-22/model_sens/
+field_measurement/2026-10-22/model_diag/

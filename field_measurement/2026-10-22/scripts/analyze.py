@@ -291,6 +291,24 @@ def main():
                        "내용": "사이렌: 1 kHz 순음과 오르내리는 스윕(yelp/hi-lo) 패턴",
                        "근거": "야장 '16:31 사이렌' + WAV 스펙트로그램에서 두 지점 모두 같은 패턴(지점1은 약 1.6 s 늦게 기록)",
                        "상대지점_동시각": "지점1 녹음에도 같은 사이렌 패턴", "비고": "구간 경계는 눈으로 읽은 값(±2 s)"})
+    # 지점1 2회: 같은 사이렌 구간도 제외해 오토바이 구간과 합친 제외값 하나로 적는다(검토 의견 A6, 2026-10-27).
+    # 지점1 시각 = 지점2 시각 + 시계 차이(wav_check.py 의 사이렌 녹음 교차상관, 없으면 CLOCK_OFFSET_S)
+    lag = CLOCK_OFFSET_S
+    spath = RES / "사이렌_시계차이_제외LAeq.csv"
+    if spath.exists():
+        with open(spath, encoding="utf-8-sig") as f:
+            srows = list(csv.DictReader(l for l in f if not l.startswith("#")))
+        lag = next((float(x["추정_차이_s(지점1-지점2)"]) for x in srows if x["추정_차이_s(지점1-지점2)"]), lag)
+    sh = np.timedelta64(int(round(lag * 1000)), "ms")
+    a = S[(1, 2)]
+    m = overlap_mask(a, T(SIREN_WIN[0]) + sh, T(SIREN_WIN[1]) + sh)
+    excl[(1, 2)] |= m
+    event_rows.append({"지점": 1, "회차": 2, "구분": "제외(녹음 확인 사이렌, 참고값)",
+                       "시작": fmt(T(SIREN_WIN[0]) + sh), "끝": fmt(T(SIREN_WIN[1]) + sh),
+                       "길이_s": round(m.sum() * a.dt, 1), "구간_LAFmax": "",
+                       "내용": "사이렌(지점2와 같은 구간)",
+                       "근거": f"지점2 사이렌 구간 {SIREN_WIN[0]}–{SIREN_WIN[1]} + 시계 차이 {lag:.2f} s(사이렌 녹음 교차상관)",
+                       "상대지점_동시각": "지점2 2회 사이렌 제외 구간", "비고": "오토바이 제외 구간과 함께 뺀 값 하나로 적음"})
 
     # 특이사항 제외 LAeq (원래 값은 그대로 두고 병기)
     for row in metric_rows:
@@ -301,7 +319,8 @@ def main():
         if m.any():
             row["LAeq_특이사항제외"] = r1(energy_mean(s.leq[:n][~m]))
             row["제외_길이_s"] = round(m.sum() * s.dt, 1)
-            row["제외_근거"] = ("야장 기록 + 피크 대조" if p == 1 else
+            row["제외_근거"] = ("야장 기록 + 피크 대조 + 녹음 확인 사이렌 구간 — 참고값" if (p, r) == (1, 2) else
+                               "야장 기록 + 피크 대조" if p == 1 else
                                "녹음 확인 사이렌 구간 — 참고값" if r == 2 else "야장 힌트 + 녹음 순음 후보(경적) — 참고값")
         else:
             row["LAeq_특이사항제외"] = row["LAeq_재계산"]
