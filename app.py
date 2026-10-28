@@ -24,8 +24,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from noisemap import AI_NOTICE, __version__                     # noqa: E402
-from noisemap import config as CFG                               # noqa: E402
+from sori import AI_NOTICE, __version__                         # noqa: E402
+from sori import config as CFG                                   # noqa: E402
 
 try:
     import folium
@@ -34,7 +34,7 @@ try:
 except ImportError:                                              # pragma: no cover
     HAVE_MAP = False
 
-st.set_page_config(page_title="도로 소음지도 만들기", page_icon="🔊", layout="wide")
+st.set_page_config(page_title="SORI Map — 도로 소음지도 만들기", page_icon="🔊", layout="wide")
 
 PROJECTS = ROOT / "projects"
 CRS_DEFAULT = 5186
@@ -183,7 +183,7 @@ def make_config(write=True, **over):
 
 @st.cache_data(show_spinner=False)
 def scan_layers(folders, patterns):
-    from noisemap.inputs import find_files
+    from sori.inputs import find_files
     import pyogrio
     out = {}
     for key, pat in patterns.items():
@@ -202,7 +202,7 @@ def scan_layers(folders, patterns):
 def road_layer_wgs(folders, crs, encoding, pattern):
     """지도 표시용 도로선(WGS84)과 자료 범위"""
     import geopandas as gpd
-    from noisemap.inputs import find_files
+    from sori.inputs import find_files
     fs = find_files(list(folders), pattern)
     if not fs:
         return None, None
@@ -366,7 +366,7 @@ def step2():
 # ================================================================ 3단계
 def _prefill(R):
     """기존 traffic.csv 가 있으면 화면 표에 채워 넣음"""
-    from noisemap.inputs import read_csv_any
+    from sori.inputs import read_csv_any
     t = pdir() / "traffic.csv"
     old = read_csv_any(t).set_index("key") if t.exists() else pd.DataFrame()
     rows = []
@@ -419,7 +419,7 @@ def step3():
     try:
         cfg = make_config()
         with st.spinner("도로와 교차로를 분석하는 중…"):
-            from noisemap import build
+            from sori import build
             R, Jc, road = build.road_table(cfg)
     except Exception as e:
         st.error(f"도로 자료를 읽지 못했습니다: {e}"); return
@@ -528,14 +528,14 @@ def run_all(preset):
     out = Path(cfg["project"]["output_dir"])
     if out.exists():
         shutil.rmtree(out)
-    log = logging.getLogger("noisemap"); log.setLevel(logging.INFO)
+    log = logging.getLogger("sori"); log.setLevel(logging.INFO)
     with st.status("계산 중… (창을 닫지 마세요)", expanded=True) as stt:
         logbox = st.empty()
         h = _ListHandler(logbox); log.addHandler(h)
         bar = st.progress(0.0, text="준비 중")
         t0 = time.time()
         try:
-            from noisemap import build, run, plots
+            from sori import build, run, plots
             bar.progress(0.02, text="① 지도 자료로 계산 모델 만드는 중")
             build.main(cfg)
             bar.progress(0.10, text="② 소음 계산 준비 중 (처음 한 번은 컴파일에 1분 정도 걸립니다)")
@@ -547,7 +547,7 @@ def run_all(preset):
             bar.progress(0.94, text="③ 그림 그리는 중")
             files = plots.main(cfg)
             bar.progress(0.97, text="③ 보고서용 고품질 지도·3D 만드는 중")
-            from noisemap import maps_hq, viewer3d
+            from sori import maps_hq, viewer3d
             files += maps_hq.main(cfg)
             if (out / "facade_result.csv").exists():
                 files.append(viewer3d.main(cfg))
@@ -565,7 +565,7 @@ def run_all(preset):
 
 def _overlay_map(out, cfg_crs):
     import matplotlib
-    from noisemap.plots import classes
+    from sori.plots import classes
     G = pd.read_csv(out / "grid_result.csv")
     d = np.load(out / "model_rasters.npz")
     gx, gy = d["gx"], d["gy"]
@@ -652,7 +652,7 @@ def show_results():
             for extra in ("config.yaml", "traffic.csv", "junctions.csv"):
                 if (pdir() / extra).exists():
                     z.write(pdir() / extra, extra)
-            z.writestr("README_결과.txt", f"{AI_NOTICE}\n계산 프로그램 noisemap {__version__} (RLS-19 + ISO 9613-2)\n"
+            z.writestr("README_결과.txt", f"{AI_NOTICE}\n계산 프로그램 SORI v{__version__} (RLS-19 + ISO 9613-2)\n"
                                          "config.yaml 로 같은 계산을 다시 할 수 있습니다.\n")
         st.download_button("결과 전체 내려받기 (.zip)", buf.getvalue(), file_name=f"{pdir().name}_소음지도결과.zip",
                            mime="application/zip", type="primary")
@@ -662,8 +662,8 @@ def show_results():
 # ================================================================ 사이드바 / 화면 구성
 def sidebar():
     with st.sidebar:
-        st.title("🔊 도로 소음지도")
-        st.caption("RLS-19(음원) + ISO 9613-2(전파)")
+        st.title("🔊 SORI Map")
+        st.caption("도로 소음지도 · RLS-19(음원) + ISO 9613-2(전파)")
         S().proj = st.text_input("프로젝트 이름", S().proj, help="결과가 projects/이름 폴더에 저장됩니다.")
         step = st.radio("단계", ["1. 지도 자료", "2. 위치·범위", "3. 교통량", "4. 계산·결과"], key="step")
         with st.expander("⚙️ 고급 설정 (모르면 그대로 두세요)"):
@@ -682,7 +682,7 @@ def sidebar():
             S().alias = st.text_input("같은 도로로 볼 이름", S().alias, placeholder="전농로25길=전농로",
                                       help="한 도로가 구간마다 이름이 다를 때. 쉼표로 여러 개")
         st.divider()
-        st.caption(f"noisemap {__version__}\n\n{AI_NOTICE}")
+        st.caption(f"SORI v{__version__}\n\n{AI_NOTICE}")
     return step
 
 

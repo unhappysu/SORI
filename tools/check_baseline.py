@@ -58,13 +58,13 @@ def main():
     for k in ("config.yaml", "traffic.csv"):
         if sha256(os.path.join(BL, k)) != exp[k]:
             raise SystemExit(f"baseline/{k} 가 README 기록과 다름 — 기준선 입력이 바뀜")
-    tmp = tempfile.mkdtemp(prefix="noisemap_baseline_")
+    tmp = tempfile.mkdtemp(prefix="sori_baseline_")
     try:
         for k in ("config.yaml", "traffic.csv"):
             shutil.copy(os.path.join(BL, k), tmp)
         env = dict(os.environ, PYTHONPATH=ROOT + os.pathsep + os.environ.get("PYTHONPATH", ""))
         print(f"[1/2] build (임시 폴더 {tmp})"); sys.stdout.flush()
-        run([sys.executable, "-m", "noisemap", "build", "-c", "config.yaml"], tmp, env)
+        run([sys.executable, "-m", "sori", "build", "-c", "config.yaml"], tmp, env)
         print("[2/2] 반경 150 m 격자·파사드 계산"); sys.stdout.flush()
         run([sys.executable, os.path.join(BL, "make_lv_base.py"), "output", "config.yaml", "lv_base.csv", "150"], tmp, env)
         ok = True

@@ -14,7 +14,7 @@ from . import rls19
 from .iso9613 import alpha_iso9613_1, C_SOUND
 from .solver import compute, to_db
 
-log = logging.getLogger("noisemap")
+log = logging.getLogger("sori")
 
 
 def _params(cfg):
@@ -250,7 +250,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         pd.concat(seg_rows).to_csv(os.path.join(out, "segment_check.csv"), index=False)
         log.info("구간 길이 진단(l ≤ s/2, 결과값 불변): %s", seg_sum)
     bands, lams, alphas, wts = _params(cfg)
-    info = {"software": f"noisemap {__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
+    info = {"software": f"SORI v{__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
             "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)", "propagation": "ISO 9613-2:1996",
             "ground_method": cfg["input"]["ground"]["method"], "bands_hz": list(bands),
             "alpha_dB_per_km": [round(a, 3) for a in alphas], "weights": list(np.round(wts, 4)),

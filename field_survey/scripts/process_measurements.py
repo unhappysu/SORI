@@ -8,7 +8,7 @@
 
 입력
     야장.xlsx   : build_fieldbook_xlsx.py 로 만든 소음측정_야장.xlsx (엑셀 수식 결과는 쓰지 않고 입력 칸만 읽어 다시 계산)
-    모델결과.csv : (선택) point_id, period(day/night), Leq_calc 열. noisemap 의 point_levels_for_comparison.csv 를
+    모델결과.csv : (선택) point_id, period(day/night), Leq_calc 열. SORI 의 point_levels_for_comparison.csv 를
                   그대로 쓸 수 있다. round 열(D1…N2)을 더하면 그 회차의 동시 교통량으로 계산한 값과 회차별로 비교한다
 
 출력(--out 폴더, 기본 field_survey/data)

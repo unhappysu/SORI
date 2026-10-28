@@ -22,7 +22,7 @@ import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from noisemap import config as C, inputs as I                    # noqa: E402
+from sori import config as C, inputs as I                        # noqa: E402
 
 OV_COLS = ["ufid", "lanes_fwd", "lanes_bwd", "lanes_basis", "oneway_dir", "oneway_dir_basis", "note"]
 

@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """기준선 lv_base.csv 생성: 계산 중심 반경 R(기본 150 m) 안의 격자(높이 4 m)·파사드 수음점 LrT/LrN.
-noisemap 의 run._run(직접음+반사, 설정의 반사 차수)을 그대로 사용함. 결과값을 바꾸는 처리는 없음.
-사용: PYTHONPATH=<noisemap 코드 경로> python make_lv_base.py <모델 output 폴더> <config.yaml> <출력 csv> [R]
+SORI 의 run._run(직접음+반사, 설정의 반사 차수)을 그대로 사용함. 결과값을 바꾸는 처리는 없음.
+사용: PYTHONPATH=<sori 코드 경로> python make_lv_base.py <모델 output 폴더> <config.yaml> <출력 csv> [R]
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
 import sys
 
 import numpy as np
 import pandas as pd
 
-from noisemap import config as C, run as RUN
+from sori import config as C, run as RUN
 
 out, cfgp, dst = sys.argv[1], sys.argv[2], sys.argv[3]
 rsel = float(sys.argv[4]) if len(sys.argv) > 4 else 150.0

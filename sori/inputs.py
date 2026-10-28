@@ -13,7 +13,7 @@ import pandas as pd
 
 from . import rls19
 
-log = logging.getLogger("noisemap")
+log = logging.getLogger("sori")
 
 
 # ------------------------------------------------------------------ 수치지도
@@ -210,7 +210,7 @@ def load_traffic(cfg):
     df = read_csv_any(p)
     miss = [c for c in ("key",) if c not in df.columns]
     if miss:
-        raise RuntimeError(f"교통량 파일에 필수 열 {miss} 없음. 템플릿: python -m noisemap template")
+        raise RuntimeError(f"교통량 파일에 필수 열 {miss} 없음. 템플릿: python -m sori template")
     for c in TRAFFIC_COLS:
         if c not in df.columns:
             df[c] = ""

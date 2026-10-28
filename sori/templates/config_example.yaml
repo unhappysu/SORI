@@ -2,7 +2,7 @@
 # 소음지도 계산 설정 (RLS-19 음원 + ISO 9613-2 전파)
 # ※ 본 설정 서식은 Claude(Anthropic의 AI)를 활용하여 제작하였음.
 # 경로는 이 파일이 있는 폴더 기준 상대경로 또는 절대경로.
-# 적지 않은 항목은 noisemap/config.py 의 DEFAULTS 값이 사용됨.
+# 적지 않은 항목은 sori/config.py 의 DEFAULTS 값이 사용됨.
 # =====================================================================
 project:
   name: "전농사거리"
@@ -20,7 +20,7 @@ input:
   dem:                          # [선택] DEM 래스터(GeoTIFF/IMG). 없으면 등고선·표고점만 사용
     path: null                  # 예: "data/dem/37705.img"
     use_as: "auxiliary"         # auxiliary | primary
-  traffic:                      # [필수 권장] 교통량. 서식은 `python -m noisemap template` 으로 생성
+  traffic:                      # [필수 권장] 교통량. 서식은 `python -m sori template` 으로 생성
     path: "traffic.csv"
     default_road_type: "gemeinde"   # RLS-19 표 2: autobahn | bundesstrasse | landesstrasse | gemeinde
     fallback_dtv_by_lanes: {1: 1000, 2: 6000, 3: 12000, 4: 20000, 5: 30000, 6: 40000}

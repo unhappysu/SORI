@@ -26,7 +26,7 @@ from shapely.geometry.polygon import orient
 from . import rls19, inputs as I
 from .config import grid_bbox, center
 
-log = logging.getLogger("noisemap")
+log = logging.getLogger("sori")
 
 
 # ====================================================================== 래스터

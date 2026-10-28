@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 3D 웹 뷰어 생성: 지형 위 격자 소음지도 + 모든 대상 건물의 층별 벽면 소음 (three.js, 단일 HTML)
-  python -c "from noisemap import config, viewer3d; viewer3d.main(config.load('config.yaml'))"
+  python -c "from sori import config, viewer3d; viewer3d.main(config.load('config.yaml'))"
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
 import base64
@@ -205,7 +205,7 @@ button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 const D=JSON.parse(document.getElementById('data').textContent);
 document.getElementById('h0').textContent=D.h0;
 const foot=document.getElementById('foot');
-foot.innerHTML=`음원 RLS-19 · 전파 ISO 9613-2 · 수치지형도 v2.0<br>교통량: ${D.meta.traffic} 대/일 (가정값), 기타 ${D.meta.fallback}개 도로는 차로수 기준 가정값<br>벽면 ${D.meta.nq.toLocaleString()}지점 · 건물 ${D.meta.nb}동 · noisemap ${D.meta.ver}<br>※ ${D.meta.notice}`;
+foot.innerHTML=`음원 RLS-19 · 전파 ISO 9613-2 · 수치지형도 v2.0<br>교통량: ${D.meta.traffic} 대/일 (가정값), 기타 ${D.meta.fallback}개 도로는 차로수 기준 가정값<br>벽면 ${D.meta.nq.toLocaleString()}지점 · 건물 ${D.meta.nb}동 · SORI v${D.meta.ver}<br>※ ${D.meta.notice}`;
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const cols=D.cols.map(c=>new THREE.Color(c));
 function cls(v){let i=0;while(i<D.edges.length&&v>D.edges[i])i++;return i}
@@ -327,7 +327,7 @@ def _offline(html):
 def main(cfg, path=None, offline=True):
     """offline=True: 인터넷 없이 열리는 파일(약 +0.6 MB). False: three.js를 CDN에서 불러옴(게시용)"""
     D = build_data(cfg)
-    title = f"{cfg['project']['name']} 3D 소음지도"
+    title = f"SORI Map · {cfg['project']['name']} 3D 소음지도"
     html = HTML.replace("%%TITLE%%", title).replace("%%DATA%%", json.dumps(D, ensure_ascii=False, separators=(",", ":")))
     if offline:
         html = _offline(html)

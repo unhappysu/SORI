@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """명령행 실행
-  python -m noisemap init      [폴더]            예제 설정·교통량 서식 복사
-  python -m noisemap template  -c config.yaml    도로명/UFID 교통량 입력 서식 + 자동 교차로 목록 생성
-  python -m noisemap build     -c config.yaml    계산 모델 구축
-  python -m noisemap run       -c config.yaml [--grid] [--facade]
-  python -m noisemap plot      -c config.yaml
-  python -m noisemap all       -c config.yaml    build → run → plot
+  python -m sori init          [폴더]            예제 설정·교통량 서식 복사
+  python -m sori template      -c config.yaml    도로명/UFID 교통량 입력 서식 + 자동 교차로 목록 생성
+  python -m sori build         -c config.yaml    계산 모델 구축
+  python -m sori run           -c config.yaml [--grid] [--facade]
+  python -m sori plot          -c config.yaml
+  python -m sori all           -c config.yaml    build → run → plot
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
 import argparse
 import logging
@@ -20,7 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="noisemap", description=f"RLS-19 + ISO 9613-2 소음지도 v{__version__}. {AI_NOTICE}")
+    ap = argparse.ArgumentParser(prog="sori", description=f"SORI v{__version__} (Simulation of Outdoor Road-noise Impact) — RLS-19 + ISO 9613-2 도로교통소음 예측. {AI_NOTICE}")
     ap.add_argument("cmd", choices=["init", "template", "build", "run", "plot", "all"])
     ap.add_argument("folder", nargs="?", default=".")
     ap.add_argument("-c", "--config", default="config.yaml")
@@ -31,7 +31,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
-    log = logging.getLogger("noisemap")
+    log = logging.getLogger("sori")
     log.info(AI_NOTICE)
     if a.cmd == "init":
         os.makedirs(a.folder, exist_ok=True)

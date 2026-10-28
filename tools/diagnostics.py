@@ -22,8 +22,8 @@ import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from noisemap import config as C, run as RUN                       # noqa: E402
-from noisemap.solver import compute                                 # noqa: E402
+from sori import config as C, run as RUN                           # noqa: E402
+from sori.solver import compute                                     # noqa: E402
 
 
 # ---------------------------------------------------------------- 1. 평지 직선 도로(가상 시험)
@@ -63,7 +63,7 @@ def build_real(tmp):
     for k in ("config.yaml", "traffic.csv"):
         shutil.copy(os.path.join(ROOT, "baseline", k), tmp)
     env = dict(os.environ, PYTHONPATH=ROOT + os.pathsep + os.environ.get("PYTHONPATH", ""))
-    r = subprocess.run([sys.executable, "-m", "noisemap", "build", "-c", "config.yaml"], cwd=tmp, env=env,
+    r = subprocess.run([sys.executable, "-m", "sori", "build", "-c", "config.yaml"], cwd=tmp, env=env,
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise SystemExit(r.stderr[-3000:])
@@ -107,8 +107,8 @@ def refine(a):
     """l ≤ s/2 위반 수음점(직접 경로 3D 거리)에서 위반 구간을 하위 점음원 n 개(l/n ≤ s_k/2)로 나눠 다시 계산.
     dL = 10 lg[(E_전체 − E_위반구간 + E_세분) / E_전체]. 하위 점은 구간 접선 위, 높이는 원 구간과 같음(가정)."""
     from scipy.spatial import cKDTree
-    from noisemap.run import segment_check
-    tmp = tempfile.mkdtemp(prefix="noisemap_diag_")
+    from sori.run import segment_check
+    tmp = tempfile.mkdtemp(prefix="sori_diag_")
     try:
         cfg, (d, S, F, FR) = build_real(tmp)
         R = receivers(cfg, d, FR)
@@ -158,7 +158,7 @@ def refine(a):
 def crossfall(a):
     """간선(2개선) 음원을 |오프셋| × p % 만큼 낮춤(중심선 정점, 노면이 바깥으로 낮아진다고 가정 — p 는 가정값).
     지면 고도도 같이 낮춰 음원은 노면 위 0.5 m 유지. 반경 150 m 격자·파사드 LrT 차이."""
-    tmp = tempfile.mkdtemp(prefix="noisemap_diag_")
+    tmp = tempfile.mkdtemp(prefix="sori_diag_")
     try:
         cfg, (d, S, F, FR) = build_real(tmp)
         Ln = pd.read_csv(os.path.join(cfg["project"]["output_dir"], "source_lines.csv")).set_index("fid")

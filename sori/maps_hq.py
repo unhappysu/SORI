@@ -139,9 +139,9 @@ def setup_fig(title, subtitle):
     fig = plt.figure(figsize=(16.54, 11.69))                 # A3 가로
     ax = fig.add_axes([0.035, 0.06, 0.66, 0.86])
     side = fig.add_axes([0.715, 0.06, 0.265, 0.86]); side.axis("off")
-    fig.text(0.035, 0.955, title, fontsize=19, weight="bold", va="center")
+    fig.text(0.035, 0.955, f"SORI Map · {title}", fontsize=19, weight="bold", va="center")
     fig.text(0.035, 0.928, subtitle, fontsize=11.5, color="0.25", va="center")
-    fig.text(0.98, 0.018, f"※ {AI_NOTICE}  noisemap {__version__} · 작성 {time.strftime('%Y-%m-%d')}",
+    fig.text(0.98, 0.018, f"※ {AI_NOTICE}  SORI v{__version__} · 작성 {time.strftime('%Y-%m-%d')}",
              ha="right", fontsize=8, color="0.35")
     return fig, ax, side
 

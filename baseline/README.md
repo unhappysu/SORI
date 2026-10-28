@@ -22,12 +22,12 @@
 
 | 파일 | 내용 | 행 수 | 크기 | SHA-256 |
 |---|---|---|---|---|
-| `sources.csv` | `noisemap build` 의 음원점(10,671개): 위치, 구간 길이 l, LW′, D_K, D_refl 등 | 10,671 | 2.9 MB | `bbcef88bb6387f48aa7669d71f044f1fcbfb5015505c976127facd5acaf80ed9` |
+| `sources.csv` | `build` 명령(생성 당시 `noisemap build`, 현재 `sori build`)의 음원점(10,671개): 위치, 구간 길이 l, LW′, D_K, D_refl 등 | 10,671 | 2.9 MB | `bbcef88bb6387f48aa7669d71f044f1fcbfb5015505c976127facd5acaf80ed9` |
 | `traffic_used.csv` | 도로 객체별 실제 사용 교통량(2,261개). 원래 코드 판이라 S1 의 출처 열(traffic_basis 등)은 없음 | 2,261 | 0.3 MB | `d3f9103f7285aa75aaa47a9604015002e711c78227ceb629425b6c00c024f9ec` |
 | `lv_base.csv` | 계산 중심 반경 150 m 안 격자(h = 4 m) 7,152개 + 파사드 3,710개의 LrT, LrN 및 성분(직접·1차·2차 반사) | 10,862 | 1.0 MB | `61c1d98432b40a7844377f2f21bfdd1fa8d116cc1ff16c01be8a02fc6235aded` |
 | `config.yaml` | 계산 설정 | — | — | `9d8ce453f3cf5bf6b2234599695ddc88a23af1d26955e4b6d7475c1c682307a3` |
 | `traffic.csv` | 교통량 입력 | — | — | `b20ff356dbf63fd64ac3f826e44976c8f755882b843e7b1068e17ae7024b3aac` |
-| `make_lv_base.py` | `lv_base.csv` 생성 스크립트 | — | — | `becc90639d43d07d4fcc9fa511df2fbe49ee2a98336439ab33dfc9c6f60608f6` |
+| `make_lv_base.py` | `lv_base.csv` 생성 스크립트. 해시는 생성 당시(이름 변경 전, `from noisemap …`) 판. 현재 판은 import 만 `sori` 로 바뀜(아래 재현 방법 참고) | — | — | `becc90639d43d07d4fcc9fa511df2fbe49ee2a98336439ab33dfc9c6f60608f6` |
 
 ## 재현 방법
 
@@ -38,8 +38,15 @@ git archive 29602cd | tar -x -C /tmp/noisemap_29602cd
 mkdir -p /tmp/bl && cp baseline/config.yaml baseline/traffic.csv /tmp/bl/ && cd /tmp/bl && PYTHONPATH=/tmp/noisemap_29602cd python -m noisemap build -c config.yaml
 ```
 ```bash
-cd /tmp/bl && PYTHONPATH=/tmp/noisemap_29602cd python <저장소>/baseline/make_lv_base.py output config.yaml lv_base.csv 150
+git show 4b8ab69:baseline/make_lv_base.py > /tmp/bl/make_lv_base_noisemap.py
 ```
+```bash
+cd /tmp/bl && PYTHONPATH=/tmp/noisemap_29602cd python make_lv_base_noisemap.py output config.yaml lv_base.csv 150
+```
+
+옛 커밋 `29602cd` 의 패키지 이름은 `noisemap` 이므로 위 명령은 `python -m noisemap` 그대로 쓴다.
+현재 저장소의 `baseline/make_lv_base.py` 는 `from sori …` 로 바뀌어 옛 커밋 코드로는 실행되지 않으므로,
+이름 변경 전 판(커밋 `4b8ab69`)을 꺼내 쓴다. 현재 코드(SORI) 기준 비교는 `python tools/check_baseline.py`.
 
 ## 비교 규칙
 

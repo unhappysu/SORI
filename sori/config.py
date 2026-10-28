@@ -45,7 +45,7 @@ DEFAULTS = {
             "aux_spacing": 20.0,
         },
         "traffic": {
-            "path": "traffic.csv",                 # 사용자 교통량 파일(템플릿: noisemap template)
+            "path": "traffic.csv",                 # 사용자 교통량 파일(템플릿: sori template)
             "default_road_type": "gemeinde",       # RLS-19 표 2 도로유형(빈칸 보충용)
             "fallback_dtv_by_lanes": {1: 1000, 2: 6000, 3: 12000, 4: 20000, 5: 30000, 6: 40000},
             "default_speed_main": 50.0,            # 교통량 파일에 속도가 없을 때

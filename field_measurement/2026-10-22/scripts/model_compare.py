@@ -1,20 +1,20 @@
-"""측정 교통량을 noisemap(RLS-19 + ISO 9613-2)에 넣어 측정값과 비교하고 소음지도를 만든다.
+"""측정 교통량을 SORI(RLS-19 + ISO 9613-2)에 넣어 측정값과 비교하고 소음지도를 만든다.
 
 AI(Claude)를 활용하여 제작하였음.
 
 실행: python3 field_measurement/2026-10-22/scripts/model_compare.py [--skip-map | --only-map]
-- noisemap 소스코드는 수정하지 않는다. 저장소의 noisemap 패키지를 그대로 호출한다.
+- SORI 소스코드는 수정하지 않는다. 저장소의 sori 패키지를 그대로 호출한다.
 - 시나리오: {R1, R2, R3, AVG} × 사가정로 속도 {30, 40, 50} km/h. 폴더 model/<회차>_v<속도>/
   R1~R3 = 회차별 10분 계수 × 6, AVG = 3회 계수 평균 × 6(= 30분 합계 × 2).
 - 공통 조건(2026-10-23 사용자 지시)
   · 노면: 수치지도 '아스팔트'·'아스팔트콘크리트' → RLS-19 표 4a AC11(설정 surface_map). 모든 아스팔트 도로에 적용.
-  · 교차로 보정: noisemap 설정 input.junctions.dk_rule = nearest_signal(커밋 216882d).
+  · 교차로 보정: SORI 설정 input.junctions.dk_rule = nearest_signal(커밋 216882d).
     가장 가까운 신호·회전교차로 기준 D_K = KKT·max(1 − x/120, 0)와 기본 판정 값 중 큰 쪽.
   · 지점2 수음점: 야장 판독값대로 건물 벽에서 1.13 m 앞.
 - 소음지도: AVG_v50(규정 속도) 교통량으로 격자·파사드 전체 계산(run) → plot.
 
 교차로 보정 규칙
-- noisemap 기본(dk_rule = nearest)은 RLS-19 3.3.7 을 '그 음원선의 가장 가까운 교차점'으로 구현한다. 측정점 부근에서는
+- SORI 기본(dk_rule = nearest)은 RLS-19 3.3.7 을 '그 음원선의 가장 가까운 교차점'으로 구현한다. 측정점 부근에서는
   전농로14길(1차로, 폭 3.3 m) 접속부 등 other 유형이 잡혀 전농사거리 신호교차로 보정이 0 dB 가 된다.
 - 그래서 dk_rule = nearest_signal 로 계산한다. 비교를 위해 각 시나리오를 기본 규칙으로도 build·점 계산해
   output/point_result_default.csv 로 남긴다(최종 config.yaml·output 은 nearest_signal 결과).
@@ -185,8 +185,8 @@ plots: {{limits: {{LrT: 68, LrN: 58, label: "도로교통소음 관리기준(주
 
 def nm(args, cwd):
     env = dict(os.environ, PYTHONPATH=str(REPO))
-    print("  $ python -m noisemap", " ".join(args), f"(in {cwd.name})", flush=True)
-    subprocess.run([sys.executable, "-m", "noisemap", *args], cwd=cwd, env=env, check=True,
+    print("  $ python -m sori", " ".join(args), f"(in {cwd.name})", flush=True)
+    subprocess.run([sys.executable, "-m", "sori", *args], cwd=cwd, env=env, check=True,
                    stdout=subprocess.DEVNULL)
 
 
@@ -199,7 +199,7 @@ def meas_for(rnd, pid):
 def sensitivity(model_avg50):
     """차종 구성 가정에 따른 사가정로 LW′ 변화(= 수음점 레벨 변화의 근사). 기준: AVG, 50 km/h, AC11."""
     sys.path.insert(0, str(REPO))
-    from noisemap import rls19
+    from sori import rls19
     up = np.mean([UP[r] for r in (1, 2, 3)], axis=0)
     dn = np.mean([DOWN[r] for r in (1, 2, 3)], axis=0)
     q = (up.sum() + dn.sum()) * 6
@@ -350,7 +350,7 @@ def main():
                 for r in rows:
                     w.writerow({k: r.get(k, "") for k in FIELDS})
             out = d / "output"
-            write_config(d, grid=False, dk_rule="nearest")           # noisemap 기본 교차점 판정(비교용)
+            write_config(d, grid=False, dk_rule="nearest")           # SORI 기본 교차점 판정(비교용)
             nm(["build", "-c", "config.yaml"], d)
             nm(["run", "-c", "config.yaml", "--points"], d)
             shutil.copyfile(out / "point_result.csv", out / "point_result_default.csv")
@@ -379,7 +379,7 @@ def main():
     if summary and not a.only_map:            # 비교표·그림은 12개 시나리오가 모두 있을 때만
         df = pd.DataFrame(summary)
         with open(BASE / "results" / "모델_측정_비교.csv", "w", encoding="utf-8-sig", newline="") as f:
-            f.write(f"# {AI_NOTE}. 노면 AC11, 신호교차로 보정 반영. 모델_LrT_교차로기본판정 = noisemap 기본(가장 가까운 교차점)\n")
+            f.write(f"# {AI_NOTE}. 노면 AC11, 신호교차로 보정 반영. 모델_LrT_교차로기본판정 = SORI 기본(가장 가까운 교차점)\n")
             df.to_csv(f, index=False)
         print(df.to_string())
         avg50 = {RECEIVERS[r]["point"]: float(df[(df.시나리오 == MAP_SCEN) & (df.수음점 == r)]["모델_LrT"].iloc[0])
@@ -388,7 +388,7 @@ def main():
         plot_comparison(df)
     if (MODEL / MAP_SCEN / "output" / "grid_result.csv").exists():
         plot_zoom_map()
-        # noisemap 고품질 지도 중 주간(LrT) 결과를 figures/ 로 복사(model/*/output 은 git 무시 대상)
+        # SORI Map 고품질 지도 중 주간(LrT) 결과를 figures/ 로 복사(model/*/output 은 git 무시 대상)
         for src, dst in [("HQ_grid_LrT_h4m", "소음지도_격자_LrT_h4m_AVG"), ("HQ_exceed_LrT_h4m", "소음지도_기준초과_LrT_h4m_AVG"),
                          ("HQ_facade_LrT", "소음지도_벽면_LrT_AVG")]:
             for ext in (".png", ".pdf"):

@@ -1,4 +1,6 @@
-# noisemap — RLS-19 + ISO 9613-2 도로교통소음 3D 소음지도
+# SORI — RLS-19 + ISO 9613-2 도로교통소음 3D 소음지도(SORI Map)
+
+**SORI** (Simulation of Outdoor Road-noise Impact) v0.1 — 도로교통소음 예측 소프트웨어. 소음지도 기능·결과물은 **SORI Map** 이라 부른다. Python 패키지·명령은 `sori` (`python -m sori …`).
 
 > ※ 본 소프트웨어와 문서는 Claude(Anthropic의 AI)를 활용하여 제작하였음. 계산 결과의 검토·검증 책임은 사용자에게 있음.
 
@@ -35,19 +37,19 @@ numba가 없어도 동작하지만 수십~수백 배 느려집니다.
 ```bash
 python tools/make_synthetic_data.py examples/synthetic      # 수치지도 형식의 가상 자료 생성
 cd examples/synthetic
-python -m noisemap all -c config.yaml                        # 모델 구축 → 계산 → 그림
+python -m sori all -c config.yaml                            # 모델 구축 → 계산 → 그림
 ```
 (패키지 폴더 밖에서 실행할 때는 `PYTHONPATH`에 이 폴더를 추가하거나 `pip install -e .` 대신 폴더를 복사해 사용)
 
 ## 3. 실제 지역 계산 순서
 
-1. **작업 폴더 만들기**: `python -m noisemap init 전농사거리` → `config_example.yaml`을 `config.yaml`로 이름 변경
+1. **작업 폴더 만들기**: `python -m sori init 전농사거리` → `config_example.yaml`을 `config.yaml`로 이름 변경
 2. **수치지도 넣기**: 국토정보플랫폼에서 받은 수치지형도 v2.0(SHP) 압축을 `data/map/` 아래에 도엽별로 풀기 (하위 폴더 자동 탐색, 여러 도엽 자동 병합)
 3. **DEM(선택)**: `input.dem.path`에 GeoTIFF/IMG 경로. 좌표계는 파일에서 읽어 자동 변환
 4. **계산 중심 지정**: `receivers.center: [x, y]` (EPSG:5186 좌표)
-5. **교통량 서식 만들기**: `python -m noisemap template -c config.yaml` → `traffic_template.csv` 생성 → 값 입력 후 `traffic.csv`로 저장
+5. **교통량 서식 만들기**: `python -m sori template -c config.yaml` → `traffic_template.csv` 생성 → 값 입력 후 `traffic.csv`로 저장
 6. **교차로 확인(선택)**: `traffic_template_junctions_auto.csv`의 자동 판정(type)을 검토·수정 후 `input.junctions.path`로 지정
-7. **실행**: `python -m noisemap all -c config.yaml`
+7. **실행**: `python -m sori all -c config.yaml`
 8. **결과 확인**: `output/` 폴더 (아래 6절)
 
 ## 4. 입력 서식
@@ -91,7 +93,7 @@ python -m noisemap all -c config.yaml                        # 모델 구축 →
 방향별 차로 수(`lanes_fwd`·`lanes_bwd`, 양방향은 둘 다 1 이상일 때)는 음원선 위치(RLS-19 그림 6)에 반영됩니다(`output/source_lines.csv`의 `lane_rule = override`). 일방통행 `oneway_dir = −1`이면 음원선을 진행방향 우측(디지타이즈 기준 좌측)에 두고 종단경사 부호를 반대로 씁니다(`source_lines.csv`의 `oneway_dir_used`). 값이 없으면 +1(디지타이즈 방향 = 진행방향, 가정). 읽은 값과 경고는 `output/road_override_used.csv`, `build_info.json`의 `road_override`.
 
 ### 4.5 점 수음점 `points.csv` (선택 — 현장 측정점 비교용)
-현장 측정점처럼 임의 좌표·높이의 수음점을 `receivers.points.path`에 지정합니다. `python -m noisemap run -c config.yaml --points`로 점 수음점만 계산할 수 있습니다(모델은 먼저 `build`).
+현장 측정점처럼 임의 좌표·높이의 수음점을 `receivers.points.path`에 지정합니다. `python -m sori run -c config.yaml --points`로 점 수음점만 계산할 수 있습니다(모델은 먼저 `build`).
 
 | 열 | 설명 |
 |---|---|

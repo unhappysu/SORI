@@ -11,9 +11,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from noisemap import rls19 as R
-from noisemap import iso9613 as I
-from noisemap.solver import compute
+from sori import rls19 as R
+from sori import iso9613 as I
+from sori.solver import compute
 
 LAM500 = 340.0 / 500.0
 
@@ -189,7 +189,7 @@ def test_first_order_reflection_image_source():
 def test_junction_membership():
     import geopandas as gpd
     from shapely.geometry import LineString
-    from noisemap import build, config
+    from sori import build, config
     cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
     rd = gpd.GeoDataFrame({"lanes": [6, 6, 6, 6, 2, 2], "axis": ["A", "A", "B", "B", "_u1", "_u2"],
                            "fid": range(6)},
@@ -211,7 +211,7 @@ def test_dk_rule_nearest_signal():
     # nearest_signal: 신호교차로까지 100 m → D_K = 3 · (1 − 100/120), 기존 값과 큰 쪽
     import geopandas as gpd
     from shapely.geometry import LineString
-    from noisemap import build, config
+    from sori import build, config
     cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
     assert cfg["input"]["junctions"]["dk_rule"] == "nearest"
     rd = gpd.GeoDataFrame({"lanes": [6, 6, 6, 6, 1], "axis": ["A", "A", "B", "B", "_u"], "fid": range(5)},
@@ -251,7 +251,7 @@ def test_dk_rule_nearest_signal():
 
 # ======================================================================= 실제 자료에서 발견된 문제 회귀시험
 def test_name_traffic_not_applied_to_narrow_same_name_piece():
-    from noisemap import inputs, config
+    from sori import inputs, config
     cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
     rec = {c: "" for c in inputs.TRAFFIC_COLS}; rec.update(key="전농로", DTV="45000")
     by_name = {"전농로": rec}
@@ -269,7 +269,7 @@ def test_name_traffic_not_applied_to_narrow_same_name_piece():
 # ======================================================================= 교통량 출처 기록 (S1)
 def test_traffic_basis_recorded():
     """실측/가정(basis), M 산정 방식, 메모가 결과로 전달되고 교통량 값 자체는 바뀌지 않음"""
-    from noisemap import inputs, config
+    from sori import inputs, config
     cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
     road = {"ufid": "A", "rname": "전농로", "axis": "전농로", "lanes": 5, "surface_attr": ""}
     base = {c: "" for c in inputs.TRAFFIC_COLS}
@@ -293,7 +293,7 @@ def test_traffic_basis_recorded():
 # ======================================================================= 구간 길이 진단 (S7)
 def test_segment_check_rule():
     """RLS-19 3.2 주석 l ≤ s/2: s < 2l 이면 위반, s = 2l 은 위반 아님. s = 직접 경로 3D 거리"""
-    from noisemap.run import segment_check, _segment_summary
+    from sori.run import segment_check, _segment_summary
     S = pd.DataFrame(dict(x=[0.0, 0.0], y=[0.0, 3.0], z=[0.0, 0.0], l=[4.0, 5.0], main=[True, False]))
     rx = np.array([8.0, 7.9, 100.0]); ry = np.zeros(3); rz = np.zeros(3)
     nv, nvm, ratio = segment_check(S, rx, ry, rz)
@@ -314,7 +314,7 @@ def test_segment_check_rule():
 # ======================================================================= 도로별 확인값 (S3)
 def test_road_override_read(tmp_path):
     """roads_override.csv 읽기·검증·도로 객체 부착. 계산에는 아직 쓰지 않음(S4·S5에서 반영)"""
-    from noisemap import inputs, config
+    from sori import inputs, config
     p = tmp_path / "ov.csv"
     p.write_text("UFID,도로명,lanes_fwd,lanes_bwd,lanes_basis,oneway_dir,oneway_dir_basis,note\n"
                  "A,전농로,3,2,checked,,,항공사진\n"
@@ -364,7 +364,7 @@ def _legacy_source_offsets(n_lanes, width, oneway):
 
 def test_source_offsets_default_equals_legacy():
     """기본 설정·확인값 없음 → 이전 코드와 오프셋이 비트 단위로 같음"""
-    from noisemap import build, config
+    from sori import build, config
     cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}})
     for n in range(1, 11):
         for w in (0.0, 3.0, 4.8, 7.0, 13.1, 25.0, 40.0):
@@ -378,7 +378,7 @@ def test_source_offsets_bild6_and_priority():
     """Bild 6 규칙(방향별 차로 수 → 음원선 위치)과 확인값·설정 우선순위.
     기대값은 Bild 6 문장에서 유도: 중심선(방향 경계)에서 음원선까지 = (nd − d_edge)·wl,
     d_edge = 0.5(1·2차로), 1.0(3·4차로), 1.5(5차로 이상)"""
-    from noisemap import build, config
+    from sori import build, config
     cfg = config._merge(config.DEFAULTS, {"receivers": {"center": [0, 0]}, "model": {"lane_width": 3.0}})
     lay = lambda *a: build.lane_layout(cfg, *a)
     expect = {1: 0.5, 2: 1.5, 3: 2.0, 4: 3.0, 5: 3.5, 6: 4.5}
@@ -413,7 +413,7 @@ def test_dir_split_and_oneway_dir(tmp_path):
     평지(경사 0) 가상 도로: LW′ ∝ 10 lg M 이므로 두 음원선 LW′ 차 = 10 lg[p/(1−p)]"""
     import geopandas as gpd
     from shapely.geometry import LineString
-    from noisemap import build, inputs, config, rls19
+    from sori import build, inputs, config, rls19
     tp = tmp_path / "traffic.csv"
     tp.write_text("key,key_type,DTV,dir_split_fwd,dir_basis\n"
                   "A,ufid,10000,0.7,measured\nB,ufid,10000,0.7,assumed\n도로C,name,10000,0.7,measured\n"
@@ -460,7 +460,7 @@ def test_dir_split_and_oneway_dir(tmp_path):
 # ======================================================================= 일방통행 객체의 도로명 교통량 (S2)
 def test_oneway_name_traffic_option():
     """oneway_name_traffic: apply(기본, 현행) | fallback(도로명 교통량을 같은 이름 일방통행에 배정 안 함). UFID 우선"""
-    from noisemap import inputs, config
+    from sori import inputs, config
     rec = dict({c: "" for c in inputs.TRAFFIC_COLS}, key="사가정로", DTV="45000")
     by_name = {"사가정로": rec}
     ramp = {"ufid": "R", "rname": "사가정로", "axis": "사가정로", "lanes": 2, "surface_attr": "", "oneway": True}
@@ -486,7 +486,7 @@ def test_source_ground_option():
     횡단 10 % 기울어진 평면 지형 z = 0.1·(y − 100), 중심선 y = 100 의 4차로(차로폭 3.5 → 오프셋 ±5.25 m)"""
     import geopandas as gpd
     from shapely.geometry import LineString
-    from noisemap import build, inputs, config
+    from sori import build, inputs, config
     road = gpd.GeoDataFrame({"ufid": ["A"], "rname": [""], "axis": ["_uA"], "lanes": [4], "width": [14.0],
                              "oneway": [False], "fid": [0], "surface_attr": [""]},
                             geometry=[LineString([(0, 100), (100, 100)])])
@@ -547,7 +547,7 @@ def test_single_lane_two_coincident_lines_equivalent():
 
 # ======================================================================= 교통량 M 부분 입력 (S9)
 def _s9_cfg(mode=None):
-    from noisemap import config
+    from sori import config
     upd = {"receivers": {"center": [0, 0]}}
     if mode:
         upd["input"] = {"traffic": {"missing_m": mode}}
@@ -555,7 +555,7 @@ def _s9_cfg(mode=None):
 
 
 def _s9_rec(**kw):
-    from noisemap import inputs
+    from sori import inputs
     return dict({c: "" for c in inputs.TRAFFIC_COLS}, **kw)
 
 
@@ -564,7 +564,7 @@ _S9_ROAD = {"ufid": "A", "rname": "전농로", "axis": "전농로", "lanes": 5, 
 
 def test_missing_m_error_default(tmp_path):
     """기본 missing_m = error: DTV 없이 M 한쪽만 → RuntimeError(key·빠진 항목), 문제 행은 한 번에 모두 나열"""
-    from noisemap import inputs
+    from sori import inputs
     cfg = _s9_cfg()
     for given, missing in (("M_day", "M_night"), ("M_night", "M_day")):
         rec = _s9_rec(key="전농로", **{given: "2500"})
@@ -582,7 +582,7 @@ def test_missing_m_error_default(tmp_path):
 
 def test_missing_m_estimate_tab2_ratio(tmp_path):
     """missing_m = estimate: RLS-19 표 2 의 그 road_type 주·야 계수 비율로 보충, from 에 추정 표시"""
-    from noisemap import inputs
+    from sori import inputs
     cfg = _s9_cfg("estimate")
     t = inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": _s9_rec(key="전농로", M_day="2500")}, True, 6)
     assert t["M_day"] == 2500.0 and t["M_night"] == pytest.approx(2500 * 0.0100 / 0.0575)
@@ -601,7 +601,7 @@ def test_missing_m_estimate_tab2_ratio(tmp_path):
 
 def test_traffic_m_regression_and_dtv_in():
     """DTV 만 / DTV + M_day / M_day + M_night 는 이전과 같은 값·from. DTV_in = 입력 DTV(없으면 빈칸)"""
-    from noisemap import inputs
+    from sori import inputs
     for mode in (None, "estimate"):
         cfg = _s9_cfg(mode)
         f = lambda **kw: inputs.traffic_for_road(cfg, _S9_ROAD, {}, {"전농로": _s9_rec(key="전농로", **kw)}, True, 6)
@@ -620,7 +620,7 @@ def test_traffic_m_regression_and_dtv_in():
 
 def test_traffic_summary_no_back_calculation():
     """지도 정보란 문구: M 직접 입력을 DTV 로 역산하지 않음, 출처 한글 표기, 추정·여러 값 표시, 예전 서식 호환"""
-    from noisemap.maps_hq import traffic_summary
+    from sori.maps_hq import traffic_summary
     T = pd.DataFrame({
         "axis": ["전농로", "사가정로", "답십리로", "답십리로", "서울시립대로", "골목"],
         "traffic_src": ["user", "user", "user", "user", "user", "fallback"],
@@ -644,7 +644,7 @@ def test_traffic_summary_no_back_calculation():
 
 
 def test_missing_m_config_validation(tmp_path):
-    from noisemap import config
+    from sori import config
     p = tmp_path / "c.yaml"
     p.write_text("receivers: {center: [0, 0]}\ninput: {traffic: {missing_m: guess}}\n", encoding="utf-8")
     with pytest.raises(ValueError):
@@ -656,7 +656,7 @@ def test_missing_m_config_validation(tmp_path):
 # ======================================================================= CSV 칸 수 검사·정보란 줄바꿈 (S10)
 def test_csv_extra_fields_message(tmp_path):
     """따옴표 없는 쉼표로 칸이 늘어난 행 → 줄 번호와 해결 방법을 담은 오류. 끝의 빈 칸만 많은 행은 허용"""
-    from noisemap.inputs import read_csv_any
+    from sori.inputs import read_csv_any
     p = tmp_path / "a.csv"
     p.write_text("ufid,lanes_fwd,note\nA,3,가상, 중심 근처\nB,2,정상\n", encoding="utf-8")
     with pytest.raises(RuntimeError) as e:
@@ -669,7 +669,7 @@ def test_csv_extra_fields_message(tmp_path):
 
 
 def test_info_wrap_keeps_number_and_unit():
-    from noisemap.maps_hq import wrap_info
+    from sori.maps_hq import wrap_info
     lines = wrap_info("입력: 가로A M_T 2,300 / M_N 400 대/h(가정·야간 추정), 가로B DTV 30,000 대/일(실측)", 30)
     joined = " ".join(lines)
     assert "M_N 400 대/h" in joined and "DTV 30,000 대/일" in joined
@@ -680,7 +680,7 @@ def test_info_wrap_keeps_number_and_unit():
 # ======================================================================= 점 수음점(현장 측정점 비교용)
 def _point_world(tmp_path):
     """경사 지면(z = 0.05·x) 200 m × 200 m, 건물 1동, 직선 음원 — run.main 이 읽는 출력 폴더를 직접 만든다."""
-    from noisemap import config
+    from sori import config
     n, res, slope = 200, 1.0, 0.05
     xc = (np.arange(n) + 0.5) * res
     gnd = np.tile(slope * xc, (n, 1))
@@ -711,7 +711,7 @@ def _point_world(tmp_path):
 
 def test_point_receivers_equal_grid(tmp_path):
     """격자점과 같은 좌표·높이의 점 수음점 → 격자 결과와 같은 값. 측정점 목록 열 이름(x_epsg5186, height_m)도 읽음"""
-    from noisemap import run
+    from sori import run
     cfg, out = _point_world(tmp_path)
     pts = tmp_path / "points.csv"
     pts.write_text("point_id,x_epsg5186,y_epsg5186,height_m,note\n"
@@ -736,7 +736,7 @@ def test_point_receivers_equal_grid(tmp_path):
 
 
 def test_point_receivers_default_height_and_errors(tmp_path):
-    from noisemap.run import read_points
+    from sori.run import read_points
     p = tmp_path / "p.csv"
     p.write_text("point_id,x,y,h\nA,1,2,\nB,3,4,4.0\n", encoding="utf-8")
     P = read_points(str(p), default_height=1.5)
@@ -751,7 +751,7 @@ def test_point_receivers_default_height_and_errors(tmp_path):
 
 
 def test_point_receivers_config_path(tmp_path):
-    from noisemap import config
+    from sori import config
     c = tmp_path / "c.yaml"
     c.write_text("receivers: {center: [0, 0], points: {path: pts.csv}}\n", encoding="utf-8")
     cfg = config.load(str(c))
