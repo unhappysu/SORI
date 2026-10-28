@@ -350,8 +350,9 @@ def exceed_map(cfg, key="LrT", h=None, limits=None):
     y = info_block(side, y - 0.07, C, [("기준", lim["label"]),
                                        ("초과 면적", f"격자 지점의 {share:.0f} % (도로 위 포함)"),
                                        ("초과 건물", f"{nb}동 (초과 벽면·층 {nf:,}개)" if os.path.exists(fp) else "벽면 계산 없음")])
-    warn_box(side, y - 0.01, "국내 기준은 등가소음도(LAeq) 기반이고 본 지도는 RLS-19 평가레벨(Lr)이라 직접 비교에 주의. "
-                             "교통량 일부가 가정값입니다.")
+    # Lr 도 A가중 등가소음도(LAeq 와 같은 종류)다. 다른 것은 계산 조건(D_K 가산, 순풍 LAT(DW)·Cmet 미적용, 가정 입력)
+    warn_box(side, y - 0.01, "지도 값은 A가중 등가소음도로 기준과 같은 지표이나, 교차로 보정(D_K)·순풍 조건(Cmet 미적용)·"
+                             "가정 교통량이 들어가 실측 LAeq와 조건이 다릅니다. 실측 검증 전에는 초과 범위를 참고로만 보세요.")
     return save(fig, C.out, f"HQ_exceed_{key}_h{h:g}m")
 
 
