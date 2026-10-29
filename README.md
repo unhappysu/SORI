@@ -160,6 +160,8 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 6. 출력 (`output/`)
 
+**파일명 규칙 사본**: 아래 고정 이름 파일과 함께 `{프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}[부가]` 이름의 사본을 만듭니다(설정 `project.scenario`, 기본 "현황"; `project.file_naming: false` 이면 만들지 않음). 방법 표시(ISO/RLS)는 `propagation_method` 에서 자동으로 붙고, 두 시간대를 함께 담은 CSV 는 `주야`, 격자 높이·지도 종류는 부가(`_h4m`, `_exceed_h4m`, `_building`)로 붙습니다. 칸 안의 `_`·공백·파일명 금지 글자는 `-` 로 바뀝니다. 대상: 격자·파사드 결과 CSV, 격자 GeoTIFF, 고품질 지도(HQ_*) PNG·PDF. 점 수음점 결과와 확인용 그림(`grid_*_grid.png` 등)은 고정 이름만. section(단면) 지도는 미구현. 예) `전농사거리_현황-ISO_주간_grid_h4m.png`, `전농사거리_현황-RLS_주야_facade.csv`. 만든 목록은 `run_info.json` 의 `file_naming`.
+
 | 파일 | 내용 |
 |---|---|
 | `grid_result.csv`, `grid_LrT_h4m.tif` … | 격자 결과(높이별), GeoTIFF는 QGIS에서 바로 열림 |

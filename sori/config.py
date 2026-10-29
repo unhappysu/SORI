@@ -7,7 +7,9 @@ from pathlib import Path
 import yaml
 
 DEFAULTS = {
-    "project": {"name": "소음지도", "output_dir": "output"},
+    "project": {"name": "소음지도", "output_dir": "output",
+                "scenario": "현황",                 # 파일명 규칙 {프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}
+                "file_naming": True},              # 규칙 이름 사본을 만듦(고정 이름 파일은 그대로)
     "crs": 5186,                                   # 계산 좌표계(EPSG). 수치지도 1:1,000 = 5186(중부원점 GRS80)
     "propagation_method": "iso9613_2",             # 전파 계산 방법: iso9613_2(ISO 9613-2, 현행) | rls19(RLS-19 3.5·3.6)
     "input": {

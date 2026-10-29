@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from . import AI_NOTICE, __version__, HAVE_NUMBA
-from . import rls19
+from . import naming, rls19
 from .propagation import get_model
 from .solver import compute, facade_neighbors, to_db
 
@@ -193,6 +193,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
     out = cfg["project"]["output_dir"]
     model = get_model(cfg)                              # 이번 실행의 모든 결과 종류가 같은 전파 방법을 씀
     outputs = previous_outputs(out, model.name)
+    named = []                                          # 파일명 규칙 사본(naming.py)
     d, S, F, FR = load_model(out)
     summary = {}
     do_seg = bool(cfg["propagation"].get("segment_check", True))
@@ -222,10 +223,12 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             for key in ("LrT", "LrN"):
                 A = np.full(X.shape, np.nan)
                 A.ravel()[m] = G[key].values
-                _write_tif(os.path.join(out, f"grid_{key}_h{h:g}m.tif"), A, gx, gy,
-                           cfg["receivers"]["grid"]["step"], cfg["crs"], model.name)
+                tif = os.path.join(out, f"grid_{key}_h{h:g}m.tif")
+                _write_tif(tif, A, gx, gy, cfg["receivers"]["grid"]["step"], cfg["crs"], model.name)
+                named.append(naming.copy_as(cfg, tif, "grid", key, f"_h{h:g}m"))
             summary[f"grid_h{h:g}"] = {k: [float(np.nanmin(G[k])), float(np.nanmax(G[k]))] for k in ("LrT", "LrN")}
         pd.concat(frames).to_csv(os.path.join(out, "grid_result.csv"), index=False, encoding="utf-8-sig")
+        named.append(naming.copy_as(cfg, os.path.join(out, "grid_result.csv"), "grid"))
         outputs["grid"] = model.name
     if "facade" in which and cfg["receivers"]["facade"]["enabled"] and len(FR):
         r = _run(cfg, d, S, F, FR.x.values, FR.y.values, FR.z.values, FR.zg.values,
@@ -236,6 +239,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         FR["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrT]   # RLS-19 3.1 올림
         FR["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrN]
         FR.to_csv(os.path.join(out, "facade_result.csv"), index=False, encoding="utf-8-sig")
+        named.append(naming.copy_as(cfg, os.path.join(out, "facade_result.csv"), "facade"))
         outputs["facade"] = model.name
         summary["facade"] = {k: [float(np.nanmin(FR[k])), float(np.nanmax(FR[k]))] for k in ("LrT", "LrN")}
         if do_seg:
@@ -281,6 +285,8 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
     info = {"software": f"SORI v{__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
             "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)", "propagation": model.label(cfg),
             **model.info(cfg), "outputs": outputs,
+            "file_naming": ({"rule": "{프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}[부가]",
+                             "files": [os.path.basename(f) for f in named if f]} if naming.enabled(cfg) else None),
             "ground_method": cfg["input"]["ground"]["method"], "bands_hz": list(bands),
             "alpha_dB_per_km": [round(a, 3) for a in alphas], "weights": list(np.round(wts, 4)),
             "reflection": cfg["propagation"]["reflection"], "results_range": summary,

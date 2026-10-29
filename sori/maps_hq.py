@@ -28,6 +28,7 @@ from shapely.ops import linemerge
 from . import AI_NOTICE, __version__
 from .config import grid_bbox, center
 from .plots import set_font
+from . import naming
 from .propagation import result_model
 
 # DIN 45682(=DIN 18005-2) 소음지도 색 순서에 맞춘 근사 RGB (5 dB 등급)
@@ -262,11 +263,15 @@ def warn_box(side, y, text):
     return y - hh - 0.02
 
 
-def save(fig, out, name):
+def save(fig, out, name, cfg=None, rule=None):
+    """rule = (종류, 시간대, 부가): 파일명 규칙(naming.py) 사본도 만듦"""
     pdf = os.path.join(out, name + ".pdf"); png = os.path.join(out, name + ".png")
     fig.savefig(png, dpi=300); fig.savefig(pdf)
     plt.close(fig)
-    return [png, pdf]
+    files = [png, pdf]
+    if rule is not None and cfg is not None:
+        files += [f for f in (naming.copy_as(cfg, png, *rule), naming.copy_as(cfg, pdf, *rule)) if f]
+    return files
 
 
 # ------------------------------------------------------------------ 격자 배열
@@ -312,7 +317,7 @@ def grid_map(cfg, key="LrT", h=None):
     vals = A[np.isfinite(A)]
     y = info_block(side, y - 0.10, C, [("결과 범위", f"{vals.min():.1f} – {vals.max():.1f} dB(A) (도로 위 포함)")])
     warn_box(side, y - 0.01, "교통량 일부가 가정값입니다. 절대 레벨은 참고용이며 실측 교통량으로 다시 계산해야 합니다.")
-    return save(fig, C.out, f"HQ_grid_{key}_h{h:g}m")
+    return save(fig, C.out, f"HQ_grid_{key}_h{h:g}m", cfg, ("grid", key, f"_h{h:g}m"))
 
 
 # ------------------------------------------------------------------ 2) 기준 초과 지도
@@ -355,7 +360,7 @@ def exceed_map(cfg, key="LrT", h=None, limits=None):
     # Lr 도 A가중 등가소음도(LAeq 와 같은 종류)다. 다른 것은 계산 조건(D_K 가산, 순풍 LAT(DW)·Cmet 미적용, 가정 입력)
     warn_box(side, y - 0.01, "지도 값은 A가중 등가소음도로 기준과 같은 지표이나, 교차로 보정(D_K)·순풍 조건(Cmet 미적용)·"
                              "가정 교통량이 들어가 실측 LAeq와 조건이 다릅니다. 실측 검증 전에는 초과 범위를 참고로만 보세요.")
-    return save(fig, C.out, f"HQ_exceed_{key}_h{h:g}m")
+    return save(fig, C.out, f"HQ_exceed_{key}_h{h:g}m", cfg, ("grid", key, f"_exceed_h{h:g}m"))
 
 
 # ------------------------------------------------------------------ 3) 파사드 색 띠
@@ -394,7 +399,7 @@ def facade_bands(cfg, key="LrT"):
                                        ("반사", "1·2차 (자기 벽면 반사 제외, RLS-19 1장)"),
                                        ("결과 범위", f"{FR[key].min():.1f} – {FR[key].max():.1f} dB(A)")])
     warn_box(side, y - 0.01, "교통량 일부가 가정값입니다. 절대 레벨은 참고용입니다.")
-    return save(fig, C.out, f"HQ_facade_{key}")
+    return save(fig, C.out, f"HQ_facade_{key}", cfg, ("facade", key, ""))
 
 
 # ------------------------------------------------------------------ 4) 건물 평가도
@@ -433,7 +438,7 @@ def building_map(cfg, key="LrT", top=12):
     side.text(0.17, y - 0.012, "계산 범위 밖 건물", fontsize=10, va="center", transform=side.transAxes)
     y = info_block(side, y - 0.06, C, [("평가 건물", f"{len(E):,}동 (반경 {cfg['receivers']['facade']['radius']:g} m)")])
     warn_box(side, y - 0.01, "숫자 = 벽면 최고 레벨 dB(A), 아래는 건물명 또는 층수. 교통량 일부 가정값.")
-    return save(fig, C.out, f"HQ_building_{key}")
+    return save(fig, C.out, f"HQ_building_{key}", cfg, ("facade", key, "_building"))
 
 
 def main(cfg):
