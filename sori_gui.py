@@ -3,7 +3,8 @@
 SORI 데스크톱 실행 화면 (tkinter) — 더블클릭 앱(SORI.app / SORI.exe)의 진입점.
 계산 엔진(sori.build / sori.run / 그림)은 고치지 않고 호출만 함. 명령행 `python -m sori all` 과 같은 순서.
 
-  python sori_gui.py                                   화면 실행
+  python sori_gui.py                                   화면 실행(지난번에 쓴 설정 파일을 미리 선택)
+  python sori_gui.py --config config.yaml              이 설정 파일을 미리 선택해 화면 실행
   python sori_gui.py --run config.yaml --out 결과폴더   화면 없이 같은 작업 실행(점검용)
   python sori_gui.py --selfcheck report.json           자가 점검: 좌표 변환 + 기준 사례 계산·비교 → JSON
 
@@ -29,7 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sori.resources import (default_output_dir, is_frozen, resource_path,  # noqa: E402
-                            setup_numba_cache)
+                            setup_numba_cache, user_data_dir)
 
 setup_numba_cache()                      # sori 계산 모듈(numba) import 전에 캐시 폴더 지정
 
@@ -37,6 +38,27 @@ from sori import AI_NOTICE, __version__  # noqa: E402
 
 log = logging.getLogger("sori")
 PERIODS = {"주간 LrT (06–22시)": "LrT", "야간 LrN (22–06시)": "LrN"}
+
+
+# ================================================================ 화면 설정 기억(마지막 설정 파일·결과 폴더)
+def settings_path():
+    return user_data_dir() / "settings.json"
+
+
+def load_settings():
+    try:
+        return json.loads(settings_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(**kv):
+    s = load_settings()
+    s.update({k: str(v) for k, v in kv.items()})
+    try:
+        settings_path().write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
 
 
 # ================================================================ 계산 작업(화면과 무관)
@@ -163,7 +185,7 @@ class QueueLog(logging.Handler):
 
 
 class App:
-    def __init__(self):
+    def __init__(self, config=None):
         import tkinter as tk
         from tkinter import ttk
         self.tk, self.ttk = tk, ttk
@@ -188,7 +210,18 @@ class App:
         log.setLevel(logging.INFO)
         log.propagate = False            # 창 실행(--windowed)에서는 표준 출력이 없을 수 있음 → 화면 기록창으로만
         log.info(AI_NOTICE)
+        self._restore(config)
         self.root.after(100, self._poll)
+
+    def _restore(self, config):
+        """--config 로 받은 설정 파일, 없으면 지난번에 쓴 설정 파일을 미리 선택"""
+        st = load_settings()
+        p = Path(config) if config else (Path(st["last_config"]) if st.get("last_config") else None)
+        if p and p.is_file():
+            if not config and st.get("last_out"):
+                self.out.set(st["last_out"])
+            self.set_cfg(p.resolve())
+            log.info("설정 파일: %s", p)
 
     def _build(self):
         tk, ttk = self.tk, self.ttk
@@ -299,6 +332,7 @@ class App:
         self._busy(True)
         self.bar.configure(value=0)
         self.status.set("계산 중… (창을 닫지 마세요)")
+        save_settings(last_config=Path(cfg).resolve(), last_out=Path(out).resolve())
         args = (cfg, out, which, self.do_plots.get(), PERIODS[self.period.get()])
         self.worker = threading.Thread(target=self._work, args=args, daemon=True)
         self.worker.start()
@@ -381,7 +415,8 @@ def main(argv=None):
                             format="%(asctime)s %(levelname)s %(message)s")
         run_job(a.config, out, do_plots=not a.no_plots)
         return 0
-    App().run()
+    cfg = argv[1] if argv[:1] == ["--config"] and len(argv) > 1 else None
+    App(cfg).run()
     return 0
 
 
