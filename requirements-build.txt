@@ -1,0 +1,4 @@
+# 앱 패키징 도구 (PyInstaller). requirements-lock.txt 와 함께 설치한다.
+# ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
