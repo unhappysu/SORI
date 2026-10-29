@@ -31,8 +31,8 @@ Python 설치 없이 쓰는 데스크톱 앱입니다. 준비된 설정 파일(`
 
 | 구분 | 받는 파일 | 실행 | 확인 상태 |
 |---|---|---|---|
-| macOS (Apple Silicon) | `SORI-macos.zip` → 풀면 `SORI.app` | `SORI.app` 더블클릭 | macOS 27.0.1(arm64)에서 빌드·실행 확인 |
-| Windows 10/11 (64비트) | `SORI-windows.zip` → 풀면 `SORI` 폴더 | 폴더 안 `SORI.exe` 더블클릭 | **Windows 실행 미확인** (GitHub Actions 빌드 설정만 작성) |
+| macOS (Apple Silicon) | `SORI-macos.zip` → 풀면 `SORI.app` | `SORI.app` 더블클릭 | macOS 27.0.1(arm64)에서 빌드·실행 확인, Actions macOS 러너에서도 빌드·점검 통과 |
+| Windows 10/11 (64비트) | `SORI-windows.zip` → 풀면 `SORI` 폴더 | 폴더 안 `SORI.exe` 더블클릭 | GitHub Actions Windows 러너(Windows Server 2025, x64)에서 빌드하고 `SORI.exe` 의 자가 점검·예제 계산을 화면 없이 실행해 확인. **Windows 에서 화면(GUI)·보안 경고 절차는 미확인** |
 
 앱 파일은 GitHub Actions(`.github/workflows/build.yml`)가 만들어 실행 결과물(artifact)로 올립니다. 직접 빌드하는 방법은 아래 "개발자용"을 참고하세요.
 
