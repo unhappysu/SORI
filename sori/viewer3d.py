@@ -22,6 +22,7 @@ from shapely.geometry.polygon import orient
 from . import AI_NOTICE, __version__
 from .config import center, grid_bbox
 from .maps_hq import DIN_EDGES, DIN_COLS, EXC_EDGES, EXC_COLS, DEFAULT_LIMITS, traffic_summary
+from .resources import resource_path
 
 GROUND_BG = (226, 230, 222)
 ROAD_RGB = (150, 150, 150)
@@ -340,8 +341,8 @@ CDN_TAGS = ('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/t
 
 def _offline(html):
     """three.js(MIT 라이선스)를 파일 안에 넣어 인터넷 없이 열리게 함"""
-    vd = os.path.join(os.path.dirname(__file__), "vendor")
-    js = [open(os.path.join(vd, f), encoding="utf-8").read() for f in ("three-r128.min.js", "OrbitControls-r128.js")]
+    vd = resource_path("sori", "vendor")
+    js = [(vd / f).read_text(encoding="utf-8") for f in ("three-r128.min.js", "OrbitControls-r128.js")]
     inline = "".join(f"<script>\n{j.replace('</script', '<\\/script')}\n</script>\n" for j in js)
     html = html.replace(CDN_TAGS, inline)
     html = html.replace('<link rel="preconnect" href="https://fonts.googleapis.com">\n', "")

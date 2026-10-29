@@ -12,11 +12,11 @@ import logging
 import os
 import shutil
 import sys
+from pathlib import Path
 
 from . import AI_NOTICE, __version__
 from . import config as C
-
-HERE = os.path.dirname(os.path.abspath(__file__))
+from .resources import resource_path
 
 
 def main(argv=None):
@@ -34,11 +34,11 @@ def main(argv=None):
     log = logging.getLogger("sori")
     log.info(AI_NOTICE)
     if a.cmd == "init":
-        os.makedirs(a.folder, exist_ok=True)
+        Path(a.folder).mkdir(parents=True, exist_ok=True)
         for fn in ("config_example.yaml", "traffic_example.csv", "junctions_example.csv"):
-            src = os.path.join(HERE, "templates", fn)
-            dst = os.path.join(a.folder, fn)
-            if not os.path.exists(dst):
+            src = resource_path("sori", "templates", fn)
+            dst = Path(a.folder) / fn
+            if not dst.exists():
                 shutil.copy(src, dst)
                 log.info("생성: %s", dst)
         return 0

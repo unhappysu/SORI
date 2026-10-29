@@ -7,7 +7,8 @@ baseline/README.md 에 기록된 SHA-256 과 비교함. 저장소 안에는 아�
   python tools/check_baseline.py --keep    # 임시 폴더를 지우지 않고 경로 출력
 
 비교 규칙(baseline/README.md):
-  sources.csv, lv_base.csv : 바이트 단위 동일(SHA-256)
+  sources.csv, lv_base.csv : 바이트 단위 동일(SHA-256). 결과 CSV 는 utf-8-sig(BOM)로 저장하도록 바뀌어
+                             (패키징 작업, 2026-10-29) 맨 앞 BOM 3바이트만 빼고 해시함 — 내용은 그대로 바이트 비교
   traffic_used.csv         : 기준선에 있는 열(기존 열)만 같으면 됨(S1 이후 열이 추가됨)
 종료 코드: 0 = 모두 같음, 1 = 차이 있음, 2 = 실행 오류
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
@@ -25,9 +26,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BL = os.path.join(ROOT, "baseline")
 
 
-def sha256(path):
+def sha256(path, strip_bom=False):
     h = hashlib.sha256()
     with open(path, "rb") as f:
+        if strip_bom and f.read(3) != b"\xef\xbb\xbf":
+            f.seek(0)
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
@@ -70,7 +73,7 @@ def main():
         ok = True
         for name, path in (("sources.csv", os.path.join(tmp, "output", "sources.csv")),
                            ("lv_base.csv", os.path.join(tmp, "lv_base.csv"))):
-            got = sha256(path); same = got == exp[name]; ok &= same
+            got = sha256(path, strip_bom=True); same = got == exp[name]; ok &= same
             print(f"  {name:16s} {'동일' if same else '다름'}  기준 {exp[name][:16]}…  현재 {got[:16]}…")
         import pandas as pd
         t0 = pd.read_csv(os.path.join(BL, "traffic_used.csv"))

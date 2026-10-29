@@ -173,6 +173,7 @@ def read_csv_any(path):
                 text = f.read()
         except UnicodeDecodeError:
             continue
+        log.info("CSV 읽기: %s (인코딩 %s)", os.path.basename(str(path)), "utf-8" if enc == "utf-8-sig" else enc)
         fixed = _check_csv_rows(text, path)
         if fixed is None:                          # 일반적인 파일: 이전과 같은 방식으로 읽음
             return pd.read_csv(path, encoding=enc, dtype=str, keep_default_na=False)

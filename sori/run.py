@@ -201,7 +201,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
                 _write_tif(os.path.join(out, f"grid_{key}_h{h:g}m.tif"), A, gx, gy,
                            cfg["receivers"]["grid"]["step"], cfg["crs"])
             summary[f"grid_h{h:g}"] = {k: [float(np.nanmin(G[k])), float(np.nanmax(G[k]))] for k in ("LrT", "LrN")}
-        pd.concat(frames).to_csv(os.path.join(out, "grid_result.csv"), index=False)
+        pd.concat(frames).to_csv(os.path.join(out, "grid_result.csv"), index=False, encoding="utf-8-sig")
     if "facade" in which and cfg["receivers"]["facade"]["enabled"] and len(FR):
         r = _run(cfg, d, S, F, FR.x.values, FR.y.values, FR.z.values, FR.zg.values,
                  FR.bid.values.astype(np.int64), FR.fid.values.astype(np.int64),
@@ -210,7 +210,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             FR[k] = v
         FR["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrT]   # RLS-19 3.1 올림
         FR["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrN]
-        FR.to_csv(os.path.join(out, "facade_result.csv"), index=False)
+        FR.to_csv(os.path.join(out, "facade_result.csv"), index=False, encoding="utf-8-sig")
         summary["facade"] = {k: [float(np.nanmin(FR[k])), float(np.nanmax(FR[k]))] for k in ("LrT", "LrN")}
         if do_seg:
             _seg("facade", FR.x.values, FR.y.values, FR.z.values, "facade",
@@ -247,7 +247,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             log.warning("점 수음점 %d개 계산 안 함: %s", int((~ok).sum()),
                         ", ".join(f"{a}({b})" for a, b in zip(P.point_id[~ok], P.note[~ok])))
     if do_seg and seg_rows:
-        pd.concat(seg_rows).to_csv(os.path.join(out, "segment_check.csv"), index=False)
+        pd.concat(seg_rows).to_csv(os.path.join(out, "segment_check.csv"), index=False, encoding="utf-8-sig")
         log.info("구간 길이 진단(l ≤ s/2, 결과값 불변): %s", seg_sum)
     bands, lams, alphas, wts = _params(cfg)
     info = {"software": f"SORI v{__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,

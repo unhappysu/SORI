@@ -2,6 +2,7 @@
 """결과 시각화: 격자 소음지도(높이별, 격자/등음선), 파사드 평면도, 파사드 3D
 수정사항: 범례가 수음점 위에 그려지도록 zorder 지정, 3D 라벨 열 중복 제거, 한글 글꼴 자동 탐색
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
+import logging
 import math
 import os
 
@@ -20,20 +21,42 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE
 from .config import grid_bbox, center
+from .resources import resource_path
+
+log = logging.getLogger("sori")
 
 COLS = ["#007800", "#2e8b00", "#5aa800", "#9ac800", "#cfe100", "#f5d300",
         "#eba700", "#e07a00", "#d23c00", "#c80000", "#960a28", "#00007f"]
-KO_FONTS = ["Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans CJK KR", "Noto Sans CJK JP",
-            "Noto Sans KR", "UnDotum"]
+KO_FONTS = ["Noto Sans KR", "Malgun Gothic", "AppleGothic", "NanumGothic", "Noto Sans CJK KR",
+            "Noto Sans CJK JP", "UnDotum"]
+_font_logged = None
+
+
+def _register_bundled_fonts():
+    """sori/fonts 의 Noto Sans KR(SIL OFL 1.1)을 matplotlib 에 등록 — OS 와 관계없이 같은 글꼴"""
+    have = {f.fname for f in font_manager.fontManager.ttflist}
+    for p in sorted(resource_path("sori", "fonts").glob("*.ttf")):
+        if str(p) not in have:
+            font_manager.fontManager.addfont(str(p))
 
 
 def set_font(name=None):
+    global _font_logged
+    _register_bundled_fonts()
     have = {f.name for f in font_manager.fontManager.ttflist}
+    chosen = None
     for f in ([name] if name else []) + KO_FONTS:
         if f in have:
             plt.rcParams["font.family"] = f
+            chosen = f
             break
     plt.rcParams["axes.unicode_minus"] = False
+    if chosen != _font_logged:
+        if chosen:
+            log.info("그림 글꼴: %s", chosen)
+        else:
+            log.warning("한글 글꼴을 찾지 못함 — 그림의 한글이 깨질 수 있음(plots.font 설정 확인)")
+        _font_logged = chosen
 
 
 def lo_from_max(vmax, step=2):

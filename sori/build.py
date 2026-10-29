@@ -554,13 +554,13 @@ def main(cfg):
     FR = facade_receivers(cfg, F, bld) if cfg["receivers"]["facade"]["enabled"] else pd.DataFrame()
     np.savez_compressed(os.path.join(out, "model_rasters.npz"), gnd=gnd, dsm=dsm, bid=bidr, G=Gm,
                         x0=rast.x0, y0=rast.y0, res=rast.res, gx=xs, gy=ys, gz=gz, ginside=inside)
-    S.to_csv(os.path.join(out, "sources.csv"), index=False)
+    S.to_csv(os.path.join(out, "sources.csv"), index=False, encoding="utf-8-sig")
     T.drop(columns=["_key"], errors="ignore").to_csv(os.path.join(out, "traffic_used.csv"), index=False,
                                                      encoding="utf-8-sig")
     Ln.to_csv(os.path.join(out, "source_lines.csv"), index=False, encoding="utf-8-sig")   # 도로별 음원선 배치 근거
-    F.to_csv(os.path.join(out, "facades.csv"), index_label="fid")
-    FR.to_csv(os.path.join(out, "facade_receivers.csv"), index=False)
-    J.to_csv(os.path.join(out, "junctions_used.csv"), index=False)
+    F.to_csv(os.path.join(out, "facades.csv"), index_label="fid", encoding="utf-8-sig")
+    FR.to_csv(os.path.join(out, "facade_receivers.csv"), index=False, encoding="utf-8-sig")
+    J.to_csv(os.path.join(out, "junctions_used.csv"), index=False, encoding="utf-8-sig")
     keep = ["geometry", "bid", "bname", "kind", "floors", "H", "H_src", "z0", "ztop"]
     bld[keep].to_file(os.path.join(out, "buildings.gpkg"), driver="GPKG")
     road[["geometry", "fid", "ufid", "rname", "axis", "lanes", "width", "oneway"]].to_file(
@@ -628,5 +628,5 @@ def template(cfg, path_out):
     df.to_csv(path_out, index=False, encoding="utf-8-sig")
     jp = str(path_out).replace(".csv", "_junctions_auto.csv")
     if len(Jc):
-        Jc.to_csv(jp, index=False)
+        Jc.to_csv(jp, index=False, encoding="utf-8-sig")
     return path_out, jp
