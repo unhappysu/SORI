@@ -43,7 +43,7 @@ def line_source(_a):
                          -np.ones(1, np.int64), -np.ones(1, np.int64), 0, xs, np.full(k, cy), np.full(k, hs), np.zeros(k),
                          P, P, np.ones(k, np.bool_), *F0, 0.8, gnd, dsm, bid, G, x0, y0, res, nx, ny, 1.0,
                          1e4, 1e4, 1e4, 1e4, 1e4, 1e4, 1.5, np.array([500.0]), np.array([0.68]), np.array([0.0]),
-                         np.array([1.0]), False, 20.0, 20.0, 25.0, 1, np.zeros(1, np.int64), np.zeros(0, np.int64))          # 1 = ISO 9613-2(solver.METH_ISO)
+                         np.array([1.0]), False, 20.0, 20.0, 25.0, 1, np.zeros(1, np.int64), np.zeros(0, np.int64), False)          # 1 = ISO 9613-2(solver.METH_ISO)
         return 10 * math.log10(Ed[0])
 
     def analytic(off, dist, hr):

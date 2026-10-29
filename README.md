@@ -147,6 +147,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | 항목 | 기본값 | 의미 |
 |---|---|---|
 | `propagation_method` | iso9613_2 | 전파 계산 방법. `iso9613_2` = ISO 9613-2(현행), `rls19` = RLS-19 3.5·3.6. 음원(L_W′, 음원선, D_K, D_refl)과 기하는 공통. 한 출력 폴더에는 한 방법의 결과만 둠(다른 방법 결과가 있으면 실행 중단 — `project.output_dir` 를 바꿀 것). 방법·식 번호·미구현 항목은 `run_info.json` |
+| `propagation.reflection.own_facade` | last | 수음점이 놓인 외벽의 반사 제외 범위. `last` = 마지막 반사만(RLS-19 1장 Immissionsort 주석, TEST-20 K2), `all` = 모든 반사 순서(2026-10-29 이전 동작) |
 | `propagation.terms_csv` | false | 점 수음점의 감쇠항별 중간값 `path_terms.csv` 출력(직접음·1차 반사) |
 | `propagation.bands_hz` / `spectrum_dBA` | [500] / [0] | (iso9613_2) 500 Hz 단일대역(ISO 9613-2 1절 비고 1). 옥타브 스펙트럼을 넣으면 8대역 계산. rls19 는 A 가중 단일값이라 여러 대역 지정 불가 |
 | `input.ground.method` | general | (iso9613_2) ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제). rls19 는 식 (14) 고정 |
@@ -186,7 +187,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 67개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
+python -m pytest -q tests        # 230개 시험(RLS-19 공식 시험과제 TEST-20 포함, 1개는 Krad 미지원 xfail): 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
 `tests/test_reference.py` 는 저장소에 들어 있는 기준 사례(가상 교차로, `tests/reference/synthetic/`)를 계산해 기준값과 허용 오차(기본 0.01 dB, 프로젝트 임의 설정, `--sori-tol` 로 변경)로 비교하고, `tests/test_crs.py` 는 좌표 변환(EPSG) 결과를 확인합니다. 기준값을 만든 커밋·환경은 `tests/reference/synthetic/expected/meta.json`, 다시 만들기·결과 폴더 비교는 `python tools/reference.py make|compare`.

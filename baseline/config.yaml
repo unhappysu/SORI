@@ -12,4 +12,4 @@ receivers:
   facade: {radius: 230.0}
 # 2026-10-29: 기본 반사 차수가 3차로 바뀌어(국내 고시 별표 2 제8호) 기준선 생성 당시 차수를 명시함 — 값 변화 없음
 propagation:
-  reflection: {max_order_grid: 1, max_order_facade: 2}
+  reflection: {max_order_grid: 1, max_order_facade: 2, own_facade: all}   # own_facade: 2026-10-29 RLS-19 1장 주석대로 기본값 변경(last), 기준선은 원래 동작

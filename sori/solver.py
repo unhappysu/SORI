@@ -9,7 +9,9 @@
   - 반사 조건 — ISO: 거울반사 작도 가능, ρ > 0.2, 크기 조건 식 (19) (대역별)
                RLS-19: 거울반사 작도 가능, h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R (3.6)
   - 허상음원 이득 gain(인자 rho): ISO 식 (20) ρ (DIr = 0, 무지향) / RLS-19 10^(−0.1·D_RV) (표 8). 2차 gain², 3차 gain³
-  - 수음점이 놓인 파사드 자신의 반사는 제외(RLS-19 1장 'Immissionsort')
+  - 수음점이 놓인 파사드: RLS-19 1장 'Immissionsort' 주석 "마지막 반사가 수음점이 속한 외벽에서 일어나는 경로는
+    고려하지 않음" → 마지막 반사면에서만 제외(own_all = False, 기본). own_all = True 는 2026-10-29 이전 동작
+    (모든 반사 순서에서 제외) — 원래 코드 기준선 비교용
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
 import math
@@ -100,7 +102,7 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
             fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
             gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
             Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
-            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx):
+            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all):
     NR = rx.shape[0]; NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
     Ed = np.zeros(NR); En = np.zeros(NR)
     Edir = np.zeros(NR); E1 = np.zeros(NR); E2 = np.zeros(NR); E3 = np.zeros(NR)
@@ -198,7 +200,7 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                     c2x = 0.5 * (fx1[f2] + fx2[f2]); c2y = 0.5 * (fy1[f2] + fy2[f2])
                     lmin2 = min(fL[f2], fzt[f2] - fz0[f2])
                     for f1 in range(NF):
-                        if f1 == f2 or f1 == rfid[r]:
+                        if f1 == f2 or (own_all and f1 == rfid[r]):
                             continue
                         c1x = 0.5 * (fx1[f1] + fx2[f1]); c1y = 0.5 * (fy1[f1] + fy2[f1])
                         if (c1x - c2x) ** 2 + (c1y - c2y) ** 2 > R2 * R2:
@@ -276,7 +278,7 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                     lmin3 = min(fL[f3], fzt[f3] - fz0[f3])
                     for k2 in range(nb_ptr[f3], nb_ptr[f3 + 1]):
                         f2 = nb_idx[k2]
-                        if f2 == rfid[r]:
+                        if own_all and f2 == rfid[r]:
                             continue
                         dQ1 = (q1x - fx1[f2]) * fnx[f2] + (q1y - fy1[f2]) * fny[f2]
                         if dQ1 <= 0.05:
@@ -290,7 +292,7 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                         lmin2 = min(fL[f2], fzt[f2] - fz0[f2])
                         for k1 in range(nb_ptr[f2], nb_ptr[f2 + 1]):
                             f1 = nb_idx[k1]
-                            if f1 == rfid[r]:
+                            if own_all and f1 == rfid[r]:
                                 continue
                             dQ2 = (q2x - fx1[f1]) * fnx[f1] + (q2y - fy1[f1]) * fny[f1]
                             if dQ2 <= 0.05:

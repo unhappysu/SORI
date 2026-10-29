@@ -11,7 +11,7 @@
 |---|---|
 | 생성 코드 | 커밋 `29602cd` (main, "수정 전 원래 코드") — `git archive 29602cd` 로 꺼낸 코드로 실행 |
 | 생성 일시 | 2026-10-16 |
-| 설정 | `baseline/config.yaml` (「소음지도 앱 코드/config.yaml」과 같은 조건, 수치지도 경로만 절대경로). 2026-10-29 기본 반사 차수가 3차로 바뀌어 생성 당시 차수(격자 1, 파사드 2)를 파일에 명시함 — 계산 조건·`lv_base.csv` 불변. 그 전 해시 `9d8ce453…682307a3` |
+| 설정 | `baseline/config.yaml` (「소음지도 앱 코드/config.yaml」과 같은 조건, 수치지도 경로만 절대경로). 2026-10-29 기본 반사 차수가 3차로 바뀌어 생성 당시 차수(격자 1, 파사드 2)를 파일에 명시함 — 계산 조건·`lv_base.csv` 불변. 같은 날 수음점 외벽 반사 제외 규칙의 기본값이 RLS-19 1장 주석대로 바뀌어(`own_facade: last`) 원래 동작 `own_facade: all` 도 명시. 그 전 해시 `9d8ce453…682307a3` |
 | 교통량 | `baseline/traffic.csv` — 「소음지도 앱 코드/traffic.csv」 사본. **4개 노선 모두 가정값(실측 아님)** |
 | 수치지도 | `~/Downloads/3-2/소음진동설계/전농사거리_수치지도` (도엽 377051731~33, 41~43, 51~53, 2025). 저장소 밖, 읽기 전용 |
 | DEM | 사용 안 함 (등고선 + 표고점) |
@@ -25,7 +25,7 @@
 | `sources.csv` | `build` 명령(생성 당시 `noisemap build`, 현재 `sori build`)의 음원점(10,671개): 위치, 구간 길이 l, LW′, D_K, D_refl 등 | 10,671 | 2.9 MB | `bbcef88bb6387f48aa7669d71f044f1fcbfb5015505c976127facd5acaf80ed9` |
 | `traffic_used.csv` | 도로 객체별 실제 사용 교통량(2,261개). 원래 코드 판이라 S1 의 출처 열(traffic_basis 등)은 없음 | 2,261 | 0.3 MB | `d3f9103f7285aa75aaa47a9604015002e711c78227ceb629425b6c00c024f9ec` |
 | `lv_base.csv` | 계산 중심 반경 150 m 안 격자(h = 4 m) 7,152개 + 파사드 3,710개의 LrT, LrN 및 성분(직접·1차·2차 반사) | 10,862 | 1.0 MB | `61c1d98432b40a7844377f2f21bfdd1fa8d116cc1ff16c01be8a02fc6235aded` |
-| `config.yaml` | 계산 설정 | — | — | `c84d9edf1d463b67357625b09002e5cce8fd61b430f97ce21e150cd3f0e02c53` |
+| `config.yaml` | 계산 설정 | — | — | `18391d3e60f1f2a390bce02285e95176f7c470d423e230930a5145f2886617a1` |
 | `traffic.csv` | 교통량 입력 | — | — | `b20ff356dbf63fd64ac3f826e44976c8f755882b843e7b1068e17ae7024b3aac` |
 | `make_lv_base.py` | `lv_base.csv` 생성 스크립트. 해시는 생성 당시(이름 변경 전, `from noisemap …`) 판. 현재 판은 import 만 `sori` 로 바뀜(아래 재현 방법 참고) | — | — | `becc90639d43d07d4fcc9fa511df2fbe49ee2a98336439ab33dfc9c6f60608f6` |
 

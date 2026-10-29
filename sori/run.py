@@ -60,7 +60,8 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
                     float(rf["r_facade"]), float(rf["r_source_main"]), float(rf["r_source_minor"]),
                     float(rf["r_second"]), float(p["skip_radius"]),
                     bands, lams, alphas, wts, cfg["input"]["ground"]["method"] == "alternative",
-                    float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, *nb)
+                    float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, *nb,
+                    rf.get("own_facade", "last") == "all")
         for k in range(6):
             res[k][a:b] = o[k]
         el = time.time() - t0

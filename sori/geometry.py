@@ -5,7 +5,9 @@
   - 음원 S(=v0) → [반사점 v1, v2, v3] → 수음점 R(=v_{nv-1}) 의 (전개된) 수직단면
   - 차폐: 단면의 상부 볼록 껍질(고무줄법, RLS-19 3.5.5 주석). 회절 모서리 1개=단일,
     2개 이상=다중(첫·끝 모서리, 사이 경로길이 = RLS-19 C = ISO e)
-  - 평균 높이 h_m = F / s_gr (RLS-19 3.5.4, 그림 11). ISO 그림 3 의 h_m = F/d 의 d 가 수평거리인지는 근거 미확인
+  - 평균 높이 h_m = F / s_gr (RLS-19 3.5.4, 그림 11). ISO 그림 3 의 h_m = F/d 의 d 가 수평거리인지는 근거 미확인.
+    F 는 부호 있는 면적(지면이 가시선보다 높은 부분은 뺌) — TEST-20 I6 의 h_m = −0.104 m 와 같은 해석(2026-10-29).
+    수음점 앞 마지막 표본 뒤 구간은 가시선 높이 ≈ h_r 로 더함
   - 지면계수 Gs/Gr/Gm: 경로를 따라 G 래스터 평균(ISO 7.3.1 영역 구분)
   - 래스터 이산화 보정: 음원 1.5 m 이내 건물, 수음점 소속 건물의 수음점 1.5 m 이내,
     반사 건물의 반사점 1.5 m 이내 표본은 지면 높이로 대체
@@ -55,6 +57,7 @@ def path_geometry(vx, vy, nv, zs, zr, hs, hr,
     hh[0] = zs
     k = 1
     area = 0.0
+    cov = 0.0                                        # 면적 표본이 덮은 끝 위치
     Gs_sum = 0.0; Gs_n = 0
     Gr_sum = 0.0; Gr_n = 0
     Gm_sum = 0.0; Gm_n = 0
@@ -84,8 +87,8 @@ def path_geometry(vx, vy, nv, zs, zr, hs, hr,
         if (not insrc) and (not inrec):
             Gm_sum += G; Gm_n += 1
         zl = zs + (zr - zs) * dd / sgr
-        if zl - g > 0.0:
-            area += (zl - g) * step
+        area += (zl - g) * step                      # 부호 있는 면적(TEST-20 I6)
+        cov = dd + 0.5 * step
         h = dsm.flat[idx]
         b = bid.flat[idx]
         if b >= 0:
@@ -119,6 +122,10 @@ def path_geometry(vx, vy, nv, zs, zr, hs, hr,
     Gs = Gs_sum / Gs_n if Gs_n > 0 else (Gr_sum / Gr_n if Gr_n > 0 else 0.0)
     Gr = Gr_sum / Gr_n if Gr_n > 0 else Gs
     Gm = Gm_sum / Gm_n if Gm_n > 0 else 0.5 * (Gs + Gr)
+    # 표본은 s_gr − 0.25 m 에서 멈추므로 남은 구간(가시선 높이 ≈ h_r)을 더함 — 빼면 h_m 이 작아져 D_gr·A_gr(식 10)이 커짐
+    # (TEST-20 I5·I6 구간값 h_m 2.988/5.962 → 3.000/5.988). ISO 일반법(식 9)은 h_m 을 쓰지 않아 영향 없음
+    if cov < sgr:
+        area += (sgr - cov) * hr
     hm = area / sgr
 
     # 차폐 기하
