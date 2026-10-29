@@ -9,6 +9,7 @@ import yaml
 DEFAULTS = {
     "project": {"name": "소음지도", "output_dir": "output"},
     "crs": 5186,                                   # 계산 좌표계(EPSG). 수치지도 1:1,000 = 5186(중부원점 GRS80)
+    "propagation_method": "iso9613_2",             # 전파 계산 방법: iso9613_2(ISO 9613-2, 현행) | rls19(RLS-19 3.5·3.6)
     "input": {
         "map": {                                   # 국토지리정보원 수치지형도 v2.0 (SHP)
             "folders": ["data/map"],               # 압축 해제 폴더(하위 폴더까지 재귀 탐색)
@@ -106,7 +107,9 @@ DEFAULTS = {
         "profile_step": 1.0,
         "dsm_res": 1.0,
         "barrier": {"C2": 20.0, "dz_max_single": 20.0, "dz_max_double": 25.0},
-        "reflection": {"rho": 0.8, "max_order_grid": 1, "max_order_facade": 2, "max_order_point": 2,
+        "reflection": {"rho": 0.8,                 # iso9613_2: 반사계수 ρ (ISO 식 20)
+                       "D_RV": 0.5,                # rls19: 반사 손실 dB/회 (RLS-19 표 8, 건물 외벽·반사성 방음벽)
+                       "max_order_grid": 1, "max_order_facade": 2, "max_order_point": 2,
                        "r_facade": 100.0, "r_source_main": 200.0, "r_source_minor": 50.0,
                        "r_second": 50.0},
         "skip_radius": 1.5,                        # 래스터 이산화 오차 보정 반경(m)
@@ -178,6 +181,14 @@ def _validate(c):
         raise ValueError("propagation.bands_hz 와 spectrum_dBA 의 길이가 같아야 함")
     if p["alpha_dB_per_km"] is not None and len(p["alpha_dB_per_km"]) != len(p["bands_hz"]):
         raise ValueError("alpha_dB_per_km 길이가 bands_hz 와 같아야 함")
+    from .propagation import METHODS
+    meth = c.get("propagation_method") or "iso9613_2"
+    if meth not in METHODS:
+        raise ValueError(f"propagation_method 는 {' 또는 '.join(METHODS)}")
+    if meth == "rls19" and len(p["bands_hz"]) != 1:
+        raise ValueError("propagation_method: rls19 는 A 가중 단일값 계산 — bands_hz 를 여러 개 지정할 수 없음")
+    if float(p["reflection"]["D_RV"]) < 0.0:
+        raise ValueError("RLS-19 표 8: reflection.D_RV 는 0 이상(dB)")
     if not 0.2 < float(p["reflection"]["rho"]) <= 1.0:
         raise ValueError("ISO 9613-2 7.5: 반사계수 rho 는 0.2 초과 1 이하")
     if c["input"]["traffic"]["missing_m"] not in ("error", "estimate"):

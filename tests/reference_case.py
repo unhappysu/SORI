@@ -37,12 +37,15 @@ SPECS = {
 }
 
 
-def run_case(work):
-    """입력을 work 폴더에 복사하고 build → run(격자·파사드) 실행. 결과 폴더 경로를 돌려줌"""
+def run_case(work, method=None):
+    """입력을 work 폴더에 복사하고 build → run(격자·파사드) 실행. 결과 폴더 경로를 돌려줌.
+    method: 전파 방법(propagation_method). None 이면 설정 기본값(iso9613_2) — 기준값은 이 방법으로 만든 것"""
     from sori import config as C, build, run
     work = Path(work)
     shutil.copytree(INPUT, work, dirs_exist_ok=True)
     cfg = C.load(work / "config.yaml")
+    if method is not None:
+        cfg["propagation_method"] = method
     build.main(cfg)
     run.main(cfg, ("grid", "facade"))
     return Path(cfg["project"]["output_dir"])

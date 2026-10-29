@@ -11,24 +11,15 @@ import pandas as pd
 
 from . import AI_NOTICE, __version__, HAVE_NUMBA
 from . import rls19
-from .iso9613 import alpha_iso9613_1, C_SOUND
+from .propagation import get_model
 from .solver import compute, to_db
 
 log = logging.getLogger("sori")
 
 
 def _params(cfg):
-    p = cfg["propagation"]
-    bands = np.array(p["bands_hz"], float)
-    lams = C_SOUND / bands
-    if p["alpha_dB_per_km"] is not None:
-        alphas = np.array(p["alpha_dB_per_km"], float)
-    else:
-        alphas = np.array([alpha_iso9613_1(f, p["temperature_C"], p["humidity_pct"], p["pressure_kPa"])
-                           for f in bands])
-    w = 10 ** (0.1 * np.array(p["spectrum_dBA"], float))
-    wts = w / w.sum()
-    return bands, lams, alphas, wts
+    """커널 대역 인자 (bands, lams, alphas, wts) — 전파 방법별(propagation.py)"""
+    return get_model(cfg).kernel_bands(cfg)
 
 
 def load_model(out):
@@ -42,7 +33,8 @@ def load_model(out):
 
 def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, progress=None):
     p = cfg["propagation"]; rf = p["reflection"]; br = p["barrier"]
-    bands, lams, alphas, wts = _params(cfg)
+    model = get_model(cfg)
+    bands, lams, alphas, wts = model.kernel_bands(cfg)
     args_s = (S.x.values, S.y.values, S.z.values, S.zg.values,
               10 ** (0.1 * S.LW_day.values), 10 ** (0.1 * S.LW_night.values), S.main.values.astype(np.bool_))
     if len(F):
@@ -57,14 +49,14 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
     for a in range(0, n, chunk):
         b = min(a + chunk, n)
         o = compute(rx[a:b], ry[a:b], rz[a:b], rg[a:b], rbid[a:b], rfid[a:b], order,
-                    *args_s, *args_f, float(rf["rho"]),
+                    *args_s, *args_f, model.reflection_gain(cfg),
                     d["gnd"].astype(np.float64), d["dsm"].astype(np.float64), d["bid"].astype(np.int64),
                     d["G"].astype(np.float64), float(d["x0"]), float(d["y0"]), float(d["res"]), nx, ny,
                     float(p["profile_step"]), float(p["max_dist_main"]), float(p["max_dist_minor"]),
                     float(rf["r_facade"]), float(rf["r_source_main"]), float(rf["r_source_minor"]),
                     float(rf["r_second"]), float(p["skip_radius"]),
                     bands, lams, alphas, wts, cfg["input"]["ground"]["method"] == "alternative",
-                    float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]))
+                    float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code)
         for k in range(5):
             res[k][a:b] = o[k]
         el = time.time() - t0
@@ -156,7 +148,7 @@ def point_ground(d, x, y):
     return zg, inside, outside
 
 
-def _write_tif(path, A, gx, gy, step, crs):
+def _write_tif(path, A, gx, gy, step, crs, method=None):
     import rasterio
     from rasterio.transform import from_origin
     tr = from_origin(gx[0] - step / 2, gy[-1] + step / 2, step, step)
@@ -164,11 +156,36 @@ def _write_tif(path, A, gx, gy, step, crs):
                        dtype="float32", crs=f"EPSG:{crs}", transform=tr, nodata=np.nan) as ds:
         ds.write(A[::-1].astype(np.float32), 1)
         ds.update_tags(NOTE=AI_NOTICE)
+        if method:
+            ds.update_tags(PROPAGATION_METHOD=method)
+
+
+def previous_outputs(out, method):
+    """같은 출력 폴더의 이전 run_info.json 에서 결과 종류별 전파 방법을 읽음.
+    다른 방법의 결과가 있으면 오류(소음지도 3종·점 결과에 전파 방법이 섞이지 않게)."""
+    p = os.path.join(out, "run_info.json")
+    if not os.path.exists(p):
+        return {}
+    try:
+        prev = json.load(open(p, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    outs = prev.get("outputs") or {}
+    if not outs and prev.get("propagation"):           # 이 기능 이전 판의 run_info(전파는 ISO 9613-2 고정)
+        outs = {k: "iso9613_2" for k in ("grid", "facade", "points")
+                if os.path.exists(os.path.join(out, f"{'point' if k == 'points' else k}_result.csv"))}
+    other = {k: v for k, v in outs.items() if v != method}
+    if other:
+        raise ValueError(f"출력 폴더 {out} 에 다른 전파 방법의 결과가 있음({other}) — 이번 방법 {method}. "
+                         "방법이 섞이지 않도록 project.output_dir 를 바꾸거나 기존 결과(run_info.json 포함)를 지우고 다시 실행")
+    return outs
 
 
 def main(cfg, which=("grid", "facade", "points"), progress=None):
     """progress(label, done, total, eta_s): 진행률 콜백(웹앱용, 선택)"""
     out = cfg["project"]["output_dir"]
+    model = get_model(cfg)                              # 이번 실행의 모든 결과 종류가 같은 전파 방법을 씀
+    outputs = previous_outputs(out, model.name)
     d, S, F, FR = load_model(out)
     summary = {}
     do_seg = bool(cfg["propagation"].get("segment_check", True))
@@ -199,9 +216,10 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
                 A = np.full(X.shape, np.nan)
                 A.ravel()[m] = G[key].values
                 _write_tif(os.path.join(out, f"grid_{key}_h{h:g}m.tif"), A, gx, gy,
-                           cfg["receivers"]["grid"]["step"], cfg["crs"])
+                           cfg["receivers"]["grid"]["step"], cfg["crs"], model.name)
             summary[f"grid_h{h:g}"] = {k: [float(np.nanmin(G[k])), float(np.nanmax(G[k]))] for k in ("LrT", "LrN")}
         pd.concat(frames).to_csv(os.path.join(out, "grid_result.csv"), index=False, encoding="utf-8-sig")
+        outputs["grid"] = model.name
     if "facade" in which and cfg["receivers"]["facade"]["enabled"] and len(FR):
         r = _run(cfg, d, S, F, FR.x.values, FR.y.values, FR.z.values, FR.zg.values,
                  FR.bid.values.astype(np.int64), FR.fid.values.astype(np.int64),
@@ -211,6 +229,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         FR["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrT]   # RLS-19 3.1 올림
         FR["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrN]
         FR.to_csv(os.path.join(out, "facade_result.csv"), index=False, encoding="utf-8-sig")
+        outputs["facade"] = model.name
         summary["facade"] = {k: [float(np.nanmin(FR[k])), float(np.nanmax(FR[k]))] for k in ("LrT", "LrN")}
         if do_seg:
             _seg("facade", FR.x.values, FR.y.values, FR.z.values, "facade",
@@ -236,6 +255,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         P["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrN]
         P = P[["point_id", "x", "y", "zg", "h", "h_basis", "z", *keys, "LrT_cmp", "LrN_cmp", "note"]]
         P.to_csv(os.path.join(out, "point_result.csv"), index=False, encoding="utf-8-sig")
+        outputs["points"] = model.name
         # field_survey/scripts/process_measurements.py --model 입력 형식(point_id, period, Leq_calc)
         cmp = pd.concat([pd.DataFrame(dict(point_id=P.point_id, period=per, Leq_calc=P[k].round(1),
                                            quantity=f"{k} (RLS-19 평가레벨, 교차로·반사 보정 포함)", note=P.note))
@@ -249,9 +269,10 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
     if do_seg and seg_rows:
         pd.concat(seg_rows).to_csv(os.path.join(out, "segment_check.csv"), index=False, encoding="utf-8-sig")
         log.info("구간 길이 진단(l ≤ s/2, 결과값 불변): %s", seg_sum)
-    bands, lams, alphas, wts = _params(cfg)
+    bands, lams, alphas, wts = model.kernel_bands(cfg)
     info = {"software": f"SORI v{__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
-            "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)", "propagation": "ISO 9613-2:1996",
+            "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)", "propagation": model.label(cfg),
+            **model.info(cfg), "outputs": outputs,
             "ground_method": cfg["input"]["ground"]["method"], "bands_hz": list(bands),
             "alpha_dB_per_km": [round(a, 3) for a in alphas], "weights": list(np.round(wts, 4)),
             "reflection": cfg["propagation"]["reflection"], "results_range": summary,

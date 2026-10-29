@@ -14,6 +14,8 @@ import math
 import numpy as np
 
 from . import njit
+from .geometry import (NGEOM, G_D, G_SGR, G_HM, G_HS, G_HR, G_GS, G_GR, G_GM, G_SHIELD, G_DOUBLE,
+                       G_Z, G_DSS, G_DSR, G_E, path_geometry)
 
 C_SOUND = 340.0                                     # ISO 9613-2 7.5: λ = 340/f
 
@@ -101,14 +103,31 @@ def D_z(z, dss, dsr, d, e, lam, C2, double, dzmax1, dzmax2):
     return v if v < cap else cap
 
 
-# ------------------------------------------------------------------ 경로 계산
+# ------------------------------------------------------------------ 경로 감쇠
 @njit(cache=True)
-def _cell(x0, y0, res, nx, ny, x, y):
-    i = int((y0 - y) / res)
-    j = int((x - x0) / res)
-    if i < 0 or j < 0 or i >= ny or j >= nx:
-        return -1
-    return i * nx + j
+def atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out):
+    """geometry.path_geometry 의 기하로 대역별 순감쇠 (A − Dc) 를 out[b] 에 기록.
+      - 지면: 일반법(Gs/Gr/Gm은 경로를 따라 G 래스터 평균) 또는 대안법(hm=F/s_gr, Dc = DΩ)
+      - 차폐: 식 (12) Abar = Dz − Agr > 0, 단일/이중 회절(C3)"""
+    d = geom[G_D]; sgr = geom[G_SGR]; hs = geom[G_HS]; hr = geom[G_HR]
+    shielded = geom[G_SHIELD] > 0.5
+    double = geom[G_DOUBLE] > 0.5
+    adiv = A_div(d)
+    for b in range(bands.shape[0]):
+        f = bands[b]
+        if ground_alt:
+            agr = A_gr_alternative(geom[G_HM], d)
+            dc = D_omega(sgr, hs, hr)
+        else:
+            agr = A_gr_general(f, hs, hr, sgr, geom[G_GS], geom[G_GR], geom[G_GM])
+            dc = 0.0
+        A = adiv + A_atm(alphas[b], d) + agr
+        if shielded:
+            dz = D_z(geom[G_Z], geom[G_DSS], geom[G_DSR], d, geom[G_E], lams[b], C2, double, dzmax1, dzmax2)
+            abar = dz - agr                          # 식 (12)
+            if abar > 0.0:
+                A += abar
+        out[b] = A - dc
 
 
 @njit(cache=True)
@@ -117,127 +136,9 @@ def path_loss(vx, vy, nv, zs, zr, hs, hr,
               rbid, refl_bid, skip_r,
               bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2,
               hd, hh, out):
-    """
-    음원 S(=v0) → [반사점 v1, v2] → 수음점 R(=v_{nv-1}) 의 (전개된) 수직단면에서
-    대역별 순감쇠 (A − Dc) 를 out[b] 에 기록.
-      - 차폐: 단면의 상부 볼록 껍질(고무줄법). 회절 모서리 1개=단일, 2개 이상=이중(첫·끝 모서리, e=사이 경로길이)
-      - 지면: 일반법(Gs/Gr/Gm은 경로를 따라 G 래스터 평균) 또는 대안법(hm=F/d)
-      - 래스터 이산화 보정: 음원 1.5 m 이내 건물, 수음점 소속 건물의 수음점 1.5 m 이내,
-        반사 건물의 반사점 1.5 m 이내 표본은 지면 높이로 대체
-    반환값: 3D 전파거리 d
-    """
-    # 각 구간 길이(수평)
-    cum0 = 0.0
-    legs = np.empty(4)
-    cum = np.empty(4)
-    cum[0] = 0.0
-    for k in range(nv - 1):
-        legs[k] = math.sqrt((vx[k + 1] - vx[k]) ** 2 + (vy[k + 1] - vy[k]) ** 2)
-        cum0 += legs[k]
-        cum[k + 1] = cum0
-    sgr = cum0
-    if sgr < 0.1:
-        sgr = 0.1
-    d = math.sqrt(sgr * sgr + (zr - zs) ** 2)
-    n = int(sgr / step)
-    hd[0] = 0.0
-    hh[0] = zs
-    k = 1
-    area = 0.0
-    Gs_sum = 0.0; Gs_n = 0
-    Gr_sum = 0.0; Gr_n = 0
-    Gm_sum = 0.0; Gm_n = 0
-    lim_s = 30.0 * hs
-    lim_r = 30.0 * hr
-    leg = 0
-    for t in range(n):
-        dd = (t + 0.5) * step
-        if dd > sgr - 0.25:
-            break
-        while leg < nv - 2 and dd > cum[leg + 1]:
-            leg += 1
-        f = (dd - cum[leg]) / legs[leg] if legs[leg] > 0 else 0.0
-        x = vx[leg] + f * (vx[leg + 1] - vx[leg])
-        y = vy[leg] + f * (vy[leg + 1] - vy[leg])
-        idx = _cell(x0, y0, res, nx, ny, x, y)
-        if idx < 0:
-            continue
-        g = gnd.flat[idx]
-        G = Gmap.flat[idx]
-        insrc = dd <= lim_s
-        inrec = (sgr - dd) <= lim_r
-        if insrc:
-            Gs_sum += G; Gs_n += 1
-        if inrec:
-            Gr_sum += G; Gr_n += 1
-        if (not insrc) and (not inrec):
-            Gm_sum += G; Gm_n += 1
-        zl = zs + (zr - zs) * dd / sgr
-        if zl - g > 0.0:
-            area += (zl - g) * step
-        h = dsm.flat[idx]
-        b = bid.flat[idx]
-        if b >= 0:
-            if dd < skip_r:
-                h = g
-            elif b == rbid and (sgr - dd) < skip_r:
-                h = g
-            else:
-                for q in range(1, nv - 1):
-                    if b == refl_bid[q - 1] and abs(dd - cum[q]) < skip_r:
-                        h = g
-        if h > zl:
-            while k >= 2:
-                ax = hd[k - 1] - hd[k - 2]; ay = hh[k - 1] - hh[k - 2]
-                bx = dd - hd[k - 2]; by = h - hh[k - 2]
-                if ax * by - ay * bx >= 0.0:
-                    k -= 1
-                else:
-                    break
-            hd[k] = dd; hh[k] = h; k += 1
-    while k >= 2:
-        ax = hd[k - 1] - hd[k - 2]; ay = hh[k - 1] - hh[k - 2]
-        bx = sgr - hd[k - 2]; by = zr - hh[k - 2]
-        if ax * by - ay * bx >= 0.0:
-            k -= 1
-        else:
-            break
-    hd[k] = sgr; hh[k] = zr; k += 1
-
-    # 지면 계수 (표본이 없으면 G 기본값으로 인접 영역값 사용)
-    Gs = Gs_sum / Gs_n if Gs_n > 0 else (Gr_sum / Gr_n if Gr_n > 0 else 0.0)
-    Gr = Gr_sum / Gr_n if Gr_n > 0 else Gs
-    Gm = Gm_sum / Gm_n if Gm_n > 0 else 0.5 * (Gs + Gr)
-    hm = area / sgr
-
-    # 차폐 기하
-    z = 0.0
-    dss = 0.0; dsr = 0.0; e = 0.0
-    shielded = k > 2
-    double = k > 3
-    if shielded:
-        dss = math.sqrt((hd[1] - hd[0]) ** 2 + (hh[1] - hh[0]) ** 2)
-        dsr = math.sqrt((hd[k - 1] - hd[k - 2]) ** 2 + (hh[k - 1] - hh[k - 2]) ** 2)
-        for q in range(1, k - 2):
-            e += math.sqrt((hd[q + 1] - hd[q]) ** 2 + (hh[q + 1] - hh[q]) ** 2)
-        z = dss + e + dsr - d                        # 식 (16)(17), a = 0 (수직단면)
-        if z <= 0.0:
-            shielded = False
-
-    adiv = A_div(d)
-    for b in range(bands.shape[0]):
-        f = bands[b]
-        if ground_alt:
-            agr = A_gr_alternative(hm, d)
-            dc = D_omega(sgr, hs, hr)
-        else:
-            agr = A_gr_general(f, hs, hr, sgr, Gs, Gr, Gm)
-            dc = 0.0
-        A = adiv + A_atm(alphas[b], d) + agr
-        if shielded:
-            dz = D_z(z, dss, dsr, d, e, lams[b], C2, double, dzmax1, dzmax2)
-            abar = dz - agr                          # 식 (12)
-            if abar > 0.0:
-                A += abar
-        out[b] = A - dc
+    """공통 기하(geometry.path_geometry) + ISO 감쇠(atten_iso). 반환값: 3D 전파거리 d"""
+    geom = np.empty(NGEOM)
+    d = path_geometry(vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                      rbid, refl_bid, skip_r, hd, hh, geom)
+    atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out)
     return d

@@ -104,7 +104,7 @@ def flat_world(n=500, res=1.0):
     return gnd, dsm, bid, G, 0.0, float(n), res, n, n
 
 
-def run_solver(src, rec, world, F=None, order=0, rho=0.8, Rmax=1000.0):
+def run_solver(src, rec, world, F=None, order=0, rho=0.8, Rmax=1000.0, meth=1):
     gnd, dsm, bid, G, x0, y0, res, nx, ny = world
     sx, sy, sz, LW = (np.array(v, float) for v in zip(*src))
     rx, ry, rz = (np.array(v, float) for v in zip(*rec))
@@ -114,7 +114,7 @@ def run_solver(src, rec, world, F=None, order=0, rho=0.8, Rmax=1000.0):
     Ed, En, *_ = compute(rx, ry, rz, np.zeros(len(rx)), -np.ones(len(rx), np.int64), -np.ones(len(rx), np.int64),
                          order, sx, sy, sz, np.zeros(len(sx)), 10 ** (0.1 * LW), 10 ** (0.1 * LW),
                          np.ones(len(sx), np.bool_), *F, rho, gnd, dsm, bid, G, x0, y0, res, nx, ny, 1.0,
-                         Rmax, Rmax, Rmax, Rmax, Rmax, Rmax, 1.5, bands, lams, al, w, False, 20.0, 20.0, 25.0)
+                         Rmax, Rmax, Rmax, Rmax, Rmax, Rmax, 1.5, bands, lams, al, w, False, 20.0, 20.0, 25.0, meth)
     return 10 * np.log10(Ed)
 
 
@@ -530,7 +530,7 @@ def test_single_lane_two_coincident_lines_equivalent():
                        np.full(n, 200.0), sy, np.full(n, 0.5), np.zeros(n), P, P, np.ones(n, np.bool_), *F, 0.8,
                        gnd, dsm, bid, G, x0, y0, res, nx, ny, 1.0, 1e3, 1e3, 1e3, 1e3, 1e3, 1e3, 1.5,
                        np.array([500.0]), np.array([LAM500]), np.array([0.0]), np.array([1.0]),
-                       False, 20.0, 20.0, 25.0)
+                       False, 20.0, 20.0, 25.0, 1)
     LW = np.full(len(sy0), 100.0)
     a = solve(sy0, LW)                                                # (a) 1개선, M
     b = solve(np.r_[sy0, sy0], np.r_[LW, LW] - 10 * math.log10(2))  # (b) 같은 위치 2개선, M/2 씩

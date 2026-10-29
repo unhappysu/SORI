@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-수음점별 에너지 합산.  Lr = 10 lg Σ_i Σ_b w_b · 10^0.1(LW_i − (A − Dc)_ib)   (ISO 9613-2 식 3·5)
+수음점별 에너지 합산.  Lr = 10 lg Σ_i Σ_b w_b · 10^0.1(LW_i − (A − Dc)_ib)   (ISO 9613-2 식 3·5 / RLS-19 식 2)
   - 직접음 + 1차 반사 + 2차 반사(허상음원, ISO 9613-2 7.5 / RLS-19 3.6)
-  - 반사 조건: 거울반사 작도 가능, ρ > 0.2, 크기 조건 식 (19) (대역별)
-  - 허상음원 음향파워: 식 (20) LW,im = LW + 10 lg ρ (DIr = 0, 무지향)
+  - 전파 방법 meth: METH_RLS19(RLS-19 3.5 식 11~17) | METH_ISO(ISO 9613-2 7장). 기하는 geometry.path_geometry 공통
+  - 반사 조건 — ISO: 거울반사 작도 가능, ρ > 0.2, 크기 조건 식 (19) (대역별)
+               RLS-19: 거울반사 작도 가능, h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R (3.6)
+  - 허상음원 이득 gain(인자 rho): ISO 식 (20) ρ (DIr = 0, 무지향) / RLS-19 10^(−0.1·D_RV) (표 8). 2차는 gain²
   - 수음점이 놓인 파사드 자신의 반사는 제외(RLS-19 1장 'Immissionsort')
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
@@ -12,9 +14,25 @@ import math
 import numpy as np
 
 from . import njit, prange
-from .iso9613 import path_loss
+from .geometry import NGEOM, path_geometry
+from .iso9613 import atten_iso
+from .rls19_propagation import accept_reflection, atten_rls19
 
 HULL_N = 8192
+METH_RLS19 = 0
+METH_ISO = 1
+
+
+@njit(cache=True)
+def _path(meth, vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+          rbid, refl_bid, skip_r, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, hd, hh, geom, out):
+    """공통 기하 → 방법별 감쇠를 out[b] 에 기록"""
+    path_geometry(vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                  rbid, refl_bid, skip_r, hd, hh, geom)
+    if meth == METH_RLS19:
+        atten_rls19(geom, out)
+    else:
+        atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out)
 
 
 @njit(cache=True)
@@ -39,19 +57,30 @@ def _crit(lams, lmin, cosb, dso, dor, inc):
     return any_ok
 
 
+@njit(cache=True)
+def _accept(meth, lams, lmin, cosb, dso, dor, inc, hR):
+    """반사 채택 여부(대역별 inc 갱신). ISO: 식 (19) / RLS-19: 3.6 높이 조건(대역 무관)"""
+    if meth == METH_RLS19:
+        ok = accept_reflection(hR, min(dso, dor))
+        for b in range(inc.shape[0]):
+            inc[b] = inc[b] and ok
+        return ok
+    return _crit(lams, lmin, cosb, dso, dor, inc)
+
+
 @njit(parallel=True, cache=True)
 def compute(rx, ry, rz, rg, rbid, rfid, order,
             sx, sy, sz, sg, Pd, Pn, smain,
             fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
             gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
             Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
-            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2):
+            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth):
     NR = rx.shape[0]; NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
     Ed = np.zeros(NR); En = np.zeros(NR)
     Edir = np.zeros(NR); E1 = np.zeros(NR); E2 = np.zeros(NR)
     lg_rho = rho
     for r in prange(NR):
-        hd = np.empty(HULL_N); hh = np.empty(HULL_N); out = np.empty(NB)
+        hd = np.empty(HULL_N); hh = np.empty(HULL_N); out = np.empty(NB); geom = np.empty(NGEOM)
         inc = np.ones(NB, dtype=np.bool_)
         vx = np.empty(4); vy = np.empty(4)
         rb = np.full(2, -1, dtype=np.int64)
@@ -64,9 +93,9 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
             if dx * dx + dy * dy > R * R:
                 continue
             vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = xr; vy[1] = yr
-            path_loss(vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
+            _path(meth, vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                       x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, out)
+                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
             for b in range(NB):
                 inc[b] = True
             F = _band_factor(out, wts, inc, 1.0)
@@ -118,13 +147,13 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                         continue
                     for b in range(NB):
                         inc[b] = True
-                    if not _crit(lams, lmin, ds / d1, d1, d2, inc):
+                    if not _accept(meth, lams, lmin, ds / d1, d1, d2, inc, hF):
                         continue
                     vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = px; vy[1] = py; vx[2] = xr; vy[2] = yr
                     rb[0] = fbid[f]; rb[1] = -1
-                    path_loss(vx, vy, 3, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
+                    _path(meth, vx, vy, 3, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                               x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                              bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, out)
+                              bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
                     F = _band_factor(out, wts, inc, lg_rho)
                     ed += Pd[j] * F; en += Pn[j] * F; e1 += Pd[j] * F
             # ---------------- 2차 반사: S → P1(f1) → P2(f2) → R
@@ -193,16 +222,16 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                                 continue
                             for b in range(NB):
                                 inc[b] = True
-                            if not _crit(lams, lmin1, ds1 / a, a, bb + c, inc):
+                            if not _accept(meth, lams, lmin1, ds1 / a, a, bb + c, inc, fzt[f1] - fz0[f1]):
                                 continue
-                            if not _crit(lams, lmin2, dP1 / bb, a + bb, c, inc):
+                            if not _accept(meth, lams, lmin2, dP1 / bb, a + bb, c, inc, fzt[f2] - fz0[f2]):
                                 continue
                             vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = p1x; vy[1] = p1y
                             vx[2] = p2x; vy[2] = p2y; vx[3] = xr; vy[3] = yr
                             rb[0] = fbid[f1]; rb[1] = fbid[f2]
-                            path_loss(vx, vy, 4, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
+                            _path(meth, vx, vy, 4, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                                       x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, out)
+                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
                             F = _band_factor(out, wts, inc, lg_rho * lg_rho)
                             ed += Pd[j] * F; en += Pn[j] * F; e2 += Pd[j] * F
         Ed[r] = ed; En[r] = en; Edir[r] = e_dir; E1[r] = e1; E2[r] = e2
