@@ -49,3 +49,6 @@ def setup_numba_cache():
     sori 의 계산 모듈을 import 하기 전에 불러야 함. 개발 실행에서는 기존 동작(소스 옆 __pycache__) 유지."""
     if is_frozen() and "NUMBA_CACHE_DIR" not in os.environ:
         os.environ["NUMBA_CACHE_DIR"] = str(user_data_dir() / "numba_cache")
+        if "numba" in sys.modules:       # sori/__init__.py 가 numba 를 먼저 import 함 → 환경변수 다시 읽게 함
+            from numba.core import config
+            config.reload_config()
