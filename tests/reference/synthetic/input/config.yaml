@@ -1,0 +1,14 @@
+# 시험용 설정 (※ Claude(Anthropic의 AI)를 활용하여 제작하였음)
+project: {name: "가상 교차로(시험)", output_dir: "output"}
+crs: 5186
+input:
+  map: {folders: ["data/map"]}
+  dem: {path: "data/dem/dem_5179.tif", use_as: "auxiliary"}
+  traffic: {path: "traffic.csv"}
+  ground: {method: "general", default_G: 0.0, soft_polygons: "data/green.gpkg"}
+receivers:
+  center: [205108.0, 553110.0]
+  grid: {size: [300.0, 300.0], step: 10.0, heights: [4.0, 10.0]}
+  facade: {radius: 90.0}
+propagation:
+  max_dist_main: 250.0

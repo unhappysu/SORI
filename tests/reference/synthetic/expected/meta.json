@@ -1,0 +1,26 @@
+{
+  "description": "기준 사례(가상 교차로, tests/reference/synthetic/input) 기준값. 실제 지역 자료 아님",
+  "created": "2026-10-29T15:23:33",
+  "commit": "6510a4c43267d23c1ca612202450fa78fbe7e627",
+  "sori_code_uncommitted_changes": false,
+  "environment": {
+    "python": "3.14.6",
+    "os": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "packages": {
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "pandas": "3.1.0",
+      "geopandas": "1.2.0",
+      "pyogrio": "0.13.0",
+      "shapely": "2.2.0",
+      "rasterio": "1.5.2",
+      "pyproj": "3.8.0",
+      "numba": "0.68.1",
+      "llvmlite": "0.50.0"
+    },
+    "proj_version": "9.8.1"
+  },
+  "tolerance_note": "비교 허용 오차 기본값 0.01 dB, 0.001 m — 프로젝트 임의 설정",
+  "notice": "※ Claude(Anthropic의 AI)를 활용하여 제작하였음."
+}
