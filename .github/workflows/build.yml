@@ -1,0 +1,89 @@
+# SORI 앱 자동 빌드 (Windows · macOS)
+# 순서: 의존성 설치 → pytest → PyInstaller 빌드 → 빌드된 앱으로 자가 점검·예제 계산 → 결과물 업로드
+# ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"          # 로컬 개발 환경 Python 3.14.6 과 맞춤
+          cache: pip
+          cache-dependency-path: |
+            requirements-lock.txt
+            requirements-build.txt
+
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-lock.txt -r requirements-build.txt
+          python -c "import sys, platform; print(sys.version, platform.platform(), platform.machine())"
+          pip freeze
+
+      - name: pytest (계산 검증·기준 사례·좌표 변환)
+        run: python -m pytest -q tests
+
+      - name: PyInstaller 빌드
+        run: pyinstaller --noconfirm --clean SORI.spec
+
+      - name: 빌드된 앱 점검 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP=dist/SORI.app/Contents/MacOS/SORI
+          "$APP" --selfcheck "$PWD/selfcheck.json"
+          "$APP" --run tests/reference/synthetic/input/config.yaml --out "$PWD/app_run"
+          python tools/reference.py compare app_run
+          codesign --verify --deep --strict dist/SORI.app
+          ditto -c -k --keepParent dist/SORI.app SORI-macos.zip
+
+      - name: 빌드된 앱 점검 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # 창 실행 파일(--windowed)이라 표준 출력이 없음 → 종료 코드와 결과 파일로 판정
+          $exe = "dist\SORI\SORI.exe"
+          $p = Start-Process $exe -ArgumentList '--selfcheck', "$PWD\selfcheck.json" -Wait -PassThru
+          Get-Content "$PWD\selfcheck.json" -Encoding utf8
+          if ($p.ExitCode -ne 0) { Get-Content "$PWD\selfcheck.log" -Encoding utf8 -ErrorAction SilentlyContinue; throw "자가 점검 실패 (exit $($p.ExitCode))" }
+          $p = Start-Process $exe -ArgumentList '--run', "tests\reference\synthetic\input\config.yaml", '--out', "$PWD\app_run" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$PWD\app_run\sori_run.log" -Encoding utf8 -ErrorAction SilentlyContinue; throw "예제 계산 실패 (exit $($p.ExitCode))" }
+          python tools/reference.py compare app_run
+          if ($LASTEXITCODE -ne 0) { throw "기준 사례 비교 실패" }
+          Compress-Archive -Path dist\SORI -DestinationPath "SORI-windows.zip"
+
+      - name: 앱 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: SORI-${{ runner.os }}
+          path: SORI-*.zip
+          if-no-files-found: error
+
+      - name: 점검 기록 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfcheck-${{ runner.os }}
+          path: |
+            selfcheck.json
+            selfcheck.log
+            app_run/sori_run.log
+            app_run/run_conditions.json
+          if-no-files-found: ignore
