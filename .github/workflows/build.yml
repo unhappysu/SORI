@@ -1,5 +1,6 @@
 # SORI 앱 자동 빌드 (Windows · macOS)
 # 순서: 의존성 설치 → pytest → PyInstaller 빌드 → 빌드된 앱으로 자가 점검·예제 계산 → 결과물 업로드
+# 수동 실행: Actions → build → Run workflow (또는 gh workflow run build.yml --ref <브랜치>)
 # ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 name: build
 
