@@ -117,6 +117,7 @@ DEFAULTS = {
                        "r_second": 50.0},
         "skip_radius": 1.5,                        # 래스터 이산화 오차 보정 반경(m)
         "segment_check": True,                     # RLS-19 3.2 주석 l ≤ s/2 진단(결과값 불변) → segment_check.csv
+        "terms_csv": False,                        # 점 수음점의 감쇠항별 중간값 → path_terms.csv (직접음·1차 반사, terms.py)
     },
     "receivers": {
         "center": None,                            # [x, y] 계산 중심(교차로 등)

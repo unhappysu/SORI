@@ -142,9 +142,12 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 5. 주요 설정 (config.yaml)
 
+**"혼합 방법" 표기**: 기본 `propagation_method: iso9613_2` 는 음원은 RLS-19, 전파는 ISO 9613-2 로 계산합니다. 이 결합은 RLS-19 와 ISO 9613-2 어느 쪽도 규정하지 않은 프로젝트 구성 방법이라, 지도 정보란 '구성'과 `run_info.json` 의 `method_label` 에 "RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 프로젝트 구성 방법"으로 적습니다(국내 「소음지도의 작성방법」 별표 2 제8호는 전달감쇠 영향인자에 KS I ISO 9613-1·-2 적용을 허용하나, 예측식 자체의 결합을 정한 것은 아님 — 해석). RLS-19 원문 그대로의 계산이 필요하면 `rls19` 를 씁니다. 두 방법의 결과 차이와 원인은 TECHNICAL_NOTES 4b절.
+
 | 항목 | 기본값 | 의미 |
 |---|---|---|
 | `propagation_method` | iso9613_2 | 전파 계산 방법. `iso9613_2` = ISO 9613-2(현행), `rls19` = RLS-19 3.5·3.6. 음원(L_W′, 음원선, D_K, D_refl)과 기하는 공통. 한 출력 폴더에는 한 방법의 결과만 둠(다른 방법 결과가 있으면 실행 중단 — `project.output_dir` 를 바꿀 것). 방법·식 번호·미구현 항목은 `run_info.json` |
+| `propagation.terms_csv` | false | 점 수음점의 감쇠항별 중간값 `path_terms.csv` 출력(직접음·1차 반사) |
 | `propagation.bands_hz` / `spectrum_dBA` | [500] / [0] | (iso9613_2) 500 Hz 단일대역(ISO 9613-2 1절 비고 1). 옥타브 스펙트럼을 넣으면 8대역 계산. rls19 는 A 가중 단일값이라 여러 대역 지정 불가 |
 | `input.ground.method` | general | (iso9613_2) ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제). rls19 는 식 (14) 고정 |
 | `propagation.reflection.rho` | 0.8 | (iso9613_2) ISO 표 4 '창이 있는 건물 벽', 식 (20) |
@@ -173,6 +176,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `*.png` | 확인용 간이 그림(격자, 파사드 평면, 파사드 3D) |
 | `sources.csv` | 음원 점별 LW′, D_K, D_refl, 경사, 교차로 거리 등 |
 | `source_lines.csv` | 도로 객체별 음원선 배치 근거: 사용한 방향별 차로 수, 근거(`lane_rule`: override·map_half·ceil·major_fwd·oneway_map·single_centre), 차로폭, 중심선 기준 오프셋 |
+| `path_terms.csv` | (설정 `propagation.terms_csv: true`) 점 수음점의 직접음·1차 반사 경로별 감쇠항. rls19: D_div·D_atm·D_gr·D_z·D_RV·D_A, iso9613_2: A_div·A_atm·A_gr·D_Omega·D_z·A_bar·refl_dB·A_net, 경로별 L_day. 같은 점·차수의 L_day 에너지 합 = `LrT_direct`/`LrT_refl1` |
 | `segment_check.csv` | 구간 길이 진단: RLS-19 3.2 주석(경험칙) l ≤ s/2 를 어기는 음원이 있는 수음점만(위반 음원 수, 최소 s/l). 결과값에는 영향 없음. 요약은 `run_info.json` 의 `segment_check` |
 | `traffic_used.csv`, `junctions_used.csv` | 실제 사용된 교통량·교차로 판정 (보고서 근거자료) |
 | `build_info.json`, `run_info.json` | 모델 규모, 가정값 사용 수, 계산 조건 기록 |

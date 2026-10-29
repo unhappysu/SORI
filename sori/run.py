@@ -267,6 +267,11 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         P["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrN]
         P = P[["point_id", "x", "y", "zg", "h", "h_basis", "z", *keys, "LrT_cmp", "LrN_cmp", "note"]]
         P.to_csv(os.path.join(out, "point_result.csv"), index=False, encoding="utf-8-sig")
+        if cfg["propagation"].get("terms_csv") and ok.any():        # 감쇠항별 중간값(terms.py)
+            from .terms import path_terms
+            T = path_terms(cfg, d, S, F, P[ok])
+            T.to_csv(os.path.join(out, "path_terms.csv"), index=False, encoding="utf-8-sig")
+            log.info("감쇠항별 중간값: path_terms.csv (%d 경로, 직접음·1차 반사)", len(T))
         outputs["points"] = model.name
         # field_survey/scripts/process_measurements.py --model 입력 형식(point_id, period, Leq_calc)
         cmp = pd.concat([pd.DataFrame(dict(point_id=P.point_id, period=per, Leq_calc=P[k].round(1),

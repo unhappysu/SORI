@@ -142,3 +142,33 @@ def path_loss(vx, vy, nv, zs, zr, hs, hr,
                       rbid, refl_bid, skip_r, hd, hh, geom)
     atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out)
     return d
+
+
+# 감쇠항별 중간값 색인(terms_iso)
+T_ADIV, T_AATM, T_AGR, T_DOMEGA, T_DZ, T_ABAR, T_NET = range(7)
+TERM_NAMES = ("A_div", "A_atm", "A_gr", "D_Omega", "D_z", "A_bar", "A_net")
+
+
+@njit(cache=True)
+def terms_iso(geom, f, lam, alpha, ground_alt, C2, dzmax1, dzmax2, t):
+    """대역 f 의 감쇠항별 중간값 [dB] 을 t 에 기록: A_div 식(7), A_atm 식(8), A_gr 식(9) 또는 (10),
+    D_Ω 식(11)(대안법만, 아니면 0), D_z 식(14)(차폐 없으면 0), A_bar 식(12)(>0 일 때만, 아니면 0),
+    A_net = A − D_c (atten_iso 와 같은 순서로 계산)"""
+    d = geom[G_D]; sgr = geom[G_SGR]; hs = geom[G_HS]; hr = geom[G_HR]
+    t[T_ADIV] = A_div(d); t[T_AATM] = A_atm(alpha, d)
+    if ground_alt:
+        t[T_AGR] = A_gr_alternative(geom[G_HM], d)
+        t[T_DOMEGA] = D_omega(sgr, hs, hr)
+    else:
+        t[T_AGR] = A_gr_general(f, hs, hr, sgr, geom[G_GS], geom[G_GR], geom[G_GM])
+        t[T_DOMEGA] = 0.0
+    A = t[T_ADIV] + t[T_AATM] + t[T_AGR]
+    t[T_DZ] = 0.0; t[T_ABAR] = 0.0
+    if geom[G_SHIELD] > 0.5:
+        t[T_DZ] = D_z(geom[G_Z], geom[G_DSS], geom[G_DSR], d, geom[G_E], lam, C2, geom[G_DOUBLE] > 0.5,
+                      dzmax1, dzmax2)
+        abar = t[T_DZ] - t[T_AGR]
+        if abar > 0.0:
+            t[T_ABAR] = abar
+            A += abar
+    t[T_NET] = A - t[T_DOMEGA]

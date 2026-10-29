@@ -17,9 +17,9 @@ import math
 import numpy as np
 
 from . import njit, prange
-from .geometry import NGEOM, path_geometry
-from .iso9613 import atten_iso
-from .rls19_propagation import accept_reflection, atten_rls19
+from .geometry import NGEOM, G_D, G_SGR, G_HM, G_SHIELD, G_Z, path_geometry
+from .iso9613 import atten_iso, terms_iso
+from .rls19_propagation import accept_reflection, atten_rls19, terms_rls19
 
 HULL_N = 8192
 METH_RLS19 = 0
@@ -391,3 +391,116 @@ def facade_neighbors(fx1, fy1, fx2, fy2, fnx, fny, R2):
 def to_db(E):
     with np.errstate(divide="ignore"):
         return np.where(E > 0, 10.0 * np.log10(np.maximum(E, 1e-300)), np.nan)
+
+
+# ---------------------------------------------------------------------- 감쇠항별 중간값(대표 수음점)
+# 경로 정보 열: 음원 색인, 차수, 반사면 색인, 반사점 x, y, d, s_gr, h_m, z, 이득(에너지 비)
+P_J, P_ORDER, P_FACE, P_PX, P_PY, P_D, P_SGR, P_HM, P_Z, P_GAIN = range(10)
+NPINFO = 10
+NTERM = 7
+
+
+@njit(cache=True)
+def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
+                sx, sy, sz, sg, smain,
+                fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+                gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
+                bands, lams, alphas, ground_alt, C2, dz1, dz2, meth):
+    """수음점 1개의 직접음·1차 반사 경로별 기하와 감쇠항(대역별). compute 의 직접음·1차 반사와 같은 조건.
+    반환 (info[n, NPINFO], terms[n, NTERM], band[n]). terms 열: RLS-19 = rls19_propagation.TERM_NAMES,
+    ISO = iso9613.TERM_NAMES (RLS-19 는 앞 5칸만 사용). 2·3차 반사 경로는 넣지 않음"""
+    NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
+    hd = np.empty(HULL_N); hh = np.empty(HULL_N); geom = np.empty(NGEOM); t = np.zeros(NTERM)
+    inc = np.ones(NB, dtype=np.bool_)
+    vx = np.empty(5); vy = np.empty(5)
+    rb = np.full(3, -1, dtype=np.int64)
+    hr = zr - zgr
+    cap = NS * (1 + (NF if order >= 1 else 0)) * NB
+    cap = min(cap, 2000000)
+    info = np.zeros((cap, NPINFO)); terms = np.zeros((cap, NTERM)); band = np.zeros(cap, np.int64)
+    n = 0
+    for j in range(NS):
+        dx = sx[j] - xr; dy = sy[j] - yr
+        R = Rmain if smain[j] else Rminor
+        if dx * dx + dy * dy > R * R:
+            continue
+        vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = xr; vy[1] = yr
+        path_geometry(vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                      rbidr, rb, skip_r, hd, hh, geom)
+        for b in range(NB):
+            if n >= cap:
+                break
+            if meth == METH_RLS19:
+                terms_rls19(geom, t)
+            else:
+                terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t)
+            info[n, P_J] = j; info[n, P_ORDER] = 0; info[n, P_FACE] = -1
+            info[n, P_PX] = np.nan; info[n, P_PY] = np.nan
+            info[n, P_D] = geom[G_D]; info[n, P_SGR] = geom[G_SGR]; info[n, P_HM] = geom[G_HM]
+            info[n, P_Z] = geom[G_Z] if geom[G_SHIELD] > 0.5 else 0.0
+            info[n, P_GAIN] = 1.0
+            for q in range(NTERM):
+                terms[n, q] = t[q]
+            band[n] = b; n += 1
+    if order >= 1 and NF > 0:
+        for f in range(NF):
+            if f == rfidr:
+                continue
+            ex = fx2[f] - fx1[f]; ey = fy2[f] - fy1[f]
+            L2 = ex * ex + ey * ey
+            tt0 = ((xr - fx1[f]) * ex + (yr - fy1[f]) * ey) / L2
+            tt0 = min(1.0, max(0.0, tt0))
+            qx = fx1[f] + tt0 * ex - xr; qy = fy1[f] + tt0 * ey - yr
+            if qx * qx + qy * qy > Rf * Rf:
+                continue
+            if (xr - fx1[f]) * fnx[f] + (yr - fy1[f]) * fny[f] <= 0.05:
+                continue
+            dr = (xr - fx1[f]) * fnx[f] + (yr - fy1[f]) * fny[f]
+            mx = xr - 2 * dr * fnx[f]; my = yr - 2 * dr * fny[f]
+            hF = fzt[f] - fz0[f]
+            lmin = min(fL[f], hF)
+            for j in range(NS):
+                dx = sx[j] - xr; dy = sy[j] - yr
+                R = Rsm if smain[j] else Rsn
+                if dx * dx + dy * dy > R * R:
+                    continue
+                ds = (sx[j] - fx1[f]) * fnx[f] + (sy[j] - fy1[f]) * fny[f]
+                if ds <= 0.05:
+                    continue
+                u = ds / (ds + dr)
+                px = sx[j] + u * (mx - sx[j]); py = sy[j] + u * (my - sy[j])
+                tt = ((px - fx1[f]) * ex + (py - fy1[f]) * ey) / L2
+                if tt < 0.0 or tt > 1.0:
+                    continue
+                d1 = math.sqrt((px - sx[j]) ** 2 + (py - sy[j]) ** 2)
+                d2 = math.sqrt((px - xr) ** 2 + (py - yr) ** 2)
+                if d1 < 0.1 or d2 < 0.1:
+                    continue
+                zp = sz[j] + (zr - sz[j]) * d1 / (d1 + d2)
+                if zp > fzt[f] or zp < fz0[f]:
+                    continue
+                for b in range(NB):
+                    inc[b] = True
+                if not _accept(meth, lams, lmin, ds / d1, d1, d2, inc, hF):
+                    continue
+                vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = px; vy[1] = py; vx[2] = xr; vy[2] = yr
+                rb[0] = fbid[f]; rb[1] = -1
+                path_geometry(vx, vy, 3, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny,
+                              step, rbidr, rb, skip_r, hd, hh, geom)
+                for b in range(NB):
+                    if not inc[b] or n >= cap:
+                        continue
+                    if meth == METH_RLS19:
+                        terms_rls19(geom, t)
+                    else:
+                        terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t)
+                    info[n, P_J] = j; info[n, P_ORDER] = 1; info[n, P_FACE] = f
+                    info[n, P_PX] = px; info[n, P_PY] = py
+                    info[n, P_D] = geom[G_D]; info[n, P_SGR] = geom[G_SGR]; info[n, P_HM] = geom[G_HM]
+                    info[n, P_Z] = geom[G_Z] if geom[G_SHIELD] > 0.5 else 0.0
+                    info[n, P_GAIN] = rho
+                    for q in range(NTERM):
+                        terms[n, q] = t[q]
+                    band[n] = b; n += 1
+    return info[:n], terms[:n], band[:n]

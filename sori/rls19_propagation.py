@@ -82,3 +82,27 @@ def accept_reflection(hR, aR):
     a_R = 음원–반사체, 반사체–수음점 거리 중 작은 값(수평 거리 사용 — 해석).
     h_R = 반사면(벽면) 높이 ztop − z0 (원문은 '반사면의 높이'라고만 적음 — 해석)"""
     return hR >= 1.0 and hR >= 0.3 * math.sqrt(aR)
+
+
+# 감쇠항별 중간값 색인(terms_rls19)
+T_DDIV, T_DATM, T_DGR, T_DZ, T_DA = range(5)
+TERM_NAMES = ("D_div", "D_atm", "D_gr", "D_z", "D_A")
+
+
+@njit(cache=True)
+def terms_rls19(geom, t):
+    """감쇠항별 중간값 [dB] 을 t 에 기록: D_div 식(12), D_atm 식(13), D_gr 식(14), D_z 식(15)(차폐 없으면 0),
+    D_A 식(11). D_A 는 D_A() 와 같은 순서로 계산(같은 값)"""
+    s = geom[G_D]
+    t[T_DDIV] = D_div(s); t[T_DATM] = D_atm(s)
+    t[T_DGR] = D_gr(geom[G_HM], s)
+    t[T_DZ] = 0.0
+    if geom[G_SHIELD] > 0.5:
+        A = geom[G_DSS]; B = geom[G_DSR]
+        if geom[G_DOUBLE] > 0.5:
+            if A >= B:
+                A += geom[G_E]
+            else:
+                B += geom[G_E]
+        t[T_DZ] = D_z(geom[G_Z], K_w(A, B, s, geom[G_Z]))
+    t[T_DA] = D_A(geom)
