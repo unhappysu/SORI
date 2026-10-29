@@ -17,6 +17,8 @@ datas = []
 datas += collect_data_files("sori", excludes=["**/__pycache__/**"])
 # 자가 점검·예제용 기준 사례(가상 교차로) 입력과 기준값
 datas += [(str(ROOT / "tests" / "reference" / "synthetic"), "tests/reference/synthetic")]
+# Qt(PySide6, LGPLv3) 고지 — onedir 라 Qt 라이브러리는 사용자가 바꿔 끼울 수 있음
+datas += [(str(ROOT / "packaging" / "THIRD_PARTY_Qt.txt"), "licenses")]
 # PROJ·GDAL 데이터: pyinstaller-hooks-contrib 의 pyproj·rasterio·pyogrio 훅이 넣지만, 빠지면 좌표가 틀어지므로 명시
 datas += collect_data_files("pyproj")
 datas += collect_data_files("rasterio")
@@ -28,15 +30,18 @@ a = Analysis(
     binaries=[],
     datas=datas,
     # rasterio 등은 Cython 모듈 안에서 import 하는 하위 모듈(rasterio.serde 등)이 자동 탐지되지 않음
-    hiddenimports=collect_submodules("sori") + ["reference_case"]
+    hiddenimports=collect_submodules("sori") + ["reference_case", "sori_qt"]
     + collect_submodules("rasterio") + collect_submodules("pyproj") + collect_submodules("pyogrio")
     # 그림 저장 형식(PNG·PDF)별 matplotlib 백엔드는 savefig 때 이름으로 불러와 자동 탐지되지 않음
-    + ["matplotlib.backends.backend_agg", "matplotlib.backends.backend_pdf"],
+    + ["matplotlib.backends.backend_agg", "matplotlib.backends.backend_pdf"]
+    # Qt 화면(sori_qt)은 sori_gui 안에서 이름으로 불러옴 → 지도 창의 matplotlib Qt 백엔드도 명시
+    + ["matplotlib.backends.backend_qtagg"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # 웹 화면(Streamlit)·테스트 도구는 앱에 넣지 않음
-    excludes=["streamlit", "streamlit_folium", "folium", "pytest", "IPython", "PySide6", "PyQt5", "PyQt6"],
+    # 웹 화면(Streamlit)·테스트 도구는 앱에 넣지 않음. 화면은 PySide6 하나만(PyQt 제외, Qt WebEngine 미사용)
+    excludes=["streamlit", "streamlit_folium", "folium", "pytest", "IPython", "PyQt5", "PyQt6",
+              "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore", "PySide6.QtQuick"],
     noarchive=False,
     optimize=0,
     # numba 의 cache=True 는 원본 .py 파일이 있어야 동작함 → sori 는 .py 원본째 넣음(계산 코드 변경 없이 해결)

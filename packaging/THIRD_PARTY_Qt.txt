@@ -1,0 +1,9 @@
+SORI 데스크톱 화면은 Qt for Python(PySide6, shiboken6)과 Qt 라이브러리를 사용합니다.
+
+- 라이선스: GNU Lesser General Public License v3 (LGPLv3) — https://www.gnu.org/licenses/lgpl-3.0.html
+- 원본 코드: https://code.qt.io/ (Qt), https://code.qt.io/cgit/pyside/pyside-setup.git/ (PySide6)
+- 앱은 PyInstaller onedir 형식이라 Qt·PySide6 라이브러리가 별도 파일로 들어 있으며,
+  사용자는 같은 판의 호환 라이브러리로 바꿔 끼울 수 있습니다.
+- SORI 는 Qt 라이브러리를 수정하지 않았습니다.
+
+※ 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
