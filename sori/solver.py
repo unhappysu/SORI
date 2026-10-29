@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 수음점별 에너지 합산.  Lr = 10 lg Σ_i Σ_b w_b · 10^0.1(LW_i − (A − Dc)_ib)   (ISO 9613-2 식 3·5 / RLS-19 식 2)
-  - 직접음 + 1차 반사 + 2차 반사(허상음원, ISO 9613-2 7.5 / RLS-19 3.6)
+  - 직접음 + 1차·2차·3차 반사(허상음원, ISO 9613-2 7.5 / RLS-19 3.6). 3차는 국내 「소음지도의 작성방법」
+    별표 2 제8호(반사차수 3차 이상 원칙) — RLS-19 3.6(1·2차)을 넘는 조건
+  - 2·3차 탐색 제한(계산량, 프로젝트 설정): 마지막 반사면이 수음점 R2 이내, 앞 반사면은 다음 반사면과
+    중심 거리 R2 이내이고 서로 마주보는 면. 3차는 Python 에서 만든 이웃 목록(nb_ptr, nb_idx, facade_neighbors) 사용
   - 전파 방법 meth: METH_RLS19(RLS-19 3.5 식 11~17) | METH_ISO(ISO 9613-2 7장). 기하는 geometry.path_geometry 공통
   - 반사 조건 — ISO: 거울반사 작도 가능, ρ > 0.2, 크기 조건 식 (19) (대역별)
                RLS-19: 거울반사 작도 가능, h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R (3.6)
-  - 허상음원 이득 gain(인자 rho): ISO 식 (20) ρ (DIr = 0, 무지향) / RLS-19 10^(−0.1·D_RV) (표 8). 2차는 gain²
+  - 허상음원 이득 gain(인자 rho): ISO 식 (20) ρ (DIr = 0, 무지향) / RLS-19 10^(−0.1·D_RV) (표 8). 2차 gain², 3차 gain³
   - 수음점이 놓인 파사드 자신의 반사는 제외(RLS-19 1장 'Immissionsort')
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
@@ -68,24 +71,47 @@ def _accept(meth, lams, lmin, cosb, dso, dor, inc, hR):
     return _crit(lams, lmin, cosb, dso, dor, inc)
 
 
+@njit(cache=True)
+def _beam(qx, qy, ax1, ay1, ax2, ay2, anx, any_, bx1, by1, bx2, by2):
+    """3차 반사 탐색 가지치기(결과 불변). Q 는 면 a 뒤의 거울상. 면 b 위의 어떤 점 E 에서 Q 로 가는 선분이
+    면 a 선분을 지날 수 있으면 True(필요조건). b 가 a 앞쪽에 완전히 있지 않으면 판단하지 않고 True."""
+    dq = -((qx - ax1) * anx + (qy - ay1) * any_)
+    if dq <= 0.0:
+        return True
+    ex = ax2 - ax1; ey = ay2 - ay1
+    L2 = ex * ex + ey * ey
+    tmin = 1e300; tmax = -1e300
+    for k in range(2):
+        px = bx1 if k == 0 else bx2
+        py = by1 if k == 0 else by2
+        de = (px - ax1) * anx + (py - ay1) * any_
+        if de <= 0.0:
+            return True
+        u = dq / (dq + de)                       # Q → E 선분이 면 a 의 직선과 만나는 위치(중심 투영, E 에 대해 연속)
+        X = qx + u * (px - qx); Y = qy + u * (py - qy)
+        t = ((X - ax1) * ex + (Y - ay1) * ey) / L2
+        tmin = min(tmin, t); tmax = max(tmax, t)
+    return tmax >= 0.0 and tmin <= 1.0
+
+
 @njit(parallel=True, cache=True)
 def compute(rx, ry, rz, rg, rbid, rfid, order,
             sx, sy, sz, sg, Pd, Pn, smain,
             fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
             gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
             Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
-            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth):
+            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx):
     NR = rx.shape[0]; NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
     Ed = np.zeros(NR); En = np.zeros(NR)
-    Edir = np.zeros(NR); E1 = np.zeros(NR); E2 = np.zeros(NR)
+    Edir = np.zeros(NR); E1 = np.zeros(NR); E2 = np.zeros(NR); E3 = np.zeros(NR)
     lg_rho = rho
     for r in prange(NR):
         hd = np.empty(HULL_N); hh = np.empty(HULL_N); out = np.empty(NB); geom = np.empty(NGEOM)
         inc = np.ones(NB, dtype=np.bool_)
-        vx = np.empty(4); vy = np.empty(4)
-        rb = np.full(2, -1, dtype=np.int64)
+        vx = np.empty(5); vy = np.empty(5)
+        rb = np.full(3, -1, dtype=np.int64)
         xr = rx[r]; yr = ry[r]; zr = rz[r]; hr = zr - rg[r]
-        ed = 0.0; en = 0.0; e_dir = 0.0; e1 = 0.0; e2 = 0.0
+        ed = 0.0; en = 0.0; e_dir = 0.0; e1 = 0.0; e2 = 0.0; e3 = 0.0
         # ---------------- 직접음
         for j in range(NS):
             dx = sx[j] - xr; dy = sy[j] - yr
@@ -234,8 +260,132 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                                       bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
                             F = _band_factor(out, wts, inc, lg_rho * lg_rho)
                             ed += Pd[j] * F; en += Pn[j] * F; e2 += Pd[j] * F
-        Ed[r] = ed; En[r] = en; Edir[r] = e_dir; E1[r] = e1; E2[r] = e2
-    return Ed, En, Edir, E1, E2
+            # ---------------- 3차 반사: S → P1(f1) → P2(f2) → P3(f3) → R  (f1 = f3 허용: 마주보는 두 벽 사이 왕복)
+            if order >= 3:
+                for ci in range(nc):
+                    f3 = cand[ci]
+                    ex3 = fx2[f3] - fx1[f3]; ey3 = fy2[f3] - fy1[f3]
+                    L32 = ex3 * ex3 + ey3 * ey3
+                    dr3 = (xr - fx1[f3]) * fnx[f3] + (yr - fy1[f3]) * fny[f3]
+                    t0 = ((xr - fx1[f3]) * ex3 + (yr - fy1[f3]) * ey3) / L32
+                    t0 = min(1.0, max(0.0, t0))
+                    qx = fx1[f3] + t0 * ex3 - xr; qy = fy1[f3] + t0 * ey3 - yr
+                    if qx * qx + qy * qy > R2 * R2:
+                        continue
+                    q1x = xr - 2 * dr3 * fnx[f3]; q1y = yr - 2 * dr3 * fny[f3]        # R 의 f3 거울상
+                    lmin3 = min(fL[f3], fzt[f3] - fz0[f3])
+                    for k2 in range(nb_ptr[f3], nb_ptr[f3 + 1]):
+                        f2 = nb_idx[k2]
+                        if f2 == rfid[r]:
+                            continue
+                        dQ1 = (q1x - fx1[f2]) * fnx[f2] + (q1y - fy1[f2]) * fny[f2]
+                        if dQ1 <= 0.05:
+                            continue
+                        if not _beam(q1x, q1y, fx1[f3], fy1[f3], fx2[f3], fy2[f3], fnx[f3], fny[f3],
+                                     fx1[f2], fy1[f2], fx2[f2], fy2[f2]):
+                            continue                                                 # f2 → f3 → R 경로 불가
+                        q2x = q1x - 2 * dQ1 * fnx[f2]; q2y = q1y - 2 * dQ1 * fny[f2]    # 다시 f2 거울상
+                        ex2 = fx2[f2] - fx1[f2]; ey2 = fy2[f2] - fy1[f2]
+                        L22 = ex2 * ex2 + ey2 * ey2
+                        lmin2 = min(fL[f2], fzt[f2] - fz0[f2])
+                        for k1 in range(nb_ptr[f2], nb_ptr[f2 + 1]):
+                            f1 = nb_idx[k1]
+                            if f1 == rfid[r]:
+                                continue
+                            dQ2 = (q2x - fx1[f1]) * fnx[f1] + (q2y - fy1[f1]) * fny[f1]
+                            if dQ2 <= 0.05:
+                                continue
+                            if not _beam(q2x, q2y, fx1[f2], fy1[f2], fx2[f2], fy2[f2], fnx[f2], fny[f2],
+                                         fx1[f1], fy1[f1], fx2[f1], fy2[f1]):
+                                continue                                             # f1 → f2 경로 불가
+                            q3x = q2x - 2 * dQ2 * fnx[f1]; q3y = q2y - 2 * dQ2 * fny[f1]  # 다시 f1 거울상
+                            ex1 = fx2[f1] - fx1[f1]; ey1 = fy2[f1] - fy1[f1]
+                            L12 = ex1 * ex1 + ey1 * ey1
+                            lmin1 = min(fL[f1], fzt[f1] - fz0[f1])
+                            for j in range(NS):
+                                dx = sx[j] - xr; dy = sy[j] - yr
+                                R = Rsm if smain[j] else Rsn
+                                if dx * dx + dy * dy > R * R:
+                                    continue
+                                ds1 = (sx[j] - fx1[f1]) * fnx[f1] + (sy[j] - fy1[f1]) * fny[f1]
+                                if ds1 <= 0.05:
+                                    continue
+                                u1 = ds1 / (ds1 + dQ2)
+                                p1x = sx[j] + u1 * (q3x - sx[j]); p1y = sy[j] + u1 * (q3y - sy[j])
+                                t1 = ((p1x - fx1[f1]) * ex1 + (p1y - fy1[f1]) * ey1) / L12
+                                if t1 < 0.0 or t1 > 1.0:
+                                    continue
+                                dP1 = (p1x - fx1[f2]) * fnx[f2] + (p1y - fy1[f2]) * fny[f2]
+                                if dP1 <= 0.05:
+                                    continue
+                                u2 = dP1 / (dP1 + dQ1)
+                                p2x = p1x + u2 * (q2x - p1x); p2y = p1y + u2 * (q2y - p1y)
+                                t2 = ((p2x - fx1[f2]) * ex2 + (p2y - fy1[f2]) * ey2) / L22
+                                if t2 < 0.0 or t2 > 1.0:
+                                    continue
+                                dP2 = (p2x - fx1[f3]) * fnx[f3] + (p2y - fy1[f3]) * fny[f3]
+                                if dP2 <= 0.05:
+                                    continue
+                                u3 = dP2 / (dP2 + dr3)
+                                p3x = p2x + u3 * (q1x - p2x); p3y = p2y + u3 * (q1y - p2y)
+                                t3 = ((p3x - fx1[f3]) * ex3 + (p3y - fy1[f3]) * ey3) / L32
+                                if t3 < 0.0 or t3 > 1.0:
+                                    continue
+                                a = math.sqrt((p1x - sx[j]) ** 2 + (p1y - sy[j]) ** 2)
+                                bb = math.sqrt((p2x - p1x) ** 2 + (p2y - p1y) ** 2)
+                                c = math.sqrt((p3x - p2x) ** 2 + (p3y - p2y) ** 2)
+                                e = math.sqrt((xr - p3x) ** 2 + (yr - p3y) ** 2)
+                                if a < 0.1 or bb < 0.1 or c < 0.1 or e < 0.1:
+                                    continue
+                                Lt = a + bb + c + e
+                                zp1 = sz[j] + (zr - sz[j]) * a / Lt
+                                zp2 = sz[j] + (zr - sz[j]) * (a + bb) / Lt
+                                zp3 = sz[j] + (zr - sz[j]) * (a + bb + c) / Lt
+                                if (zp1 > fzt[f1] or zp1 < fz0[f1] or zp2 > fzt[f2] or zp2 < fz0[f2]
+                                        or zp3 > fzt[f3] or zp3 < fz0[f3]):
+                                    continue
+                                for b in range(NB):
+                                    inc[b] = True
+                                if not _accept(meth, lams, lmin1, ds1 / a, a, bb + c + e, inc, fzt[f1] - fz0[f1]):
+                                    continue
+                                if not _accept(meth, lams, lmin2, dP1 / bb, a + bb, c + e, inc, fzt[f2] - fz0[f2]):
+                                    continue
+                                if not _accept(meth, lams, lmin3, dP2 / c, a + bb + c, e, inc, fzt[f3] - fz0[f3]):
+                                    continue
+                                vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = p1x; vy[1] = p1y
+                                vx[2] = p2x; vy[2] = p2y; vx[3] = p3x; vy[3] = p3y; vx[4] = xr; vy[4] = yr
+                                rb[0] = fbid[f1]; rb[1] = fbid[f2]; rb[2] = fbid[f3]
+                                _path(meth, vx, vy, 5, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
+                                      x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
+                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
+                                F = _band_factor(out, wts, inc, lg_rho * lg_rho * lg_rho)
+                                ed += Pd[j] * F; en += Pn[j] * F; e3 += Pd[j] * F
+        Ed[r] = ed; En[r] = en; Edir[r] = e_dir; E1[r] = e1; E2[r] = e2; E3[r] = e3
+    return Ed, En, Edir, E1, E2, E3
+
+
+def facade_neighbors(fx1, fy1, fx2, fy2, fnx, fny, R2):
+    """3차 반사 탐색용 이웃 목록(CSR): 중심 거리 R2 이내이고 서로 마주보는 면 쌍(2차 반사와 같은 조건).
+    반환 (nb_ptr[NF+1], nb_idx). 대칭이며 자기 자신은 없음"""
+    NF = len(fx1)
+    if NF == 0:
+        return np.zeros(1, np.int64), np.zeros(0, np.int64)
+    from scipy.spatial import cKDTree
+    cx = 0.5 * (np.asarray(fx1) + np.asarray(fx2)); cy = 0.5 * (np.asarray(fy1) + np.asarray(fy2))
+    pairs = cKDTree(np.c_[cx, cy]).query_pairs(R2, output_type="ndarray")
+    if len(pairs):
+        i, k = pairs[:, 0], pairs[:, 1]
+        ok = (((cx[k] - cx[i]) * fnx[i] + (cy[k] - cy[i]) * fny[i]) > 0.0) & \
+             (((cx[i] - cx[k]) * fnx[k] + (cy[i] - cy[k]) * fny[k]) > 0.0)
+        i, k = i[ok], k[ok]
+        a = np.r_[i, k]; b = np.r_[k, i]
+    else:
+        a = b = np.zeros(0, np.int64)
+    o = np.lexsort((b, a))
+    a, b = a[o], b[o]
+    ptr = np.zeros(NF + 1, np.int64)
+    np.add.at(ptr, a + 1, 1)
+    return np.cumsum(ptr).astype(np.int64), b.astype(np.int64)
 
 
 def to_db(E):

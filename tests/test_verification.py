@@ -13,7 +13,7 @@ import pytest
 
 from sori import rls19 as R
 from sori import iso9613 as I
-from sori.solver import compute
+from sori.solver import compute, facade_neighbors
 
 LAM500 = 340.0 / 500.0
 
@@ -111,10 +111,11 @@ def run_solver(src, rec, world, F=None, order=0, rho=0.8, Rmax=1000.0, meth=1):
     if F is None:
         F = [np.zeros(0)] * 9 + [np.zeros(0, np.int64)]
     bands = np.array([500.0]); lams = np.array([LAM500]); al = np.array([0.0]); w = np.array([1.0])
+    nb = facade_neighbors(*F[:6], Rmax) if order >= 3 else (np.zeros(len(F[0]) + 1, np.int64), np.zeros(0, np.int64))
     Ed, En, *_ = compute(rx, ry, rz, np.zeros(len(rx)), -np.ones(len(rx), np.int64), -np.ones(len(rx), np.int64),
                          order, sx, sy, sz, np.zeros(len(sx)), 10 ** (0.1 * LW), 10 ** (0.1 * LW),
                          np.ones(len(sx), np.bool_), *F, rho, gnd, dsm, bid, G, x0, y0, res, nx, ny, 1.0,
-                         Rmax, Rmax, Rmax, Rmax, Rmax, Rmax, 1.5, bands, lams, al, w, False, 20.0, 20.0, 25.0, meth)
+                         Rmax, Rmax, Rmax, Rmax, Rmax, Rmax, 1.5, bands, lams, al, w, False, 20.0, 20.0, 25.0, meth, *nb)
     return 10 * np.log10(Ed)
 
 
@@ -183,6 +184,21 @@ def test_first_order_reflection_image_source():
     ref2 = e(ref1, Lp(218, 0.64), Lp(378, 0.64))
     assert run_solver([s], [r], w, F2, order=1)[0] == pytest.approx(ref1, abs=1e-6)
     assert run_solver([s], [r], w, F2, order=2)[0] == pytest.approx(ref2, abs=1e-6)
+    # 3차 반사(국내 고시 별표 2 제8호): S→300→151→300→R(R‴ = 618), S→151→300→151→R(R‴ = −276)
+    ref3 = e(ref2, Lp(418, 0.512), Lp(476, 0.512))
+    assert run_solver([s], [r], w, F2, order=3)[0] == pytest.approx(ref3, abs=1e-6)
+
+
+def test_facade_neighbors_csr():
+    """3차 반사 이웃 목록: 서로 마주보는 면만, 대칭, 자기 자신 없음, 거리 R2 이내"""
+    from sori.solver import facade_neighbors
+    #          f0: x=300 (−x 향함)   f1: x=151 (+x 향함)   f2: x=151 (−x 향함, f0 과 등짐)   f3: 멀리
+    fx1 = np.array([300.0, 151.0, 151.0, 900.0]); fx2 = fx1.copy()
+    fy1 = np.array([150.0, 350.0, 150.0, 150.0]); fy2 = np.array([350.0, 150.0, 350.0, 350.0])
+    fnx = np.array([-1.0, 1.0, -1.0, -1.0]); fny = np.zeros(4)
+    ptr, idx = facade_neighbors(fx1, fy1, fx2, fy2, fnx, fny, 200.0)
+    nb = {f: sorted(idx[ptr[f]:ptr[f + 1]].tolist()) for f in range(4)}
+    assert nb == {0: [1], 1: [0], 2: [], 3: []}
 
 
 # ======================================================================= 교차로 위상
@@ -530,7 +546,7 @@ def test_single_lane_two_coincident_lines_equivalent():
                        np.full(n, 200.0), sy, np.full(n, 0.5), np.zeros(n), P, P, np.ones(n, np.bool_), *F, 0.8,
                        gnd, dsm, bid, G, x0, y0, res, nx, ny, 1.0, 1e3, 1e3, 1e3, 1e3, 1e3, 1e3, 1.5,
                        np.array([500.0]), np.array([LAM500]), np.array([0.0]), np.array([1.0]),
-                       False, 20.0, 20.0, 25.0, 1)
+                       False, 20.0, 20.0, 25.0, 1, np.zeros(3, np.int64), np.zeros(0, np.int64))
     LW = np.full(len(sy0), 100.0)
     a = solve(sy0, LW)                                                # (a) 1개선, M
     b = solve(np.r_[sy0, sy0], np.r_[LW, LW] - 10 * math.log10(2))  # (b) 같은 위치 2개선, M/2 씩

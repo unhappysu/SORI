@@ -125,6 +125,30 @@ def test_rls19_reflection_ignores_iso_size_criterion():
     assert L_iso == pytest.approx(L_iso_dir, abs=1e-12)                  # ISO: 식 (19) 불충족 → 반사 무시
 
 
+def test_rls19_reflections_up_to_third_order():
+    """마주보는 두 벽(x = 151, 300) 사이: 1·2·3차 허상음원, 손실 k·D_RV(표 8), 경로마다 식 (11)"""
+    w = flat_world()
+    gnd, dsm, bid, G, *_ = w
+    dsm[150:350, 300] = 20.0; bid[150:350, 300] = 7
+    dsm[150:350, 150] = 20.0; bid[150:350, 150] = 8
+    F = [np.array([300.0, 151.0]), np.array([150.0, 350.0]), np.array([300.0, 151.0]), np.array([350.0, 150.0]),
+         np.array([-1.0, 1.0]), np.array([0.0, 0.0]), np.array([0.0, 0.0]), np.array([20.0, 20.0]),
+         np.array([200.0, 200.0]), np.array([7, 8], np.int64)]
+    s, r = (200.0, 250.0, 0.5, 100.0), (280.0, 250.0, 4.0)
+    g = 10 ** (-0.05)
+
+    def Lp(dist, k):
+        return 100 - 0.5 * k - D_A_free(math.hypot(dist, 3.5), 2.25)
+    e = lambda *v: 10 * math.log10(sum(10 ** (0.1 * x) for x in v))
+    ref = [Lp(80, 0)]
+    ref.append(e(ref[0], Lp(120, 1), Lp(178, 1)))
+    ref.append(e(ref[1], Lp(218, 2), Lp(378, 2)))
+    ref.append(e(ref[2], Lp(418, 3), Lp(476, 3)))
+    for order in range(4):
+        L = run_solver([s], [r], w, F, order=order, rho=g, meth=RLS)[0]
+        assert L == pytest.approx(ref[order], abs=1e-9), order
+
+
 # ======================================================================= 설정·메타데이터·혼용 방지
 def _cfg(**upd):
     from sori import config

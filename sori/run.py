@@ -12,7 +12,7 @@ import pandas as pd
 from . import AI_NOTICE, __version__, HAVE_NUMBA
 from . import rls19
 from .propagation import get_model
-from .solver import compute, to_db
+from .solver import compute, facade_neighbors, to_db
 
 log = logging.getLogger("sori")
 
@@ -42,9 +42,13 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
             + (F.bid.values.astype(np.int64),)
     else:
         args_f = tuple(np.zeros(0) for _ in range(9)) + (np.zeros(0, np.int64),)
+    if order >= 3 and len(F):                           # 3차 반사 탐색용 마주보는 면 이웃 목록(CSR)
+        nb = facade_neighbors(*args_f[:6], float(rf["r_second"]))
+    else:
+        nb = (np.zeros(len(F) + 1, np.int64), np.zeros(0, np.int64))
     ny, nx = d["gnd"].shape
     n = len(rx)
-    res = [np.empty(n) for _ in range(5)]
+    res = [np.empty(n) for _ in range(6)]
     t0 = time.time()
     for a in range(0, n, chunk):
         b = min(a + chunk, n)
@@ -56,15 +60,18 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
                     float(rf["r_facade"]), float(rf["r_source_main"]), float(rf["r_source_minor"]),
                     float(rf["r_second"]), float(p["skip_radius"]),
                     bands, lams, alphas, wts, cfg["input"]["ground"]["method"] == "alternative",
-                    float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code)
-        for k in range(5):
+                    float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, *nb)
+        for k in range(6):
             res[k][a:b] = o[k]
         el = time.time() - t0
         log.info("%s %d/%d  %.0fs  (남은 시간 약 %.0fs)", label, b, n, el, el / b * (n - b))
         if progress is not None:
             progress(label, b, n, el / b * (n - b))
-    Ed, En, Edir, E1, E2 = res
-    return dict(LrT=to_db(Ed), LrN=to_db(En), LrT_direct=to_db(Edir), LrT_refl1=to_db(E1), LrT_refl2=to_db(E2))
+    Ed, En, Edir, E1, E2, E3 = res
+    r = dict(LrT=to_db(Ed), LrN=to_db(En), LrT_direct=to_db(Edir), LrT_refl1=to_db(E1), LrT_refl2=to_db(E2))
+    if order >= 3:                                      # 3차 성분 열은 3차를 계산할 때만(2차 이하 결과 파일 형식 유지)
+        r["LrT_refl3"] = to_db(E3)
+    return r
 
 
 def segment_check(S, rx, ry, rz):
@@ -241,7 +248,8 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         P["zg"], P["z"] = zg, zg + P.h.values
         P["note"] = np.where(outside, "모델 범위 밖", np.where(inside, "건물 안", ""))
         ok = (P.note == "").values
-        keys = ("LrT", "LrN", "LrT_direct", "LrT_refl1", "LrT_refl2")
+        keys = ("LrT", "LrN", "LrT_direct", "LrT_refl1", "LrT_refl2") \
+            + (("LrT_refl3",) if int(cfg["propagation"]["reflection"]["max_order_point"]) >= 3 else ())
         for k in keys:
             P[k] = np.nan
         if ok.any():
