@@ -25,6 +25,43 @@
 
 배경지도(OpenStreetMap)는 인터넷이 필요하며, 계산 자체는 내 컴퓨터에서 이루어집니다.
 
+## 0.1 더블클릭 앱으로 쓰기 (SORI.app · SORI.exe)
+
+Python 설치 없이 쓰는 데스크톱 앱입니다. 준비된 설정 파일(`config.yaml`)로 계산합니다. 지도 클릭으로 위치를 고르는 기능은 웹 화면(0절)에만 있습니다.
+
+| 구분 | 받는 파일 | 실행 | 확인 상태 |
+|---|---|---|---|
+| macOS (Apple Silicon) | `SORI-macos.zip` → 풀면 `SORI.app` | `SORI.app` 더블클릭 | macOS 27.0.1(arm64)에서 빌드·실행 확인 |
+| Windows 10/11 (64비트) | `SORI-windows.zip` → 풀면 `SORI` 폴더 | 폴더 안 `SORI.exe` 더블클릭 | **Windows 실행 미확인** (GitHub Actions 빌드 설정만 작성) |
+
+앱 파일은 GitHub Actions(`.github/workflows/build.yml`)가 만들어 실행 결과물(artifact)로 올립니다. 직접 빌드하는 방법은 아래 "개발자용"을 참고하세요.
+
+**처음 실행할 때 보안 경고 (서명하지 않은 앱)**
+
+- **macOS**: "확인되지 않은 개발자" 또는 "열 수 없음" 경고가 나오면 **시스템 설정 → 개인정보 보호 및 보안**에서 아래쪽의 SORI 항목 옆 **그래도 열기**를 누르고, 다시 열 때 **열기**를 누릅니다. 한 번 허용하면 다음부터는 바로 열립니다.
+- **Windows**: "Windows의 PC 보호" 창이 나오면 **추가 정보 → 실행**을 누릅니다. 압축은 반드시 폴더째 푼 뒤 실행하세요(`SORI.exe` 만 꺼내면 실행되지 않습니다).
+
+**화면 사용법**
+
+1. **설정 파일**: `찾아보기…`로 `config.yaml` 을 고릅니다. 처음이면 **예제 불러오기**로 가상 교차로 예제(실제 지역 아님)를 `문서/SORI/예제_가상교차로` 에 복사해 씁니다.
+2. **결과 저장 폴더**: 기본값은 설정 파일 옆 `output`. 다른 폴더를 고를 수 있습니다. 앱 폴더 안에는 저장하지 않습니다.
+3. **계산 대상**: 격자(소음지도), 건물 벽면(파사드), 점 수음점(설정에 있을 때), 그림·3D 뷰어 만들기. 계산은 주간(LrT)·야간(LrN) 모두 수행하며, **결과 요약 시간대**는 끝난 뒤 기록창에 보여 줄 요약만 고릅니다.
+4. **▶ 계산 실행** → 진행 막대와 기록창(경고는 주황색)으로 진행 상황을 봅니다. 처음 한 번은 계산 코드를 컴파일하느라 1분 정도 더 걸립니다.
+5. **결과 폴더 열기**로 결과를 확인합니다. 결과 폴더에는 6절의 결과 외에 `config_used.yaml`(사용한 설정 사본)과 `run_conditions.json`(실행 일시·설정 경로·계산 대상·소요 시간·요약·앱 환경)이 함께 저장됩니다.
+6. **자가 점검**: 좌표 변환(EPSG 5186·5179·4326)과 내장 기준 사례 계산을 기준값과 비교합니다(허용 오차 0.01 dB — 프로젝트 임의 설정). 보고서는 `문서/SORI/selfcheck_report.json`.
+
+컴파일 캐시는 사용자 폴더(macOS `~/Library/Application Support/SORI`, Windows `%LOCALAPPDATA%\SORI`)에 저장됩니다.
+
+**개발자용**
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-lock.txt
+```
+- 개발 중 실행: Finder 에서 `SORI.command` 더블클릭(`.venv` 활성화 후 `sori_gui.py` 실행)
+- 화면 없이 같은 작업: `python sori_gui.py --run config.yaml --out 결과폴더`, 자가 점검: `python sori_gui.py --selfcheck report.json`
+- 앱 빌드(macOS): `.venv/bin/pip install -r requirements-build.txt` 후 `.venv/bin/pyinstaller --noconfirm --clean SORI.spec` → `dist/SORI.app`
+- 자동 빌드: GitHub 원격 저장소에 올린 뒤 `v*` 태그를 push 하거나 Actions 화면에서 수동 실행(workflow_dispatch). Windows 용 `SORI.exe` 는 맥에서 만들 수 없어 이 방법으로 만듭니다.
+
 ## 1. 설치
 
 ```bash
@@ -141,9 +178,10 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 44개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험
+python -m pytest -q tests        # 53개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
+`tests/test_reference.py` 는 저장소에 들어 있는 기준 사례(가상 교차로, `tests/reference/synthetic/`)를 계산해 기준값과 허용 오차(기본 0.01 dB, 프로젝트 임의 설정, `--sori-tol` 로 변경)로 비교하고, `tests/test_crs.py` 는 좌표 변환(EPSG) 결과를 확인합니다. 기준값을 만든 커밋·환경은 `tests/reference/synthetic/expected/meta.json`, 다시 만들기·결과 폴더 비교는 `python tools/reference.py make|compare`.
 
 그 밖의 도구: `tools/make_review_lists.py`(지도 확인 목록 → `docs/review/`), `tools/diagnostics.py`(구간 분할·횡단경사 진단 재현). 교통량 비교 시나리오는 `scenarios/`.
 자세한 내용은 `TECHNICAL_NOTES.md`, 작업 경과와 남은 일은 `docs/작업기록_2026-10-15_17.md`.
