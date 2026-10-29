@@ -58,8 +58,9 @@ PRESETS = {
                      desc="10 m 간격, 건물 벽면 계산 없음. 몇 분 안에 대략적인 모습을 봅니다."),
     "표준": dict(step=5.0, og=1, of=1, facade=True,
                desc="5 m 간격 + 건물 벽면(층별). 반사는 1번까지. 보통 수십 분 이내."),
-    "정밀 (RLS-19 기준 충족)": dict(step=5.0, og=1, of=2, facade=True,
-                              desc="건물 벽면에서 반사 2번까지(RLS-19 3.6). 가장 오래 걸립니다."),
+    "정밀 (국내 고시 3차 반사)": dict(step=5.0, og=3, of=3, facade=True,
+                               desc="격자·건물 벽면 모두 반사 3번까지(「소음지도의 작성방법」 별표 2 제8호 원칙, "
+                                    "RLS-19 3.6 은 2번까지). 가장 오래 걸립니다."),
 }
 inv = lambda d: {v: k for k, v in d.items()}
 

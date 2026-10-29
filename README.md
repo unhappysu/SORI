@@ -20,7 +20,7 @@
    - **1. 지도 자료**: 수치지도 zip 업로드(또는 폴더 경로 입력, 또는 '예제 자료로 체험')
    - **2. 위치·범위**: 지도에서 교차로를 클릭, 범위는 슬라이더로
    - **3. 교통량**: 표에 아는 값만 입력(하루 통행량, 트럭 비율, 제한속도, 노면). 비우면 표준값·가정값 사용. 교차로 종류 확인
-   - **4. 계산·결과**: '빠른 미리보기 / 표준 / 정밀' 중 선택 → 계산 시작 → 지도 위 결과, 그림, 결과 zip 내려받기
+   - **4. 계산·결과**: '빠른 미리보기(반사 1번, 벽면 없음) / 표준(반사 1번) / 정밀(격자·벽면 반사 3번, 국내 고시 별표 2 제8호)' 중 선택 → 계산 시작 → 지도 위 결과, 그림, 결과 zip 내려받기
 4. 결과와 사용한 설정은 `projects/프로젝트이름/` 에 저장됩니다. 그 안의 `config.yaml`로 명령행에서 같은 계산을 재현할 수 있습니다.
 
 배경지도(OpenStreetMap)는 인터넷이 필요하며, 계산 자체는 내 컴퓨터에서 이루어집니다.
@@ -149,7 +149,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `input.ground.method` | general | (iso9613_2) ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제). rls19 는 식 (14) 고정 |
 | `propagation.reflection.rho` | 0.8 | (iso9613_2) ISO 표 4 '창이 있는 건물 벽', 식 (20) |
 | `propagation.reflection.D_RV` | 0.5 | (rls19) 반사 손실 dB/회, RLS-19 표 8 '건물 외벽 및 반사성 방음벽'. 반사 조건은 h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R(3.6) |
-| `max_order_grid` / `max_order_facade` / `max_order_point` | 3 / 3 / 3 | 반사 차수 0~3. 국내 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(주변 환경을 고려해 변경 가능). RLS-19 3.6 은 1·2차라 rls19 에서도 3차는 국내 조건 적용. 3차는 2차보다 계산 시간이 약 6배(전농사거리 표본) — 2026-10-29 이전 기본값은 1 / 2 / 2. 웹 화면 계산 수준(app.py)은 따로 1~2차를 지정 |
+| `max_order_grid` / `max_order_facade` / `max_order_point` | 3 / 3 / 3 | 반사 차수 0~3. 국내 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(주변 환경을 고려해 변경 가능). RLS-19 3.6 은 1·2차라 rls19 에서도 3차는 국내 조건 적용. 3차는 2차보다 계산 시간이 약 6배(전농사거리 표본) — 2026-10-29 이전 기본값은 1 / 2 / 2. 웹 화면 계산 수준은 따로 지정(빠른 미리보기·표준 1차, 정밀 3차) |
 | `input.traffic.oneway_name_traffic` | apply | 도로명 교통량(양방향 합)을 같은 이름의 일방통행 객체에도 배정(`apply`) 또는 차로수 가정값 사용(`fallback`, `traffic_src = fallback_oneway`). UFID 지정 교통량은 항상 우선 |
 | `input.junctions.dk_rule` | nearest | 교차로 보정 D_K(RLS-19 3.3.7)의 기준 교차점. `nearest` = 그 음원선이 속한 교차점 중 가장 가까운 것(현행). `nearest_signal` = 위 값과, 도로 소속과 무관하게 가장 가까운 signal·roundabout 교차점 기준 값 중 큰 쪽 — 가까운 이면도로 접속부(other)가 100 m 안 신호교차로 보정을 가리는 경우용. 켜면 `sources.csv` 에 `D_K_nearest`·`x_signal`·`kt_signal` 열 추가(TECHNICAL_NOTES 5a절 13) |
 | `model.source_ground` | dtm_at_source | 음원 높이(지면 + 0.5 m)의 지면: `dtm_at_source` = 음원점 위치 DTM, `road_profile` = 도로중심선 종단 고도(경사 산정과 같은 평활 DTM). road_profile 은 노면이 주변 DTM 보다 낮은 곳에서 음원 옆 지형이 차폐로 잡힐 수 있음(TECHNICAL_NOTES) |
