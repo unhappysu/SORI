@@ -4,7 +4,8 @@
 입력: tests/reference/synthetic/input (tools/make_synthetic_data.py 로 만든 자료를 고정해 둔 것.
       DEM 이 EPSG:5179 라서 build 단계에서 EPSG:5186 으로 재투영 → PROJ 데이터 누락 시 z 가 틀어짐)
 기준값: tests/reference/synthetic/expected/*.csv, meta.json (만든 커밋·환경 기록)
-pytest(tests/test_reference.py)와 tools/reference.py 가 함께 사용함.
+pytest(tests/test_reference.py), tools/reference.py, 앱의 자가 점검(sori_gui.py --selfcheck)이 함께 사용함.
+앱(PyInstaller)에서는 기준 사례 자료가 번들 안 tests/reference/synthetic 에 들어 있음(SORI.spec).
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
 import math
@@ -16,7 +17,11 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-REF = ROOT / "tests" / "reference" / "synthetic"
+if str(ROOT) not in sys.path and (ROOT / "sori").is_dir():
+    sys.path.insert(0, str(ROOT))
+from sori.resources import resource_path  # noqa: E402
+
+REF = resource_path("tests", "reference", "synthetic")
 INPUT = REF / "input"
 EXPECTED = REF / "expected"
 
@@ -34,8 +39,6 @@ SPECS = {
 
 def run_case(work):
     """입력을 work 폴더에 복사하고 build → run(격자·파사드) 실행. 결과 폴더 경로를 돌려줌"""
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
     from sori import config as C, build, run
     work = Path(work)
     shutil.copytree(INPUT, work, dirs_exist_ok=True)
@@ -81,3 +84,28 @@ def save_expected(out_dir, expected_dir=EXPECTED):
     expected_dir.mkdir(parents=True, exist_ok=True)
     for fn, df in extract(out_dir).items():
         df.to_csv(expected_dir / fn, index=False, encoding="utf-8-sig", float_format="%.12g")
+
+
+# 좌표 변환 점검(앱 자가 점검용, pytest 는 tests/test_crs.py) — (이름, 계산값, 기준값, 허용 오차)
+CRS_CASES = [
+    ("EPSG:4326→5186 원점(127°E, 38°N)", (4326, 5186, 127.0, 38.0), (200000.0, 600000.0), 0.001),
+    ("EPSG:4326→5179 원점(127.5°E, 38°N)", (4326, 5179, 127.5, 38.0), (1000000.0, 2000000.0), 0.001),
+    ("EPSG:5186→5179 기준점", (5186, 5179, 205108.0, 553110.0), (960956.551157946, 1953219.0614228551), 0.001),
+    ("EPSG:5186→4326 기준점", (5186, 4326, 205108.0, 553110.0), (127.05782601294123, 37.57752480127847), 1e-8),
+]
+
+
+def crs_checks():
+    """pyproj·rasterio(GDAL) 좌표 변환이 기준값과 같은지 → [(이름, 최대 차이, 허용 오차, 통과)]"""
+    from pyproj import Transformer
+    from rasterio.crs import CRS
+    from rasterio.warp import transform
+    rows = []
+    for name, (a, b, x, y), ref, tol in CRS_CASES:
+        gx, gy = Transformer.from_crs(a, b, always_xy=True).transform(x, y)
+        d = max(abs(gx - ref[0]), abs(gy - ref[1]))
+        rows.append((name + " (pyproj)", d, tol, d <= tol))
+        rx, ry = transform(CRS.from_epsg(a), CRS.from_epsg(b), [x], [y])
+        d = max(abs(rx[0] - ref[0]), abs(ry[0] - ref[1]))
+        rows.append((name + " (rasterio)", d, tol, d <= tol))
+    return rows
