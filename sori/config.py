@@ -109,7 +109,8 @@ DEFAULTS = {
         "barrier": {"C2": 20.0, "dz_max_single": 20.0, "dz_max_double": 25.0},
         "reflection": {"rho": 0.8,                 # iso9613_2: 반사계수 ρ (ISO 식 20)
                        "D_RV": 0.5,                # rls19: 반사 손실 dB/회 (RLS-19 표 8, 건물 외벽·반사성 방음벽)
-                       "max_order_grid": 1, "max_order_facade": 2, "max_order_point": 2,
+                       # 반사 차수: 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(RLS-19 3.6 은 1·2차)
+                       "max_order_grid": 3, "max_order_facade": 3, "max_order_point": 3,
                        "r_facade": 100.0, "r_source_main": 200.0, "r_source_minor": 50.0,
                        "r_second": 50.0},
         "skip_radius": 1.5,                        # 래스터 이산화 오차 보정 반경(m)

@@ -10,3 +10,6 @@ receivers:
   center: [205108.0, 553110.0]
   grid: {size: [480.0, 520.0], step: 2.5, heights: [4.0]}
   facade: {radius: 230.0}
+# 2026-10-29: 기본 반사 차수가 3차로 바뀌어(국내 고시 별표 2 제8호) 기준선 생성 당시 차수를 명시함 — 값 변화 없음
+propagation:
+  reflection: {max_order_grid: 1, max_order_facade: 2}

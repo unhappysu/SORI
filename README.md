@@ -149,7 +149,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `input.ground.method` | general | (iso9613_2) ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제). rls19 는 식 (14) 고정 |
 | `propagation.reflection.rho` | 0.8 | (iso9613_2) ISO 표 4 '창이 있는 건물 벽', 식 (20) |
 | `propagation.reflection.D_RV` | 0.5 | (rls19) 반사 손실 dB/회, RLS-19 표 8 '건물 외벽 및 반사성 방음벽'. 반사 조건은 h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R(3.6) |
-| `max_order_grid` / `max_order_facade` / `max_order_point` | 1 / 2 / 2 | 반사 차수 (RLS-19 3.6은 1·2차, 국내 「소음지도의 작성방법」 별표 2 제8호는 3차 이상 원칙 — 3차는 아직 미구현) |
+| `max_order_grid` / `max_order_facade` / `max_order_point` | 3 / 3 / 3 | 반사 차수 0~3. 국내 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(주변 환경을 고려해 변경 가능). RLS-19 3.6 은 1·2차라 rls19 에서도 3차는 국내 조건 적용. 3차는 2차보다 계산 시간이 약 6배(전농사거리 표본) — 2026-10-29 이전 기본값은 1 / 2 / 2. 웹 화면 계산 수준(app.py)은 따로 1~2차를 지정 |
 | `input.traffic.oneway_name_traffic` | apply | 도로명 교통량(양방향 합)을 같은 이름의 일방통행 객체에도 배정(`apply`) 또는 차로수 가정값 사용(`fallback`, `traffic_src = fallback_oneway`). UFID 지정 교통량은 항상 우선 |
 | `input.junctions.dk_rule` | nearest | 교차로 보정 D_K(RLS-19 3.3.7)의 기준 교차점. `nearest` = 그 음원선이 속한 교차점 중 가장 가까운 것(현행). `nearest_signal` = 위 값과, 도로 소속과 무관하게 가장 가까운 signal·roundabout 교차점 기준 값 중 큰 쪽 — 가까운 이면도로 접속부(other)가 100 m 안 신호교차로 보정을 가리는 경우용. 켜면 `sources.csv` 에 `D_K_nearest`·`x_signal`·`kt_signal` 열 추가(TECHNICAL_NOTES 5a절 13) |
 | `model.source_ground` | dtm_at_source | 음원 높이(지면 + 0.5 m)의 지면: `dtm_at_source` = 음원점 위치 DTM, `road_profile` = 도로중심선 종단 고도(경사 산정과 같은 평활 DTM). road_profile 은 노면이 주변 DTM 보다 낮은 곳에서 음원 옆 지형이 차폐로 잡힐 수 있음(TECHNICAL_NOTES) |
@@ -163,7 +163,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | 파일 | 내용 |
 |---|---|
 | `grid_result.csv`, `grid_LrT_h4m.tif` … | 격자 결과(높이별), GeoTIFF는 QGIS에서 바로 열림 |
-| `facade_result.csv` | 파사드 결과(층별). `LrT_cmp`는 RLS-19 3.1 올림값, `LrT_direct/refl1/refl2`는 성분 |
+| `facade_result.csv` | 파사드 결과(층별). `LrT_cmp`는 RLS-19 3.1 올림값, `LrT_direct/refl1/refl2/refl3`는 성분(`refl3` 는 3차를 계산할 때만) |
 | `point_result.csv` | 점 수음점 결과: 지면고 `zg`, 높이 `h`(`h_basis` = input/default_height), `LrT`·`LrN`, 성분, 3.1 올림값, `note`(건물 안·모델 범위 밖) |
 | `point_levels_for_comparison.csv` | 측정값 비교용(point_id, period = day/night, Leq_calc). `field_survey/scripts/process_measurements.py --model` 입력 형식. 값은 RLS-19 평가레벨 LrT·LrN(교차로·반사 보정 포함)이며, 측정 회차와 비교하려면 그 회차의 동시 교통량으로 계산한 결과를 써야 함 |
 | `HQ_*.png / .pdf` | **보고서·발표용 A3 지도(300 dpi + 벡터 PDF)**: 격자 소음지도, 기준 초과 지도, 벽면 색 띠 지도, 건물별 평가도 (주·야) |

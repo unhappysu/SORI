@@ -772,4 +772,4 @@ def test_point_receivers_config_path(tmp_path):
     c.write_text("receivers: {center: [0, 0], points: {path: pts.csv}}\n", encoding="utf-8")
     cfg = config.load(str(c))
     assert cfg["receivers"]["points"]["path"] == str((tmp_path / "pts.csv").resolve())
-    assert cfg["propagation"]["reflection"]["max_order_point"] == 2
+    assert cfg["propagation"]["reflection"]["max_order_point"] == 3          # 국내 고시 별표 2 제8호

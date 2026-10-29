@@ -16,7 +16,7 @@ from .iso9613 import alpha_iso9613_1, C_SOUND
 DEFAULT_METHOD = "iso9613_2"
 
 # 이번 판에서 계산하지 않는 항목(두 방법 공통)
-_COMMON_NOT_IMPLEMENTED = ["section(단면) 소음지도", "3차 이상 반사(국내 「소음지도의 작성방법」 별표 2 제8호 원칙은 3차 이상)"]
+_COMMON_NOT_IMPLEMENTED = ["section(단면) 소음지도", "4차 이상 반사"]
 _D_REFL_NOTE = ("D_refl(RLS-19 식 9, 다중 반사 가산값)을 음원 L_W′ 에 포함하고 허상음원 반사도 함께 적용 — "
                 "도로 협곡에서 이중 계상 가능성 있음. 이 결합을 배제·허용하는 규정은 RLS-19 3.3.8·3.6, "
                 "ISO 9613-2 7.5, 「소음지도의 작성방법」 별표 2에서 확인하지 못함(근거 미확인)")
