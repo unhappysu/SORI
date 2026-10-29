@@ -47,6 +47,12 @@ RLS-19는 A가중 단일값만 주므로 ISO 9613-2 1절 비고 1에 따라 **50
 | ISO 식 (10)(11) | Agr 대안법, DΩ | `iso9613.A_gr_alternative`, `D_omega` |
 | ISO 식 (12)(14)~(18) | Abar, Dz, C3, Kmet | `iso9613.D_z`, `path_loss` |
 | ISO 7.5 식 (19)(20), 표 4 | 반사 조건·허상음원 | `solver._crit`, `solver.compute` |
+| (공통) 단면·고무줄 껍질·h_m·z·A/B/C | 두 전파 방법이 함께 쓰는 기하 | `geometry.path_geometry` |
+| RLS-19 식 (11) | D_A = D_div + D_atm + max{D_gr; D_z} | `rls19_propagation.D_A`, `atten_rls19` |
+| RLS-19 식 (12)(13)(14) | D_div(2π), D_atm = s/200, D_gr(h_m = F/s_gr) | `rls19_propagation.D_div`, `D_atm`, `D_gr` |
+| RLS-19 식 (15)(16)(17) | D_z = 10 lg[3 + 80 z K_w](상한 없음), z = A + B + C − s, K_w(다중 회절은 C 를 A·B 중 큰 쪽에) | `rls19_propagation.D_z`, `K_w`, `D_A` |
+| RLS-19 3.6, 표 8 | 반사 조건 h_R ≥ 1.0 m·h_R ≥ 0.3√a_R, 손실 D_RV | `rls19_propagation.accept_reflection`, `solver._accept`, `propagation.RLS19Propagation` |
+| (설정) `propagation_method` | 방법 선택·메타데이터·혼용 방지 | `propagation.get_model`, `run.previous_outputs`, `propagation.result_model` |
 
 ## 4. 이전 코드 대비 수정 내역
 
@@ -87,6 +93,19 @@ RLS-19는 A가중 단일값만 주므로 ISO 9613-2 1절 비고 1에 따라 **50
 
 번역본 오류 2건(원문 기준으로 구현): 식 (8)은 곱(KKT · max), 3.1은 올림(aufzurunden).
 
+## 4a. 전파 방법 선택 (2026-10-29)
+
+`propagation_method: iso9613_2 | rls19`. 기본값은 `iso9613_2`(이 기능 이전과 같은 계산). 분석·설계 근거와 두 방법의 항별 대응표는 작업 보고(1·2단계)에 있음.
+
+- **구조**: numba 커널 안에서는 Python 클래스를 쓸 수 없어 두 층으로 나눔. `propagation.PropagationModel`(`ISO9613Propagation`, `RLS19Propagation`)이 커널 인자(방법 코드, 대역, 반사 이득)와 식 번호·미구현 항목·범례 문구를 만들고, `solver.compute` 가 방법 코드로 감쇠식(`atten_iso` / `atten_rls19`)과 반사 채택 조건(ISO 식 19 / RLS 3.6)을 고름. 기하(`geometry.path_geometry`)는 공통이라 두 결과의 차이는 식에서만 생김.
+- **ISO 경로 불변 확인**: 분리 전후 기준 사례 `grid_result.csv`·`facade_result.csv`·`sources.csv` 바이트 동일, 전농사거리 기준선 `sources.csv`·`lv_base.csv` SHA-256 동일.
+- **지면 반사는 한 번만**: rls19 = D_div 의 10 lg 2π(식 12 주석, L_W 반공간 정의와 같은 가정). iso9613_2 일반법 = 4π + A_gr(G = 0 이면 −3 dB), D_c = 0 / 대안법 = 4π + A_gr(식 10, ≥ 0) − D_Ω(식 11).
+- **해석**(원문에 명시 없음): 반사면 높이 h_R = 벽면 높이 `ztop − z0`, a_R 은 수평 거리, 다중 회절에서 A = B 이면 C 를 A 에 더함. RLS 경로도 h_m = F/s_gr(그림 11).
+- **D_refl + 허상음원**: 두 방법 모두 D_refl(식 9)을 음원에 포함하고 허상음원 반사도 적용(사용자 결정 2026-10-29). 이중 계상 가능성을 `run_info.json` `D_refl_note` 에 기록.
+- **메타데이터**: `run_info.json` 에 `propagation_method`, `method_label`(ISO 경로는 "어느 표준도 규정하지 않은 프로젝트 구성 방법"), `equations`, `representative_frequency_hz`, `meteorology`, `reflection_loss`, `reflection_order`, `lateral_diffraction`, `not_implemented`, `outputs`(결과 종류별 방법). GeoTIFF 태그 `PROPAGATION_METHOD`.
+- **혼용 방지**: 같은 출력 폴더에 다른 방법의 결과가 있으면 `run` 중단. 지도·3D 뷰어는 `run_info.json` 의 방법이 하나이고 설정과 같을 때만 만듦. 정보란에 전파 방법과 구성 문구 표기.
+- **미구현**: 측면 회절(ISO 식 13; RLS-19 는 규정상 제외), 음의 z, A_misc, C_met, 3차 반사(국내 고시 제8호 원칙), section 지도, 파일명 규칙(사용자 결정 대기).
+
 ## 5. 가정과 한계
 
 - **교통량**: 사용자 입력이 없는 도로는 차로수별 가정 DTV. 보고서에 `traffic_used.csv` 출처 명시 필요.
@@ -95,7 +114,7 @@ RLS-19는 A가중 단일값만 주므로 ISO 9613-2 1절 비고 1에 따라 **50
 - **지면 일반법**: ISO는 대체로 평탄한 지면을 전제. 음원·수음 높이는 각 지점 지표 기준.
 - **반사**: 길이 2 m 미만 파사드 변 제외, 반사계수 단일값 ρ, 2차 반사는 수음점 50 m 이내 서로 마주보는 면 쌍만 탐색(계산량 제한).
 - **교차로 거리 x**: 원문은 음원선 교차점까지 거리이나, 도로중심선 교차점까지의 거리로 근사(차이 수 m → 최대 약 0.25 dB).
-- **다중반사 할증 + 명시적 반사**: RLS-19와 같이 둘 다 적용(원문 3.3.8, 3.6).
+- **다중반사 할증 + 명시적 반사**: RLS-19와 같이 둘 다 적용(원문 3.3.8, 3.6). 두 전파 방법 모두 같음(4a절).
 - **기상**: ISO 순풍조건 LAT(DW). Cmet 미적용(RLS-19 평가레벨과 같은 조건).
 - **수음 높이**: 격자 4 m(EU END). 국내 「소음지도의 작성방법」 기준 확인 필요.
 - **도로 종단경사**: 수치지도 등고선은 자연지형이라 깎거나 쌓은 도로의 실제 경사와 다를 수 있음(전농사거리 동측 사가정로 고갯길). 필요 시 `grade` 열로 지정.
@@ -192,7 +211,9 @@ RLS-19 3.2, 3.3.1(원문 `fgsv_052_korrektur_04032020.pdf`)과 ISO 9613-2 4절�
 | M 부분 입력·표기(S9) | error 모드 행 나열 오류, estimate 표 2 비율(gemeinde·autobahn), DTV·M 조합 회귀, DTV_in, traffic_summary, 설정 검증 | 1e-9 | 통과 |
 | CSV 칸 수 검사·정보란 줄바꿈(S10) | 초과 칸 행 오류(줄 번호), 끝 빈 칸 허용, 숫자·단위 비분리 | — | 통과 |
 
-합계 40개(α 8개 포함), 2026-10-18 전부 통과. 진단 재현은 `tools/diagnostics.py`(5a-7·10절). 기준선 비교 규칙은 `baseline/README.md`.
+| RLS-19 전파(4a절, `tests/test_rls19_propagation.py`) | 식 (11)~(17) 수계산: 자유음장, 먼 거리 D_gr > 0, 단일 회절 max 규칙, 다중 회절(C 를 큰 쪽에), 1차 반사 D_RV·높이 조건(h_R 20/1.5/1.2/0.9 m), 식 19 미적용. 설정 검증·메타데이터·혼용 방지, 기준 사례에서 음원 불변·결과 상이 — 같은 저자의 자기 일관성 확인(TEST-20 대조 아님) | 1e-9 | 통과 |
+
+합계 40개(α 8개 포함), 2026-10-18 전부 통과. 2026-10-29 현재 67개(기준 사례·좌표 변환·점 수음점·RLS-19 전파 포함) 전부 통과. 진단 재현은 `tools/diagnostics.py`(5a-7·10절). 기준선 비교 규칙은 `baseline/README.md`.
 
 표현: 색은 DIN 45682 색 순서에 맞춘 근사 RGB(규격 원본 RGB와 미세한 차이 가능). 기준 초과 지도의 기본 기준값은 설정 `plots.limits`로 변경 가능.
 

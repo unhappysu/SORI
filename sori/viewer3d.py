@@ -21,6 +21,7 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE, __version__
 from .config import center, grid_bbox
+from .propagation import result_model
 from .maps_hq import DIN_EDGES, DIN_COLS, EXC_EDGES, EXC_COLS, DEFAULT_LIMITS, traffic_summary
 from .resources import resource_path
 
@@ -153,7 +154,7 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
         "edges": DIN_EDGES, "cols": DIN_COLS, "h0": float(h0), "fh": fh,
         "lim": {"T": float(lim["LrT"]), "N": float(lim["LrN"]), "label": lim.get("label", "")},
         "xedges": EXC_EDGES, "xcols": EXC_COLS, "xstat": xstat,
-        "meta": {"traffic": traffic, "fallback": n_fallback,
+        "meta": {"traffic": traffic, "fallback": n_fallback, "prop": result_model(cfg, out).combo_label(cfg),
                  "notice": AI_NOTICE, "ver": __version__, "nq": int(len(FR)), "nb": int(len(has))},
     }
 
@@ -216,7 +217,7 @@ button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 const D=JSON.parse(document.getElementById('data').textContent);
 document.getElementById('h0').textContent=D.h0;
 const foot=document.getElementById('foot');
-foot.innerHTML=`음원 RLS-19 · 전파 ISO 9613-2 · 수치지형도 v2.0<br>교통량: ${D.meta.traffic} 대/일 (가정값), 기타 ${D.meta.fallback}개 도로는 차로수 기준 가정값<br>벽면 ${D.meta.nq.toLocaleString()}지점 · 건물 ${D.meta.nb}동 · SORI v${D.meta.ver}<br>※ ${D.meta.notice}`;
+foot.innerHTML=`${D.meta.prop} · 수치지형도 v2.0<br>교통량: ${D.meta.traffic} 대/일 (가정값), 기타 ${D.meta.fallback}개 도로는 차로수 기준 가정값<br>벽면 ${D.meta.nq.toLocaleString()}지점 · 건물 ${D.meta.nb}동 · SORI v${D.meta.ver}<br>※ ${D.meta.notice}`;
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const cols=D.cols.map(c=>new THREE.Color(c)),xcols=D.xcols.map(c=>new THREE.Color(c));
 function cls(v){let i=0;while(i<D.edges.length&&v>D.edges[i])i++;return i}

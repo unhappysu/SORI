@@ -21,6 +21,7 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE
 from .config import grid_bbox, center
+from .propagation import SHORT, result_model
 from .resources import resource_path
 
 log = logging.getLogger("sori")
@@ -174,7 +175,7 @@ def grid_maps(cfg):
                     ax.scatter(Jsig.x, Jsig.y, marker="o", s=60, fc="w", ec="k", zorder=8)
                 legend_box(ax, "Noise level", f"{key} in dB(A)", labels)
                 scale_box(ax, bbox, f"Grid {step:g} m, h = {h:g} m")
-                ax.set_title(f"{cfg['project']['name']} 격자 소음지도 (RLS-19 + ISO 9613-2) — {nm}, h={h:g} m"
+                ax.set_title(f"{cfg['project']['name']} 격자 소음지도 ({SHORT[result_model(cfg, out).name]}) — {nm}, h={h:g} m"
                              f"{'  [격자]' if style == 'grid' else '  [등음선]'}", fontsize=12)
                 footer(fig); fig.tight_layout()
                 fn = os.path.join(out, f"grid_{key}_h{h:g}m_{style}.png")

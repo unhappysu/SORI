@@ -182,3 +182,25 @@ def get_model(cfg):
     if name not in METHODS:
         raise ValueError(f"propagation_method 는 {' 또는 '.join(METHODS)} (입력: {name!r})")
     return METHODS[name]
+
+SHORT = {"iso9613_2": "RLS-19 + ISO 9613-2", "rls19": "RLS-19"}
+
+
+def result_model(cfg, out=None):
+    """그림·3D 뷰어용: 출력 폴더 run_info.json 의 결과 종류별 방법이 하나로 같은지, 설정과 같은지 확인하고 모델을 돌려줌.
+    run_info 가 없으면 설정값. 방법이 섞여 있거나 설정과 다르면 오류(지도에 다른 방법이 섞이지 않게)."""
+    import json
+    import os
+    out = out or cfg["project"]["output_dir"]
+    model = get_model(cfg)
+    p = os.path.join(out, "run_info.json")
+    if not os.path.exists(p):
+        return model
+    info = json.load(open(p, encoding="utf-8"))
+    used = set((info.get("outputs") or {}).values()) or {info.get("propagation_method", DEFAULT_METHOD)}
+    if len(used) > 1:
+        raise ValueError(f"{out} 의 결과에 전파 방법이 섞여 있음: {info.get('outputs')}")
+    m = used.pop()
+    if m != model.name:
+        raise ValueError(f"{out} 의 결과는 전파 방법 {m} 로 계산됨 — 설정 propagation_method({model.name})와 다름")
+    return model

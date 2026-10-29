@@ -28,6 +28,7 @@ from shapely.ops import linemerge
 from . import AI_NOTICE, __version__
 from .config import grid_bbox, center
 from .plots import set_font
+from .propagation import result_model
 
 # DIN 45682(=DIN 18005-2) 소음지도 색 순서에 맞춘 근사 RGB (5 dB 등급)
 DIN_EDGES = [35, 40, 45, 50, 55, 60, 65, 70, 75, 80]
@@ -123,6 +124,7 @@ class Ctx:
         if os.path.exists(p):
             import json
             self.run_info = json.load(open(p, encoding="utf-8"))
+        self.model = result_model(cfg, o)               # 결과의 전파 방법이 하나이고 설정과 같은지 확인
 
     def traffic_text(self):
         txt, fb = traffic_summary(self.T)
@@ -230,9 +232,9 @@ def info_block(side, y_top, C, lines_extra):
     cfg = C.cfg
     tr, fb = C.traffic_text()
     ri = C.run_info
-    g = cfg["input"]["ground"]
     rows = [("음원", "RLS-19 (FGSV 052, 2019/2020)"),
-            ("전파", f"ISO 9613-2:1996, 500 Hz, 지면 {'일반법' if g['method'] == 'general' else '대안법'} G={g['default_G']:g}"),
+            ("전파", C.model.label(cfg)),
+            ("구성", C.model.combo_label(cfg)),
             ("지형·건물", "국토지리정보원 수치지형도 v2.0, 높이 = 층수 × " f"{cfg['model']['floor_height']:g} m"),
             ("좌표계", f"EPSG:{cfg['crs']}"),
             ("교통량", tr),

@@ -7,7 +7,7 @@
 | 구분 | 적용 기준 |
 |---|---|
 | 음원(방출) | RLS-19 (FGSV 052, Ausgabe 2019, Korrektur 04.03.2020) 원문 식 (4)~(9), 표 2~5 |
-| 전파(감쇠) | ISO 9613-2:1996 식 (3)~(20), 표 2~4 / 대기흡수계수 ISO 9613-1:1993 |
+| 전파(감쇠) | 설정 `propagation_method` 로 선택 — `iso9613_2`(기본): ISO 9613-2:1996 식 (3)~(20), 표 2~4 / 대기흡수계수 ISO 9613-1:1993. "RLS-19 음원 + ISO 9613-2 전파"는 어느 표준도 규정하지 않은 프로젝트 구성 방법 · `rls19`: RLS-19 3.5 식 (11)~(17), 3.6·표 8 |
 | 수음점 | 격자(여러 높이 = 3D 격자), 건물 파사드(층별, 외벽 앞 5 cm) |
 
 ## 0. 웹 화면으로 쓰기 (가장 쉬운 방법)
@@ -144,10 +144,12 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 | 항목 | 기본값 | 의미 |
 |---|---|---|
-| `propagation.bands_hz` / `spectrum_dBA` | [500] / [0] | 500 Hz 단일대역(ISO 9613-2 1절 비고 1). 옥타브 스펙트럼을 넣으면 8대역 계산 |
-| `input.ground.method` | general | ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제) |
-| `propagation.reflection.rho` | 0.8 | ISO 표 4 '창이 있는 건물 벽' |
-| `max_order_grid` / `max_order_facade` / `max_order_point` | 1 / 2 / 2 | 반사 차수 (RLS-19 3.6은 2차까지) |
+| `propagation_method` | iso9613_2 | 전파 계산 방법. `iso9613_2` = ISO 9613-2(현행), `rls19` = RLS-19 3.5·3.6. 음원(L_W′, 음원선, D_K, D_refl)과 기하는 공통. 한 출력 폴더에는 한 방법의 결과만 둠(다른 방법 결과가 있으면 실행 중단 — `project.output_dir` 를 바꿀 것). 방법·식 번호·미구현 항목은 `run_info.json` |
+| `propagation.bands_hz` / `spectrum_dBA` | [500] / [0] | (iso9613_2) 500 Hz 단일대역(ISO 9613-2 1절 비고 1). 옥타브 스펙트럼을 넣으면 8대역 계산. rls19 는 A 가중 단일값이라 여러 대역 지정 불가 |
+| `input.ground.method` | general | (iso9613_2) ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제). rls19 는 식 (14) 고정 |
+| `propagation.reflection.rho` | 0.8 | (iso9613_2) ISO 표 4 '창이 있는 건물 벽', 식 (20) |
+| `propagation.reflection.D_RV` | 0.5 | (rls19) 반사 손실 dB/회, RLS-19 표 8 '건물 외벽 및 반사성 방음벽'. 반사 조건은 h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R(3.6) |
+| `max_order_grid` / `max_order_facade` / `max_order_point` | 1 / 2 / 2 | 반사 차수 (RLS-19 3.6은 1·2차, 국내 「소음지도의 작성방법」 별표 2 제8호는 3차 이상 원칙 — 3차는 아직 미구현) |
 | `input.traffic.oneway_name_traffic` | apply | 도로명 교통량(양방향 합)을 같은 이름의 일방통행 객체에도 배정(`apply`) 또는 차로수 가정값 사용(`fallback`, `traffic_src = fallback_oneway`). UFID 지정 교통량은 항상 우선 |
 | `input.junctions.dk_rule` | nearest | 교차로 보정 D_K(RLS-19 3.3.7)의 기준 교차점. `nearest` = 그 음원선이 속한 교차점 중 가장 가까운 것(현행). `nearest_signal` = 위 값과, 도로 소속과 무관하게 가장 가까운 signal·roundabout 교차점 기준 값 중 큰 쪽 — 가까운 이면도로 접속부(other)가 100 m 안 신호교차로 보정을 가리는 경우용. 켜면 `sources.csv` 에 `D_K_nearest`·`x_signal`·`kt_signal` 열 추가(TECHNICAL_NOTES 5a절 13) |
 | `model.source_ground` | dtm_at_source | 음원 높이(지면 + 0.5 m)의 지면: `dtm_at_source` = 음원점 위치 DTM, `road_profile` = 도로중심선 종단 고도(경사 산정과 같은 평활 DTM). road_profile 은 노면이 주변 DTM 보다 낮은 곳에서 음원 옆 지형이 차폐로 잡힐 수 있음(TECHNICAL_NOTES) |
@@ -178,7 +180,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 53개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교, 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
+python -m pytest -q tests        # 67개 시험: 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
 `tests/test_reference.py` 는 저장소에 들어 있는 기준 사례(가상 교차로, `tests/reference/synthetic/`)를 계산해 기준값과 허용 오차(기본 0.01 dB, 프로젝트 임의 설정, `--sori-tol` 로 변경)로 비교하고, `tests/test_crs.py` 는 좌표 변환(EPSG) 결과를 확인합니다. 기준값을 만든 커밋·환경은 `tests/reference/synthetic/expected/meta.json`, 다시 만들기·결과 폴더 비교는 `python tools/reference.py make|compare`.
