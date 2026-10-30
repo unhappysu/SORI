@@ -48,7 +48,11 @@ def setup_numba_cache():
     """앱(동결 실행)에서는 numba 캐시를 사용자 폴더에 둠 — 프로그램 폴더는 쓰기 금지일 수 있음.
     sori 의 계산 모듈을 import 하기 전에 불러야 함. 개발 실행에서는 기존 동작(소스 옆 __pycache__) 유지."""
     if is_frozen() and "NUMBA_CACHE_DIR" not in os.environ:
-        os.environ["NUMBA_CACHE_DIR"] = str(user_data_dir() / "numba_cache")
+        # sori 소스 내용별 폴더 — 앱을 새 판으로 바꾸면 다른 모듈 njit 함수가 바뀐 옛 캐시를 쓰지 않음
+        import hashlib
+        srcs = sorted(resource_path("sori").glob("*.py"))
+        tag = hashlib.sha256(b"".join(p.read_bytes() for p in srcs)).hexdigest()[:12] if srcs else "nosrc"
+        os.environ["NUMBA_CACHE_DIR"] = str(user_data_dir() / "numba_cache" / tag)
         if "numba" in sys.modules:       # sori/__init__.py 가 numba 를 먼저 import 함 → 환경변수 다시 읽게 함
             from numba.core import config
             config.reload_config()

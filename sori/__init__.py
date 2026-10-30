@@ -17,7 +17,10 @@ def _purge_stale_numba_cache():
     바뀌어도 그것을 부르는 solver.compute 의 캐시는 다시 컴파일되지 않음(2026-10-29 확인). sori/*.py 내용이
     바뀌면 sori/__pycache__ 의 numba 캐시(*.nbi, *.nbc)를 지움. 소스가 없는 실행 파일(앱)·쓰기 불가 폴더는 건너뜀."""
     import hashlib
+    import sys
     from pathlib import Path
+    if getattr(sys, "frozen", False):   # 앱: 번들 안에 쓰면 서명이 깨짐 → resources.setup_numba_cache 가 따로 처리
+        return
     try:
         here = Path(__file__).resolve().parent
         srcs = sorted(here.glob("*.py"))
