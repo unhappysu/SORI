@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-SORI 데스크톱 실행 화면 (tkinter) — 더블클릭 앱(SORI.app / SORI.exe)의 진입점.
+SORI 데스크톱 실행 화면 — 더블클릭 앱(SORI.app / SORI.exe)의 진입점. 화면은 Qt(sori_qt.py) 우선, 없으면 아래 tkinter 화면.
 계산 엔진(sori.build / sori.run / 그림)은 고치지 않고 호출만 함. 명령행 `python -m sori all` 과 같은 순서.
 
   python sori_gui.py                                   화면 실행(지난번에 쓴 설정 파일을 미리 선택)
+                                                       Qt 화면(sori_qt.py)을 먼저 쓰고, PySide6 가 없거나
+                                                       --tk / 환경변수 SORI_GUI=tk 이면 아래 tkinter 화면
   python sori_gui.py --config config.yaml              이 설정 파일을 미리 선택해 화면 실행
   python sori_gui.py --run config.yaml --out 결과폴더   화면 없이 같은 작업 실행(점검용)
   python sori_gui.py --selfcheck report.json           자가 점검: 좌표 변환 + 기준 사례 계산·비교 → JSON
+  python sori_gui.py [--config c.yaml] --snapshot 화면.png   Qt 화면을 그려 PNG 로 저장하고 끝냄(앱 화면 확인용)
 
 ※ 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
@@ -415,7 +418,17 @@ def main(argv=None):
                             format="%(asctime)s %(levelname)s %(message)s")
         run_job(a.config, out, do_plots=not a.no_plots)
         return 0
+    use_tk = "--tk" in argv or os.environ.get("SORI_GUI") == "tk"
+    argv = [a for a in argv if a != "--tk"]
     cfg = argv[1] if argv[:1] == ["--config"] and len(argv) > 1 else None
+    snap = argv[argv.index("--snapshot") + 1] if "--snapshot" in argv[:-1] else None
+    if not use_tk:
+        try:
+            import sori_qt                # Qt 화면(화면 개편 1단계). PySide6 가 없으면 아래 tkinter 화면
+        except ImportError as e:
+            log.warning("Qt 화면을 불러오지 못해 기본 화면으로 실행: %s", e)
+        else:
+            return sori_qt.main(cfg, snapshot=snap)
     App(cfg).run()
     return 0
 
