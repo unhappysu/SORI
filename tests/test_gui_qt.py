@@ -73,6 +73,8 @@ def test_section_line_compute_and_show(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     w = Q.MainWindow()
     w.open_config(tmp_path / "case" / "config.yaml", out)
+    assert w.map.hq is not None and w.map.ax.collections                    # 설정+결과 → 보고서 수준 지도(등음선 채움)
+    assert w.save_map_to(tmp_path / "grid_hq.pdf").stat().st_size > 1000
     cx, cy = C.center(w.cfg)
     w.act_sec.setChecked(True)
     w._toggle_section(True)

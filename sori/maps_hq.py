@@ -140,13 +140,19 @@ def din_cmap():
 def setup_fig(title, subtitle):
     set_font()
     fig = plt.figure(figsize=(16.54, 11.69))                 # A3 가로
+    ax, side = layout(fig, title, subtitle)
+    return fig, ax, side
+
+
+def layout(fig, title, subtitle):
+    """보고서 지도 틀(지도 축·오른쪽 정보란·제목·고지)을 이미 있는 그림에 배치 — 데스크톱 화면(sori_qt)도 씀"""
     ax = fig.add_axes([0.035, 0.06, 0.66, 0.86])
     side = fig.add_axes([0.715, 0.06, 0.265, 0.86]); side.axis("off")
     fig.text(0.035, 0.955, f"SORI Map · {title}", fontsize=19, weight="bold", va="center")
     fig.text(0.035, 0.928, subtitle, fontsize=11.5, color="0.25", va="center")
     fig.text(0.98, 0.018, f"※ {AI_NOTICE}  SORI v{__version__} · 작성 {time.strftime('%Y-%m-%d')}",
              ha="right", fontsize=8, color="0.35")
-    return fig, ax, side
+    return ax, side
 
 
 def frame(ax, bbox, tick=100):
@@ -296,10 +302,19 @@ def grid_array(C, key, h):
 def grid_map(cfg, key="LrT", h=None):
     C = Ctx(cfg)
     h = h if h is not None else cfg["receivers"]["grid"]["heights"][0]
+    set_font()
+    fig = plt.figure(figsize=(16.54, 11.69))                 # A3 가로
+    draw_grid(fig, C, cfg, key, h)
+    return save(fig, C.out, f"HQ_grid_{key}_h{h:g}m", cfg, ("grid", key, f"_h{h:g}m"))
+
+
+def draw_grid(fig, C, cfg, key, h):
+    """보고서 수준 격자 소음지도를 fig 에 그림(그림 파일 grid_map 과 데스크톱 화면 sori_qt 가 같이 씀).
+    반환: 지도 축(ax) — 화면에서 클릭·단면 선 긋기에 씀"""
     gx, gy, step, Am, A = grid_array(C, key, h)
     bbox = grid_bbox(cfg)
-    fig, ax, side = setup_fig(f"{cfg['project']['name']} 도로교통소음 지도 — {KEYNAME[key]}",
-                              f"격자 소음지도 · 수음 높이 {h:g} m · 격자 간격 {step:g} m · 등음선 5 dB")
+    ax, side = layout(fig, f"{cfg['project']['name']} 도로교통소음 지도 — {KEYNAME[key]}",
+                      f"격자 소음지도 · 수음 높이 {h:g} m · 격자 간격 {step:g} m · 등음선 5 dB")
     cmap, norm = din_cmap()
     lv = [-200] + DIN_EDGES + [200]
     ax.contourf(gx, gy, Am, levels=lv, cmap=cmap, norm=norm, zorder=1, antialiased=True)
@@ -317,7 +332,7 @@ def grid_map(cfg, key="LrT", h=None):
     vals = A[np.isfinite(A)]
     y = info_block(side, y - 0.10, C, [("결과 범위", f"{vals.min():.1f} – {vals.max():.1f} dB(A) (도로 위 포함)")])
     warn_box(side, y - 0.01, "교통량 일부가 가정값입니다. 절대 레벨은 참고용이며 실측 교통량으로 다시 계산해야 합니다.")
-    return save(fig, C.out, f"HQ_grid_{key}_h{h:g}m", cfg, ("grid", key, f"_h{h:g}m"))
+    return ax
 
 
 # ------------------------------------------------------------------ 2) 기준 초과 지도

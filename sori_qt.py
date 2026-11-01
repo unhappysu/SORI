@@ -162,12 +162,40 @@ class MapView(QtWidgets.QWidget):
         self.canvas.mpl_connect("motion_notify_event", self._move)
         self.ax = None            # 평면 좌표 축(클릭 대상)
         self.ax3d = None          # 3D 파사드 축(마우스로 회전, 클릭 신호 없음)
+        self.hq = None            # 보고서 지도 다시 그리기 함수(보고서 지도 보는 중일 때만)
+        self._base_dpi = 100.0
+        self._hq_timer = QtCore.QTimer(self, singleShot=True, interval=250)
+        self._hq_timer.timeout.connect(lambda: self.hq and self.hq())
+        self.canvas.mpl_connect("resize_event", lambda e: self.hq and self._hq_timer.start())
         self.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
 
-    def _clear(self):
+    def _clear(self, hq=None):
         self.fig.clear()
         self.fig.patch.set_facecolor("white")
         self.ax = self.ax3d = None
+        self.hq = hq
+        if hq is None:                                   # 일반 화면: 화면 해상도·자동 배치
+            self._set_dpi(self._base_dpi)
+            self.fig.set_layout_engine("constrained")
+
+    def _set_dpi(self, dpi):
+        """그림 1 인치당 화면 점 수를 바꿈(창 크기는 그대로) → 같은 창에 그림이 몇 인치로 담기는지가 바뀜"""
+        r = self.canvas.device_pixel_ratio
+        self.fig._original_dpi = dpi                   # matplotlib Qt 캔버스가 고해상도 화면 배율을 곱할 때 쓰는 값
+        self.fig.dpi = dpi * r
+        w, h = max(self.canvas.width(), 50) * r, max(self.canvas.height(), 50) * r
+        self.fig.set_size_inches(w / self.fig.dpi, h / self.fig.dpi, forward=False)
+
+    def draw_hq_grid(self, C, cfg, key, h, redraw):
+        """보고서 수준 격자 소음지도(maps_hq.draw_grid, 그림 파일 HQ_grid_* 와 같은 그리기).
+        보고서 틀은 A3(16.54 × 11.69 in) 기준 글자 크기이므로, 창 안에 A3 이상이 담기도록 화면 dpi 를 맞춤"""
+        from sori.maps_hq import draw_grid
+        self._clear(hq=redraw)
+        self.fig.set_layout_engine(None)                 # 보고서 틀은 고정 배치
+        w, hgt = max(self.canvas.width(), 50), max(self.canvas.height(), 50)
+        self._set_dpi(max(20.0, min(w / 16.54, hgt / 11.69)))
+        self.ax = draw_grid(self.fig, C, cfg, key, h)
+        self.canvas.draw_idle()
 
     def message(self, text):
         self._clear()
@@ -651,11 +679,17 @@ class MainWindow(QtWidgets.QMainWindow):
         h, key = self.cb_h.currentData(), self.cb_key.currentData()
         if "grid" in R and h is not None:
             Gh = R["grid"][R["grid"].h == h]
+            self._grid_now = (Gh, key)
+            C = self._hq_ctx()
+            if C is not None:                                       # 보고서 수준 지도(maps_hq 와 같은 그리기)
+                try:
+                    return self.map.draw_hq_grid(C, C.cfg, key, h, self.redraw)
+                except Exception as e:
+                    log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key)
             meth = (R.get("run_info") or {}).get("outputs", {}).get("grid", "")
             title = f"격자 소음지도 {KEYS[key]} · 높이 {h:g} m · {meth}  (최대 {np.nanmax(A):.1f} dB)"
             self.map.draw((A, ext), extent, R.get("buildings"), R.get("roads"), title, crs)
-            self._grid_now = (Gh, key)
         elif R.get("buildings") is not None or extent is not None:
             self.map.draw(None, extent, R.get("buildings"), R.get("roads"),
                           "입력 지도 · 계산 범위(파란 점선)" + ("" if R else " — 아직 계산 결과 없음"), crs)
@@ -663,6 +697,28 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.map.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
             self._grid_now = None
+
+    def _hq_ctx(self):
+        """보고서 지도용 자료(maps_hq.Ctx: 건물·도로 띠·교차로·교통량·결과 전파 방법). 결과 폴더별로 한 번만 읽음.
+        설정 파일 없이 결과 폴더만 열었거나 필요한 파일이 없으면 None(간단한 지도로 표시)"""
+        import copy
+        if self.cfg is None or not self.out:
+            return None
+        out = Path(self.out).resolve()
+        if getattr(self, "_ctx", (None, None))[0] == out:
+            return self._ctx[1]
+        need = ("buildings.gpkg", "roads.gpkg", "junctions_used.csv", "traffic_used.csv", "model_rasters.npz")
+        C = None
+        if all((out / f).exists() for f in need):
+            try:
+                from sori.maps_hq import Ctx
+                cfg = copy.deepcopy(self.cfg)
+                cfg["project"]["output_dir"] = str(out)
+                C = Ctx(cfg)
+            except Exception as e:
+                log.warning("보고서 지도 자료를 읽지 못함 — 간단한 지도로 표시: %s", e)
+        self._ctx = (out, C)
+        return C
 
     # ------------------------------------------------------------ 벽면 지도
     def _building_at(self, x, y):
