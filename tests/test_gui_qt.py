@@ -14,6 +14,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 EXP = Path(__file__).resolve().parent / "reference" / "synthetic" / "expected"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_settings(tmp_path, monkeypatch):
+    """화면 시험이 사용자의 실제 설정(마지막 설정 파일·결과 폴더, settings.json)을 바꾸지 않게 임시 파일로"""
+    import sori_gui as G
+    monkeypatch.setattr(G, "settings_path", lambda: tmp_path / "settings.json")
+
+
 def test_open_results_and_click():
     from PySide6 import QtWidgets
     import sori_qt as Q
