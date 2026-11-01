@@ -60,3 +60,22 @@ def test_building_click_facade_map_and_save(tmp_path):
     assert w.save_map_to(tmp_path / "grid.png").exists()
     w.close()
     app.processEvents()
+
+
+def test_remembered_output_must_match_config(tmp_path):
+    """기억된 결과 폴더가 다른 설정(예제 등)의 결과면 쓰지 않고 설정 파일 옆 output 을 씀"""
+    import json
+    import sori_qt as Q
+    cfg = tmp_path / "a" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_text("x: 1\n", encoding="utf-8")
+    other = tmp_path / "b" / "output"
+    other.mkdir(parents=True)
+    (other / "run_conditions.json").write_text(json.dumps({"config_path": str(tmp_path / "b" / "config.yaml")}),
+                                               encoding="utf-8")
+    assert Q._out_for(cfg, str(other)) is None
+    mine = tmp_path / "c_out"
+    mine.mkdir()
+    (mine / "run_conditions.json").write_text(json.dumps({"config_path": str(cfg)}), encoding="utf-8")
+    assert Q._out_for(cfg, str(mine)) == str(mine)
+    assert Q._out_for(cfg, str(cfg.parent / "output")) == str(cfg.parent / "output")   # 아직 계산 전

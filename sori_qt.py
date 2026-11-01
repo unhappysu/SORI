@@ -469,7 +469,7 @@ class MainWindow(QtWidgets.QMainWindow):
         out = Path(out) if out else path.parent / "output"
         self.ed_cfg.setText(str(path))
         self.ed_out.setText(str(out))
-        G.save_settings(last_config=path)
+        G.save_settings(last_config=path, last_out=out.resolve())   # 설정과 결과 폴더를 짝으로 기억
         log.info("설정 파일: %s", path)
         self.open_results(out, quiet=True)
 
@@ -833,12 +833,25 @@ class MainWindow(QtWidgets.QMainWindow):
         e.accept()
 
 
+def _out_for(cfg_path, out):
+    """기억된 결과 폴더가 이 설정 파일로 계산한 것인지(run_conditions.json 의 config_path) 확인.
+    다른 설정의 결과(예: 예제)면 None → 설정 파일 옆 output 을 씀(다른 프로젝트 결과가 섞여 보이지 않게)"""
+    if not out:
+        return None
+    rc = Path(out) / "run_conditions.json"
+    try:
+        used = json.loads(rc.read_text(encoding="utf-8")).get("config_path")
+        return out if used and Path(used).resolve() == Path(cfg_path).resolve() else None
+    except (OSError, ValueError):
+        return out if Path(out).resolve() == (Path(cfg_path).resolve().parent / "output") else None
+
+
 def restore(win, config=None, out=None):
     """--config 로 받은 설정 파일, 없으면 지난번에 쓴 설정 파일을 미리 엶"""
     st = G.load_settings()
     p = Path(config) if config else (Path(st["last_config"]) if st.get("last_config") else None)
     if p and p.is_file():
-        win.open_config(p, out or (st.get("last_out") if not config else None))
+        win.open_config(p, out or (_out_for(p, st.get("last_out")) if not config else None))
     elif out:
         win.open_results(out)
 
