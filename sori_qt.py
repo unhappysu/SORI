@@ -138,7 +138,8 @@ class Worker(QtCore.QThread):
 
 # ================================================================ 지도 창(matplotlib, 평면 좌표 그대로)
 class MapView(QtWidgets.QWidget):
-    clicked = QtCore.Signal(float, float)
+    clicked = QtCore.Signal(float, float)          # 평면 지도(격자 지도, 벽면 지도의 왼쪽 평면) 클릭
+    clicked_elev = QtCore.Signal(float, float)     # 벽면 펼친 그림(오른쪽) 클릭: (둘레 거리 m, 층)
     moved = QtCore.Signal(float, float)
 
     def __init__(self):
@@ -155,11 +156,12 @@ class MapView(QtWidgets.QWidget):
         self.canvas.mpl_connect("button_press_event", self._click)
         self.canvas.mpl_connect("motion_notify_event", self._move)
         self.ax = None
+        self.ax_elev = None
         self.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
 
     def message(self, text):
         self.fig.clear()
-        self.ax = None
+        self.ax = self.ax_elev = None
         self.fig.text(0.5, 0.5, text, ha="center", va="center", color="#666")
         self.canvas.draw_idle()
 
@@ -167,6 +169,7 @@ class MapView(QtWidgets.QWidget):
         """grid = (A 2차원 배열, (xmin, xmax, ymin, ymax)), extent = 계산 범위 사각형"""
         from sori.plots import classes
         self.fig.clear()
+        self.ax_elev = None
         ax = self.ax = self.fig.add_subplot(111)
         if grid is not None:
             A, ext = grid
@@ -192,14 +195,93 @@ class MapView(QtWidgets.QWidget):
         ax.set_ylabel("Y (m)", fontsize=8)
         ax.tick_params(labelsize=7)
         ax.ticklabel_format(useOffset=False, style="plain")
+        self._notice()
+        self.canvas.draw_idle()
+
+    def _notice(self):
+        """저장한 그림에도 남도록 그림 안에 AI 활용 고지(아래 3 % 를 비워 축 제목과 겹치지 않게)"""
+        self.fig.get_layout_engine().set(rect=(0, 0.03, 1, 0.97))
+        self.fig.text(0.995, 0.005, f"※ {AI_NOTICE}", ha="right", va="bottom", fontsize=6, color="0.4")
+
+    def draw_facade(self, b, F, FR, key, title, others=None, roads=None, crs=None):
+        """건물 하나의 벽면 소음지도. 왼쪽: 평면(벽 번호, 수음 위치별 층 최댓값), 오른쪽: 벽을 둘레 방향으로 펼친 입면
+        b: 건물 한 행(GeoSeries 행), F: 그 건물의 벽(facades.csv, fid 순), FR: 그 건물의 벽면 결과(facade_result.csv)
+        펼친 순서는 벽 번호(fid) 순 = 건물 외곽선 꼭짓점 순서(build.facades)"""
+        from matplotlib.collections import PolyCollection
+        from sori.plots import classes
+        cmap, norm, labels = classes(30, 5)
+        self.fig.clear()
+        gs = self.fig.add_gridspec(1, 2, width_ratios=[1, 1.9])
+        ax = self.ax = self.fig.add_subplot(gs[0])
+        ae = self.ax_elev = self.fig.add_subplot(gs[1])
+        # ---- 평면
+        x0, y0, x1, y1 = b.geometry.bounds
+        m = max(x1 - x0, y1 - y0) * 0.35 + 15.0
+        if others is not None and len(others):
+            others.plot(ax=ax, facecolor="#f2f2f2", edgecolor="#999", lw=0.4, zorder=1)
+        if roads is not None and len(roads):
+            roads.plot(ax=ax, color="#bbb", lw=0.8, zorder=1)
+        from geopandas import GeoSeries
+        GeoSeries([b.geometry]).plot(ax=ax, facecolor="#e8e8e8", edgecolor="#222", lw=1.0, zorder=2)
+        P = FR.groupby(["fid", "piece"]).agg(x=("x", "first"), y=("y", "first"), v=(key, "max")).reset_index()
+        ax.scatter(P.x, P.y, c=P.v, cmap=cmap, norm=norm, s=18, edgecolors="#333", linewidths=0.3, zorder=3)
+        has = set(FR.fid)
+        for n, (fid, f) in enumerate(F.iterrows(), 1):
+            if fid in has:
+                ax.annotate(str(n), ((f.x1 + f.x2) / 2 + 3.5 * f.nx, (f.y1 + f.y2) / 2 + 3.5 * f.ny),
+                            ha="center", va="center", fontsize=7, color="#1f5fbf", zorder=4)
+        f0 = F.iloc[0]
+        ax.plot(f0.x1, f0.y1, marker="o", color="#1f5fbf", ms=5, zorder=4)
+        ax.set_xlim(x0 - m, x1 + m)
+        ax.set_ylim(y0 - m, y1 + m)
+        ax.set_aspect("equal")
+        ax.set_title("평면 — 점: 수음 위치(층 최댓값)\n파란 숫자: 벽 번호 · ●: 펼친 그림 시작점", fontsize=8)
+        ax.set_xlabel(f"X (m){f' · EPSG:{crs}' if crs else ''}", fontsize=7)
+        ax.set_ylabel("Y (m)", fontsize=7)
+        ax.tick_params(labelsize=6)
+        ax.ticklabel_format(useOffset=False, style="plain")
+        # ---- 펼친 입면: 가로 = 시작점부터 둘레 거리(m), 세로 = 층
+        s0 = dict(zip(F.index, np.r_[0.0, np.cumsum(F.L.values)[:-1]]))
+        Lf = F.L.to_dict()
+        polys, vals = [], []
+        for r in FR.itertuples():
+            a, c = s0[r.fid] + r.a * Lf[r.fid], s0[r.fid] + r.b * Lf[r.fid]
+            polys.append([(a, r.floor - 1), (c, r.floor - 1), (c, r.floor), (a, r.floor)])
+            vals.append(getattr(r, key))
+        pc = PolyCollection(polys, array=np.asarray(vals), cmap=cmap, norm=norm, edgecolors="white", linewidths=0.3)
+        ae.add_collection(pc)
+        top = int(max(FR.floor.max(), b.get("floors", 1) or 1))
+        tot = float(F.L.sum())
+        for n, fid in enumerate(F.index, 1):
+            ae.axvline(s0[fid], color="#888", lw=0.5, zorder=0)
+            if fid in has and Lf[fid] > tot / 60:
+                ae.text(s0[fid] + Lf[fid] / 2, top, str(n), ha="center", va="bottom", fontsize=7, color="#1f5fbf",
+                        clip_on=False)
+        ae.set_xlim(0, tot)
+        ae.set_ylim(0, top)
+        # 실제 비율(층고 약 3 m)에 가깝게, 너무 납작하거나 길지 않게 0.12~0.9 로 제한
+        ae.set_box_aspect(min(0.9, max(0.12, 3.0 * top / max(tot, 1.0))))
+        ae.set_yticks(np.arange(top) + 0.5, [f"{i + 1}층" for i in range(top)], fontsize=6)
+        ae.set_xlabel("둘레 거리 (m) — ● 시작점부터 벽 번호 순", fontsize=7)
+        ae.tick_params(axis="x", labelsize=6)
+        ae.set_title("벽면 펼친 그림 (외벽 앞 수음점, 층별) · 빈칸 = 계산하지 않은 벽(맞벽 등)\n", fontsize=8)
+        cb = self.fig.colorbar(pc, ax=ae, shrink=0.85, pad=0.01)
+        cb.set_ticks([hi for _, hi in labels[:-1]])
+        cb.set_label("dB(A) · 5 dB 등급")
+        self.fig.suptitle(title, fontsize=10)
+        self._notice()
         self.canvas.draw_idle()
 
     def _click(self, e):
-        if self.ax is not None and e.inaxes is self.ax and not self.nav.mode and e.xdata is not None:
+        if e.xdata is None or self.nav.mode:
+            return
+        if self.ax is not None and e.inaxes is self.ax:
             self.clicked.emit(e.xdata, e.ydata)
+        elif self.ax_elev is not None and e.inaxes is self.ax_elev:
+            self.clicked_elev.emit(e.xdata, e.ydata)
 
     def _move(self, e):
-        if self.ax is not None and e.inaxes is self.ax and e.xdata is not None:
+        if self.ax is not None and e.inaxes is self.ax and e.xdata is not None:     # 평면 좌표만 표시
             self.moved.emit(e.xdata, e.ydata)
 
 
@@ -213,6 +295,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg = None           # sori.config.load 결과
         self.out = None           # 결과 폴더
         self.R = {}               # 읽어 둔 결과 표·지도 자료
+        self.view_bid = None      # None = 격자 지도, 건물 번호 = 그 건물의 벽면 지도
         self.worker = None
         self.bridge = Bridge()
         self.bridge.log.connect(self._on_log)
@@ -231,6 +314,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build(self):
         self.map = MapView()
         self.map.clicked.connect(self._on_map_click)
+        self.map.clicked_elev.connect(self._on_elev_click)
         self.map.moved.connect(lambda x, y: self.lbl_xy.setText(f"X {x:,.1f}  Y {y:,.1f}"))
         self.setCentralWidget(self.map)
 
@@ -270,12 +354,19 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.addWidget(self.cb_key)
         self.cb_h.currentIndexChanged.connect(self.redraw)
         self.cb_key.currentIndexChanged.connect(self.redraw)
+        tb.addSeparator()
+        self.act_back = tb.addAction("◀ 격자 지도", self.show_grid)
+        self.act_back.setEnabled(False)
+        self.act_save = tb.addAction("지도 저장…", self.save_map)
+        self.act_save.setToolTip("지금 보이는 지도를 PNG·PDF 로 저장(기본 이름은 파일명 규칙)")
+        tb.addWidget(QtWidgets.QLabel("   건물을 클릭하면 그 건물의 벽면 소음지도"))
 
         m = self.menuBar().addMenu("파일")
         m.addAction("설정 파일 열기…", self.pick_cfg, QtGui.QKeySequence.Open)
         m.addAction("결과 폴더 열기…", self.pick_out)
         m.addAction("예제 불러오기(가상 교차로)", self.load_example)
         m.addSeparator()
+        m.addAction("지도 저장(PNG·PDF)…", self.save_map, QtGui.QKeySequence.Save)
         m.addAction("결과 폴더를 파인더/탐색기로 보기", lambda: self.out and G.open_folder(self.out))
         m.addAction("끝내기", self.close, QtGui.QKeySequence.Quit)
         m = self.menuBar().addMenu("계산")
@@ -394,6 +485,8 @@ class MainWindow(QtWidgets.QMainWindow):
                              ("points", "point_result.csv"), ("terms", "path_terms.csv")):
                 if (out / fn).exists():
                     R[name] = pd.read_csv(out / fn)
+            if (out / "facades.csv").exists():
+                R["facades"] = pd.read_csv(out / "facades.csv", index_col="fid")
             for name in ("run_info", "build_info", "run_conditions"):
                 if (out / f"{name}.json").exists():
                     R[name] = json.loads((out / f"{name}.json").read_text(encoding="utf-8"))
@@ -406,6 +499,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not R and not quiet:
             self._err(f"이 폴더에서 SORI 결과를 찾지 못했습니다.\n{out}")
         self.R = R
+        self.view_bid = None
         if self.cfg is None and (out / "config_used.yaml").exists():
             log.info("결과 폴더만 열었음 — 설정은 config_used.yaml 을 속성에 표시(입력 경로는 원래 설정 폴더 기준)")
         self.m_points.set(R.get("points"))
@@ -526,6 +620,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ 지도
     def redraw(self):
+        if self.view_bid is not None:
+            return self._draw_facade(self.view_bid)
+        self.act_back.setEnabled(False)
         R, crs = self.R, (self.cfg or {}).get("crs")
         extent = None
         if self.cfg:
@@ -554,8 +651,106 @@ class MainWindow(QtWidgets.QMainWindow):
             self.map.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
             self._grid_now = None
 
+    # ------------------------------------------------------------ 벽면 지도
+    def _building_at(self, x, y):
+        B = self.R.get("buildings")
+        if B is None or not len(B):
+            return None
+        from shapely.geometry import Point
+        hit = B[B.geometry.contains(Point(x, y))]
+        return None if hit.empty else int(hit.iloc[0].bid)
+
+    def show_facade(self, bid):
+        FR = self.R.get("facade")
+        if FR is None or self.R.get("facades") is None or not (FR.bid == bid).any():
+            self.lbl_status.setText(f"건물 {bid}: 벽면 계산 결과 없음(벽면 계산 반경 밖이거나 벽면 계산을 하지 않음)")
+            return False
+        self.view_bid = bid
+        self.redraw()
+        return True
+
+    def show_grid(self):
+        self.view_bid = None
+        self.redraw()
+
+    def _draw_facade(self, bid):
+        R, key = self.R, self.cb_key.currentData()
+        B = R["buildings"]
+        b = B[B.bid == bid].iloc[0]
+        F = R["facades"][R["facades"].bid == bid].sort_index()
+        FR = R["facade"][R["facade"].bid == bid]
+        x0, y0, x1, y1 = b.geometry.bounds
+        near = B.cx[x0 - 80:x1 + 80, y0 - 80:y1 + 80]
+        roads = R.get("roads")
+        if roads is not None and len(roads):
+            roads = roads.cx[x0 - 80:x1 + 80, y0 - 80:y1 + 80]
+        name = f" {b.bname}" if isinstance(b.get("bname"), str) and b.bname else ""
+        title = (f"건물 {bid}{name} · {b.kind} · {int(b.floors)}층 — 벽면 소음지도 {KEYS[key]}  "
+                 f"(최대 {FR[key].max():.1f} dB, 수음점 {len(FR):,}개)")
+        self.map.draw_facade(b, F, FR, key, title, near[near.bid != bid], roads, (self.cfg or {}).get("crs"))
+        self.act_back.setEnabled(True)
+        self.m_facade.set(FR.sort_values(key, ascending=False).reset_index(drop=True))
+        rows = [("건물 번호", str(bid)), ("종류", str(b.kind)), ("층수", str(int(b.floors))), ("높이 m", f"{b.H:.1f}"),
+                ("벽 수(계산)", str(FR.fid.nunique())), ("수음점", f"{len(FR):,}"),
+                (f"{key} 최대 dB", f"{FR[key].max():.1f}"), (f"{key} 최소 dB", f"{FR[key].min():.1f}")]
+        lim = ((self.cfg or {}).get("plots") or {}).get("limits") or {}
+        if key in lim:
+            n = int((FR[key] > float(lim[key])).sum())
+            rows.append((f"기준 {lim[key]} dB 초과", f"{n:,}점"))
+        self._show_props(rows)
+        self.lbl_status.setText(f"건물 {bid} 벽면 소음지도 — 다른 건물을 클릭하면 바뀜, '◀ 격자 지도'로 돌아감")
+
+    def _on_elev_click(self, s, fl):
+        """펼친 그림 클릭: 그 위치(둘레 거리 s, 층)의 수음점 값"""
+        if self.view_bid is None:
+            return
+        F = self.R["facades"][self.R["facades"].bid == self.view_bid].sort_index()
+        FR = self.R["facade"][self.R["facade"].bid == self.view_bid]
+        s0 = dict(zip(F.index, np.r_[0.0, np.cumsum(F.L.values)[:-1]]))
+        sa = FR.fid.map(s0) + FR.a * FR.fid.map(F.L)
+        sb = FR.fid.map(s0) + FR.b * FR.fid.map(F.L)
+        hit = FR[(sa <= s) & (s < sb) & (FR.floor == int(fl) + 1)]
+        if hit.empty:
+            return
+        r = hit.iloc[0]
+        n = list(F.index).index(r.fid) + 1
+        rows = [("벽 번호", str(n)), ("층", str(int(r.floor))), ("X", f"{r.x:.1f}"), ("Y", f"{r.y:.1f}"), ("Z m", f"{r.z:.2f}"),
+                ("LrT dB", f"{r.LrT:.1f}"), ("LrN dB", f"{r.LrN:.1f}")]
+        rows += [(c, f"{r[c]:.1f}") for c in FR.columns if c.startswith("LrT_") and c != "LrT_cmp" and pd.notna(r[c])]
+        self._show_props(rows)
+        self.lbl_status.setText(f"건물 {self.view_bid} 벽 {n} · {int(r.floor)}층: LrT {r.LrT:.1f} dB, LrN {r.LrN:.1f} dB")
+
+    def save_map(self):
+        """지금 보이는 지도(격자 또는 벽면)를 파일로 저장. 기본 이름은 결과 파일명 규칙(sori.naming)"""
+        if self.map.ax is None:
+            return self._err("저장할 지도가 없습니다. 결과를 먼저 여세요.")
+        key, h = self.cb_key.currentData(), self.cb_h.currentData()
+        kind, extra = ("grid", f"_h{h:g}m" if h is not None else "") if self.view_bid is None \
+            else ("facade", f"_건물{self.view_bid}")
+        try:
+            from sori.naming import rule_name
+            name = rule_name(self.cfg, kind, key, extra)
+        except Exception:
+            name = f"SORI_{kind}_{key}{extra}"
+        base = Path(self.out or default_output_dir()) / f"{name}.png"
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "지도 저장", str(base), "PNG 그림 (*.png);;PDF 문서 (*.pdf)")
+        if path:
+            self.save_map_to(path)
+
+    def save_map_to(self, path):
+        path = Path(path)
+        if path.suffix.lower() not in (".png", ".pdf"):
+            path = path.with_suffix(".png")
+        self.map.fig.savefig(path, dpi=200)
+        log.info("지도 저장: %s", path)
+        self.lbl_status.setText(f"지도 저장: {path}")
+        return path
+
     def _on_map_click(self, x, y):
-        if not getattr(self, "_grid_now", None):
+        bid = self._building_at(x, y)
+        if bid is not None and self.show_facade(bid):        # 건물 클릭 → 벽면 소음지도
+            return
+        if self.view_bid is not None or not getattr(self, "_grid_now", None):
             return
         Gh, key = self._grid_now
         i = int(np.argmin((Gh.x.values - x) ** 2 + (Gh.y.values - y) ** 2))

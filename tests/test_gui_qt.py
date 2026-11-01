@@ -31,3 +31,32 @@ def test_open_results_and_click():
     assert vals["LrT dB"] == f"{r.LrT:.1f}"
     w.close()
     app.processEvents()
+
+
+def test_building_click_facade_map_and_save(tmp_path):
+    """격자 지도에서 건물 클릭 → 그 건물 벽면 지도(펼친 그림 칸 수 = 벽면 수음점 수), 펼친 그림 클릭 값, PNG·PDF 저장, 격자로 복귀"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_results(out)
+    FR, B = w.R["facade"], w.R["buildings"]
+    bid = int(FR.bid.value_counts().index[0])
+    g = B[B.bid == bid].iloc[0].geometry.representative_point()
+    w._on_map_click(g.x, g.y)
+    assert w.view_bid == bid and w.act_back.isEnabled()
+    n = int((FR.bid == bid).sum())
+    assert len(w.map.ax_elev.collections[0].get_array()) == n
+    vals = {w.props.item(i, 0).text(): w.props.item(i, 1).text() for i in range(w.props.rowCount())}
+    assert vals["수음점"] == f"{n:,}" and vals["LrT 최대 dB"] == f"{FR[FR.bid == bid].LrT.max():.1f}"
+    w._on_elev_click(0.01, 0.5)                                   # 시작점 바로 옆 1층 칸(첫 벽이 계산된 경우)
+    for ext in ("png", "pdf"):
+        p = w.save_map_to(tmp_path / f"facade.{ext}")
+        assert p.exists() and p.stat().st_size > 1000
+    w.show_grid()
+    assert w.view_bid is None and not w.act_back.isEnabled() and w.map.ax.images
+    assert w.save_map_to(tmp_path / "grid.png").exists()
+    w.close()
+    app.processEvents()
