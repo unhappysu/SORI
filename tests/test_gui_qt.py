@@ -33,8 +33,8 @@ def test_open_results_and_click():
     app.processEvents()
 
 
-def test_building_click_facade_map_and_save(tmp_path):
-    """격자 지도에서 건물 클릭 → 그 건물 벽면 지도(펼친 그림 칸 수 = 벽면 수음점 수), 펼친 그림 클릭 값, PNG·PDF 저장, 격자로 복귀"""
+def test_building_click_3d_facade_and_save(tmp_path):
+    """격자 지도에서 건물 클릭 → 3D 파사드 소음지도(그림 파일 facade_3d 와 같은 그리기 함수), PNG·PDF 저장, 격자로 복귀"""
     from PySide6 import QtWidgets
     import reference_case as RC
     import sori_qt as Q
@@ -46,18 +46,52 @@ def test_building_click_facade_map_and_save(tmp_path):
     bid = int(FR.bid.value_counts().index[0])
     g = B[B.bid == bid].iloc[0].geometry.representative_point()
     w._on_map_click(g.x, g.y)
-    assert w.view_bid == bid and w.act_back.isEnabled()
+    assert w.view == "facade" and w.view_bid == bid and w.act_back.isEnabled()
+    assert w.map.ax3d is not None and w.map.ax is None                     # 3D 축(클릭 신호 없음, 회전용)
     n = int((FR.bid == bid).sum())
-    assert len(w.map.ax_elev.collections[0].get_array()) == n
     vals = {w.props.item(i, 0).text(): w.props.item(i, 1).text() for i in range(w.props.rowCount())}
     assert vals["수음점"] == f"{n:,}" and vals["LrT 최대 dB"] == f"{FR[FR.bid == bid].LrT.max():.1f}"
-    w._on_elev_click(0.01, 0.5)                                   # 시작점 바로 옆 1층 칸(첫 벽이 계산된 경우)
+    assert w.m_facade.rowCount() == n                                       # 아래 '벽면' 표 = 이 건물 층별 값
     for ext in ("png", "pdf"):
-        p = w.save_map_to(tmp_path / f"facade.{ext}")
+        p = w.save_map_to(tmp_path / f"facade3d.{ext}")
         assert p.exists() and p.stat().st_size > 1000
     w.show_grid()
-    assert w.view_bid is None and not w.act_back.isEnabled() and w.map.ax.images
+    assert w.view == "grid" and not w.act_back.isEnabled() and w.map.ax.images
     assert w.save_map_to(tmp_path / "grid.png").exists()
+    w.close()
+    app.processEvents()
+
+
+def test_section_line_compute_and_show(tmp_path):
+    """단면 선 긋기(두 점 클릭) → 단면 계산(Worker) → 단면 지도 표시·저장, 결과 파일과 다시 열기"""
+    import time
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    from sori import config as C
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_config(tmp_path / "case" / "config.yaml", out)
+    cx, cy = C.center(w.cfg)
+    w.act_sec.setChecked(True)
+    w._toggle_section(True)
+    w._on_map_click(cx - 100.0, cy + 40.0)
+    w._on_map_click(cx + 100.0, cy + 40.0)
+    t0 = time.time()
+    while w.worker.isRunning() and time.time() - t0 < 300:
+        app.processEvents()
+        time.sleep(0.05)
+    for _ in range(20):
+        app.processEvents()
+    assert w.view == "section" and not w.act_sec.isChecked()
+    for fn in ("section_result.csv", "section_info.json"):
+        assert (out / fn).exists()
+    assert w.save_map_to(tmp_path / "section.png").stat().st_size > 1000
+    w.open_results(out)                                                     # 다시 열면 '마지막 단면 보기' 가능
+    assert w.act_last_sec.isEnabled()
+    w.show_section()
+    assert w.view == "section"
     w.close()
     app.processEvents()
 

@@ -208,29 +208,14 @@ def facade_plan(cfg):
     return files
 
 
-def facade_3d(cfg, key="LrN"):
-    out = cfg["project"]["output_dir"]; pc = cfg["plots"]; mc = cfg["model"]
-    set_font(pc["font"])
-    bld = gpd.read_file(os.path.join(out, "buildings.gpkg"))
-    FR = pd.read_csv(os.path.join(out, "facade_result.csv"))
-    F = pd.read_csv(os.path.join(out, "facades.csv"), index_col="fid")
-    cx, cy = center(cfg)
-    targets = pc["targets_3d"]
-    if not targets:   # 기본: 중심 반경 내 5층 이상 건물 중 최고레벨 상위 4개(없으면 전체에서)
-        near = FR[np.hypot(FR.x - cx, FR.y - cy) < pc["radius_3d"]]
-        agg = near.groupby("bid").agg(L=(key, "max"), fl=("floor", "max"))
-        tall = agg[agg.fl >= 5]
-        targets = list((tall if len(tall) >= 2 else agg).sort_values("L", ascending=False).index[:4])
-    T = set(int(t) for t in targets)
-    lo = lo_from_max(np.nanmax(FR[FR.bid.isin(T)][key]))
-    cmap, norm, labels = classes(lo, 2)
-    view = Point(cx, cy).buffer(pc["radius_3d"])
+def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids=None):
+    """3D 파사드 소음지도 그리기(그림 파일 facade_3d 와 데스크톱 화면 sori_qt 가 같이 씀)
+    T: 층별 색을 칠할 건물 번호 집합, label_bids: 층별 값 글자를 붙일 건물(None 이면 T 전체)
+    view: 보이는 범위(shapely 도형), fh: 층고(m), elev·azim: 시점(도). 계산 없이 결과 표만 그림."""
     B = bld[bld.intersects(view)]
-    elev, azim = pc["elev_3d"], pc["azim_3d"]
+    lab_set = T if label_bids is None else set(label_bids)
     az, el = np.radians(azim), np.radians(elev)
     cam = np.array([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az)])
-    fig = plt.figure(figsize=(14, 10.5))
-    ax = fig.add_subplot(111, projection="3d", computed_zorder=False)
     polys, cols = [], []
     z0min = B.z0.min(); g = view.bounds
     ground = Poly3DCollection([[(g[0], g[1], z0min - 0.2), (g[2], g[1], z0min - 0.2), (g[2], g[3], z0min - 0.2),
@@ -252,7 +237,7 @@ def facade_3d(cfg, key="LrN"):
         sub = FR[FR.bid == bid]
         cand = F.loc[sub.fid.unique()]
         score = (cand.nx * cam[0] + cand.ny * cam[1]) * np.minimum(cand.L, 25)
-        for fid in score[score > 2.4].sort_values(ascending=False).index:
+        for fid in (score[score > 2.4].sort_values(ascending=False).index if bid in lab_set else []):
             f = F.loc[fid]
             mx, my = (f.x1 + f.x2) / 2, (f.y1 + f.y2) / 2
             if all(np.hypot(mx - a, my - c_) > 18 for a, c_ in lab_cols):
@@ -261,14 +246,14 @@ def facade_3d(cfg, key="LrN"):
                 pmid = grp.piece.unique()[len(grp.piece.unique()) // 2]
                 for _, rr in grp[grp.piece == pmid].iterrows():
                     xa = f.x1 + (rr.a + rr.b) / 2 * (f.x2 - f.x1); ya = f.y1 + (rr.a + rr.b) / 2 * (f.y2 - f.y1)
-                    labels3d.append((xa + 0.8 * f.nx, ya + 0.8 * f.ny, b.z0 + (rr.floor - 0.5) * mc["floor_height"],
+                    labels3d.append((xa + 0.8 * f.nx, ya + 0.8 * f.ny, b.z0 + (rr.floor - 0.5) * fh,
                                      f"{rr[key]:.1f}"))
                 break
         for _, rr in sub.iterrows():
             f = F.loc[rr.fid]
             xa = f.x1 + rr.a * (f.x2 - f.x1); ya = f.y1 + rr.a * (f.y2 - f.y1)
             xb = f.x1 + rr.b * (f.x2 - f.x1); yb = f.y1 + rr.b * (f.y2 - f.y1)
-            za = b.z0 + (rr.floor - 1) * mc["floor_height"]; zb = za + mc["floor_height"]
+            za = b.z0 + (rr.floor - 1) * fh; zb = za + fh
             polys.append([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)])
             cols.append(cmap(norm(rr[key])))
     ax.add_collection3d(Poly3DCollection(polys, facecolors=cols, edgecolors=(0.3, 0.3, 0.5, 0.25),
@@ -280,7 +265,30 @@ def facade_3d(cfg, key="LrN"):
     ax.set_zlim(z0min, z0min + zr)
     ax.set_box_aspect((1, 1, zr / (g[2] - g[0])), zoom=1.45)
     ax.view_init(elev=elev, azim=azim); ax.set_axis_off()
-    ax.set_facecolor("#8fd3fe"); fig.patch.set_facecolor("#8fd3fe")
+    ax.set_facecolor("#8fd3fe")
+
+
+def facade_3d(cfg, key="LrN"):
+    out = cfg["project"]["output_dir"]; pc = cfg["plots"]; mc = cfg["model"]
+    set_font(pc["font"])
+    bld = gpd.read_file(os.path.join(out, "buildings.gpkg"))
+    FR = pd.read_csv(os.path.join(out, "facade_result.csv"))
+    F = pd.read_csv(os.path.join(out, "facades.csv"), index_col="fid")
+    cx, cy = center(cfg)
+    targets = pc["targets_3d"]
+    if not targets:   # 기본: 중심 반경 내 5층 이상 건물 중 최고레벨 상위 4개(없으면 전체에서)
+        near = FR[np.hypot(FR.x - cx, FR.y - cy) < pc["radius_3d"]]
+        agg = near.groupby("bid").agg(L=(key, "max"), fl=("floor", "max"))
+        tall = agg[agg.fl >= 5]
+        targets = list((tall if len(tall) >= 2 else agg).sort_values("L", ascending=False).index[:4])
+    T = set(int(t) for t in targets)
+    lo = lo_from_max(np.nanmax(FR[FR.bid.isin(T)][key]))
+    cmap, norm, labels = classes(lo, 2)
+    view = Point(cx, cy).buffer(pc["radius_3d"])
+    fig = plt.figure(figsize=(14, 10.5))
+    ax = fig.add_subplot(111, projection="3d", computed_zorder=False)
+    draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, mc["floor_height"], pc["elev_3d"], pc["azim_3d"])
+    fig.patch.set_facecolor("#8fd3fe")
     legend_box(ax, "Noise level", f"{key} in dB(A)", labels)
     ax.set_title(f"{cfg['project']['name']} 파사드 소음지도 3D — {key} (층별, 외벽 앞 5 cm)", fontsize=13)
     footer(fig)
