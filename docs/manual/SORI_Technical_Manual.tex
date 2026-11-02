@@ -1,0 +1,399 @@
+%% SORI v0.1 Technical Manual(테크니컬 매뉴얼) — 전현수 (2022890065)
+%% 컴파일: docs/manual 에서 sh build.sh SORI_Technical_Manual.tex (xelatex 2회)
+%% 초안: TECHNICAL_NOTES.md, 목차안 v1: docs/매뉴얼_개발노트.md. 식·계수·조건은 sori/*.py(커밋 2376a59)와
+%%       TECHNICAL_NOTES.md·docs/작업기록_*.md 에서 확인한 것만 적음. 확인 못 한 것은 [근거 미확인]
+%% 본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.
+\documentclass[10.5pt,a4paper]{article}
+\def\docheader{SORI v0.1 Technical Manual}
+\input{preamble}
+\begin{document}
+\sloppy
+
+\begin{titlepage}
+\centering\vspace*{40mm}
+{\sffamily\Huge\bfseries\color{navy} SORI v0.1\par}
+\vspace{4mm}
+{\sffamily\LARGE Technical Manual (테크니컬 매뉴얼)\par}
+\vspace{6mm}
+{\sffamily\large 계산 구조 · RLS-19 음원 · ISO 9613-2 / RLS-19 전파 · 반사 · 단면 · 검증 · 패키징\par}
+\vspace{20mm}
+{\large 전현수 (2022890065)\par}
+\vspace{2mm}
+{서울시립대학교 환경공학부 · 소음진동설계 (2026학년도 2학기)\par}
+\vspace{10mm}
+{문서 기준: 브랜치 \f{packaging/app} 커밋 \f{2376a59}\par}
+{작성일: 2026-11-02\par}
+\vfill
+\begin{minipage}{0.85\textwidth}\small
+\textbf{AI 활용 표기.} 본 매뉴얼과 SORI 소프트웨어는 AI(Claude, Anthropic)를 활용하여 제작하였다. 계산 결과의 검토·검증 책임은 사용자에게 있다.\par\vspace{2mm}
+\textbf{근거 표기.} 식·계수·조건은 코드(\f{sori/*.py})와 근거 문서(원문 대조 기록 \f{TECHNICAL\_NOTES.md}, \f{docs/작업기록\_*.md})에서 확인한 것만 적었다. 판정 표기: \textbf{원문} = 원문 규정 그대로, \textbf{해석} = 원문에 명시가 없어 원칙에서 이끈 것, \textbf{가정}·\textbf{프로젝트 설정} = 근거 수치 없이 정한 값. 확인하지 못한 것은 \nob{}로 표시하였다.
+\end{minipage}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+%% =====================================================================
+\section{개요}
+
+\subsection{목적과 범위}
+SORI 는 국내 수치지형도와 교통량으로 도로교통소음(격자·건물 벽면·점·단면)을 계산한다. 이 매뉴얼은 계산 구조, 식과 적용 조건, 가정·한계, 검증, 앱 패키징 구조를 기록한다. 사용법은 User's Manual 에 있다.
+
+\subsection{참조 표준}
+\begin{table}[h]\centering\small
+\caption{참조 표준과 판차}\label{tab:refs}
+\begin{tabularx}{\textwidth}{P{60mm}L}
+\toprule
+문서 & 쓰는 곳 \\ \midrule
+RLS-19, FGSV 052, Ausgabe 2019, Korrektur 04.03.2020 & 음원 식 (4)–(9), 표 2–5. 전파 3.5 식 (11)–(17), 3.6·표 8(\f{rls19}) \\
+ISO 9613-2:1996 & 전파 식 (3)–(20), 표 2–4(\f{iso9613\_2}) \\
+ISO 9613-1:1993 & 대기흡수계수 $\alpha$ \\
+「소음지도의 작성방법」 별표 2 제8호(기후에너지환경부고시 제2026-19호) & 반사 차수 ``3차 이상 원칙'', 전달감쇠에 KS I ISO 9613-1·-2 적용 허용 \\
+BASt TEST-20 v2.1(2021-09-16) & RLS-19 공식 시험과제 대조(9.4절) \\
+DIN 45682 & 지도 색 순서(근사 RGB) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+원문 tex·PDF 는 저장소 밖 \f{소음진동설계/02\_기준원문\_참고자료/원문/}(\f{RLS19\_main.tex}, \f{iso\_main.tex}, \f{TEST-20\_v2.1\_2021-09-16.pdf})에 있다. 번역본과 원문이 다른 2곳은 원문을 따랐다: 식 (8)은 곱($K_{KT}\cdot\max$), 3.1 은 올림(aufzurunden).
+
+%% =====================================================================
+\section{계산 구조}
+
+\subsection{build → run → plots}
+\begin{Verbatim}
+수치지도(B001 건물, A002 도로, F001 등고선, F002 표고점) + DEM + 교통량 + 교차로 + 녹지
+ └ build.py  지형 DTM(1 m)·DSM·건물 ID·지면계수 G 래스터 → model_rasters.npz
+             도로 위상 → 교차로 판정 → 음원선(RLS-19 Bild 6) → 구간 분할 → LW′(식 4~9) → sources.csv
+             파사드(반사면) · 격자 수음점(높이별) · 파사드 수음점(층별)
+ └ run.py    수음점마다 solver.compute: 직접음 + 1·2·3차 허상음원
+             geometry.path_geometry(공통 기하) → 감쇠(iso9613.atten_iso | rls19_propagation.atten_rls19)
+             Lr = 10 lg Σ 10^0.1(LW − (A − Dc))  → grid/facade/point_result.csv, run_info.json
+ └ plots.py · maps_hq.py · viewer3d.py   확인용 그림, A3 보고서 지도(HQ_*), 3D 웹 뷰어
+ └ section.py (화면) 두 점 A→B 단면 수음점 → run._run(격자와 같은 함수)
+\end{Verbatim}
+
+\subsection{모듈}
+\begin{longtable}{P{36mm}P{116mm}}
+\caption{모듈 구성(\f{sori/})}\label{tab:mods}\\
+\toprule 모듈 & 역할 \\ \midrule\endfirsthead
+\toprule 모듈 & 역할 \\ \midrule\endhead
+\f{config.py} & YAML 설정 로더, 기본값 \f{DEFAULTS}, 상대경로를 설정 파일 기준으로 \\
+\f{inputs.py} & 수치지도·DEM·교통량·교차로·확인값 읽기, CSV 인코딩·칸 수 검사 \\
+\f{build.py} & 지형·건물·도로 모델, 교차로, 음원선 배치, 파사드·수음점 \\
+\f{rls19.py} & RLS-19 음원 식 (4)–(9), 표 2–5, 3.1 올림 \\
+\f{geometry.py} & 공통 전파 기하(수직단면, 고무줄 껍질, $h_m$, $z$, A·B·C) \\
+\f{iso9613.py} & ISO 9613-2 감쇠, ISO 9613-1 $\alpha$ \\
+\f{rls19\_propagation.py} & RLS-19 3.5 감쇠, 3.6 반사 조건 \\
+\f{propagation.py} & 전파 방법 객체(커널 인자·식 번호·미구현 항목·범례 문구), 혼용 방지 \\
+\f{solver.py} & numba 커널: 경로 탐색, 반사 채택, 에너지 합산 \\
+\f{run.py} & 수음점 묶음 계산, 결과 표·래스터, 구간 길이 진단 \\
+\f{section.py} & 단면 수음점 배치·계산 \\
+\f{terms.py} & 감쇠항별 중간값 \f{path\_terms.csv} \\
+\f{naming.py} & 결과 파일명 규칙 사본 \\
+\f{plots.py}, \f{maps\_hq.py}, \f{viewer3d.py} & 그림, A3 지도(\f{draw\_grid}·\f{layout}), 3D 뷰어 \\
+\f{resources.py} & 자료 경로(개발·앱 공통), 사용자 폴더, numba 캐시 위치 \\
+\bottomrule
+\end{longtable}
+
+\subsection{앱 층}
+\f{sori\_gui.py} 는 진입점이다: \f{--run}(화면 없이 계산), \f{--selfcheck}(자가 점검), 그 밖에는 \f{sori\_qt.py}(PySide6 화면)를 열고 PySide6 가 없으면 tkinter 화면을 연다. 화면은 계산 엔진을 호출만 하고 계산식을 갖지 않는다. 화면용 그리기는 보고서 그림과 같은 함수(\f{plots.draw\_facade\_3d}, \f{maps\_hq.draw\_grid})를 쓰며, 분리 전후 그림 파일이 픽셀 단위로 같음을 확인했다.
+
+%% =====================================================================
+\section{지형·기하 전처리}
+\begin{itemize}
+\item \textbf{래스터}: 지형 DTM 1 m, DSM, 건물 ID, 지면계수 G(기본 G = 0, 녹지 폴리곤 G = \f{soft\_G} = 1). 등고선 삼각망의 계단을 가우스 평활($\sigma$ 5 m, \f{terrain\_smooth\_m})로 줄인다.
+\item \textbf{건물}: 높이 = 층수 × 3.0 m(\f{floor\_height}, 높이 필드를 지정하면 그 값), 기저고 = 외곽 정점 지형고의 최솟값. 무벽건물 제외, 면적 4 m² 미만 제외.
+\item \textbf{파사드(반사면)}: 건물 외곽 변. 길이 2 m 미만 변은 반사에서 제외(TECHNICAL\_NOTES 5절).
+\item \textbf{격자 수음점}: 간격 \f{grid.step}(기본 5 m), 지면 위 높이 \f{heights}(기본 4 m). 4 m 는 EU END 기준이며 국내 고시 기준(1.5 m)과 다르다.
+\item \textbf{파사드 수음점}: 벽을 \f{piece}(10 m) 이하 조각으로 나눈 중점, 외벽 앞 \f{offset} 0.05 m, 높이 $z = z_0 + 2.8 + (\text{층}-1)\times 3.0$ m(\f{z\_in\_floor} = 2.8). 2.8 m 값의 근거 \nob.
+\item \textbf{래스터 이산화 보정}: 음원 1.5 m 이내 건물, 수음점 소속 건물의 수음점 1.5 m 이내, 반사 건물의 반사점 1.5 m 이내 표본은 지면 높이로 대체(\f{skip\_radius}, 프로젝트 설정).
+\end{itemize}
+
+%% =====================================================================
+\section{음원: RLS-19}
+
+\subsection{음향파워레벨}
+음원선 1 m 당 음향파워레벨(식 4):
+\begin{equation*}
+L_W' = 10\lg M + 10\lg\!\left[\frac{100-p_1-p_2}{100}\,\frac{10^{0.1L_{W,\mathrm{Pkw}}}}{v_\mathrm{Pkw}} + \frac{p_1}{100}\,\frac{10^{0.1L_{W,\mathrm{Lkw1}}}}{v_\mathrm{Lkw}} + \frac{p_2}{100}\,\frac{10^{0.1L_{W,\mathrm{Lkw2}}}}{v_\mathrm{Lkw}}\right] - 30
+\end{equation*}
+차종별(식 5) $L_{W,\mathrm{FzG}} = L_{W0,\mathrm{FzG}}(v) + D_{SD} + D_{LN} + D_K + D_\mathrm{refl}$, 기본값(식 6) $L_{W0} = A_W + 10\lg[1 + (v/B_W)^{C_W}]$.
+
+\begin{table}[h]\centering\small
+\caption{표 3 계수(\f{rls19.AW/BW/CW})}\label{tab:t3}
+\begin{tabular}{lccc}
+\toprule
+차종 & $A_W$ & $B_W$ & $C_W$ \\ \midrule
+Pkw & 88.0 & 20.0 & 3.06 \\
+Lkw1 & 100.3 & 40.0 & 4.33 \\
+Lkw2 & 105.4 & 50.0 & 4.88 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+\item 속도: 30 km/h 미만은 30 적용(2장 용어 정의). Pkw 와 Lkw 속도를 따로 받는다.
+\item 이륜자동차는 방출상 Lkw2(속도는 Pkw)로 다룬다는 원문 주석이 있으나, SORI 는 Krad 차량군을 따로 받지 않는다(TEST-20 E7 미지원, 9.4절).
+\item 표 2(도로유형별 주·야 $M$ 계수와 $p_1, p_2$): 예) \f{gemeinde} 주간 0.0575·3 \%·4 \%, 야간 0.0100·3 \%·4 \%. 입력이 빈 칸일 때만 쓴다.
+\end{itemize}
+
+\subsection{보정}
+\begin{itemize}
+\item \textbf{노면 $D_{SD}$}(3.3.5): 표 4a(Pkw·Lkw, $v \le 60$ / $> 60$)와 표 4b(블록 포장, 30/40/≥50 km/h). 표 4a 에 값이 없는 속도대는 0 dB 와 경고. 예) AC11: −2.7 / −1.9 / −1.9 / −2.1 dB.
+\item \textbf{종단경사 $D_{LN}$}(식 7a–c, $g$ 는 ±12 \% 로 제한):
+Pkw: $g<-6$ 이면 $\frac{g+6}{-6}\cdot\frac{90-\min(v,70)}{20}$, $g>2$ 이면 $\frac{g-2}{10}\cdot\frac{v+70}{100}$;
+Lkw1: $g<-4$ 이면 $\frac{g+4}{-8}\cdot\frac{v-20}{10}$, $g>2$ 이면 $\frac{g-2}{10}\cdot\frac{v}{10}$;
+Lkw2: $g<-4$ 이면 $\frac{g+4}{-8}\cdot\frac{v}{10}$, $g>2$ 이면 $\frac{g-2}{10}\cdot\frac{v+10}{10}$; 그 밖은 0. 경사는 평활 DTM 에서 도로선을 따라 30 m 구간으로 산정하며, 교통량 파일 \f{grade} 열로 직접 지정할 수 있다.
+\item \textbf{교차로 $D_K$}(식 8, 표 5): $D_K = K_{KT}\cdot\max\{1 - x/120;\ 0\}$, $K_{KT}$ = 3(신호), 2(회전), 0(기타). $x$ 는 원문상 음원선 교차점까지 거리이나 도로중심선 교차점까지 거리로 근사(차이 수 m, 최대 약 0.25 dB). 도로 위상(절점 차수)으로 각 도로 객체가 실제 접속한 교차로만 쓴다. 자동 판정: 차로수 ≥ 4 인 서로 다른 도로축 2개 이상이면 신호교차로. \f{dk\_rule: nearest\_signal} 은 가장 가까운 신호·회전 교차점 값과 큰 쪽(해석).
+\item \textbf{다중반사 $D_\mathrm{refl}$}(식 9): $\min\{2h_\mathrm{Beb}/w;\ 1.6\}$, $w \le 100$ m 일 때만. 도로를 향한 파사드 변과 도로축의 각도 5° 이내를 평행으로 판정, 맞벽 판정은 3점 중 2점.
+\end{itemize}
+
+\subsection{음원선 배치(3.2, 3.3.1, Bild 6)}
+주행방향마다 음원선을 두고 $M$ 을 반씩 나눈다(원문 ``im Regelfall''). 방향별 차로 수로 Bild 6 위치에 둔다. 음원 높이는 지면 위 0.5 m(3.2). 구간 길이는 고정(간선 3 m, 이면도로 5 m, 프로젝트 설정)이며, 3.2 주석의 경험칙 $l \le s/2$ 는 진단만 한다(\f{segment\_check.csv}). 결정 13항목(일방통행, 양방향 1차로, 홀수 차로, 중심선 위치, 차로폭, 횡단경사 등)과 판정(원문·해석·미확인 가정·가정값)은 \f{TECHNICAL\_NOTES.md} 5a절에 있다. 그중 미확인 가정: 도로중심선 = 방향 경계, 일방통행 진행방향 = 디지타이즈 방향, 홀수 차로 $\lceil n/2\rceil$, 차로폭 \f{auto}(2.75–3.5 m).
+
+%% =====================================================================
+\section{전파: ISO 9613-2 / RLS-19 선택}
+
+\subsection{선택 구조}
+설정 \f{propagation\_method: iso9613\_2 | rls19}(기본 \f{iso9613\_2}). numba 커널 안에서는 Python 클래스를 쓸 수 없어 두 층으로 나눈다. \f{propagation.PropagationModel}(\f{ISO9613Propagation}, \f{RLS19Propagation})이 커널 인자(방법 코드, 대역, 반사 이득)와 식 번호·미구현 항목·범례 문구를 만들고, \f{solver.compute} 가 방법 코드로 감쇠식과 반사 채택 조건을 고른다. 기하(\f{geometry.path\_geometry})는 공통이므로 두 결과의 차이는 식에서만 생긴다.
+
+\begin{itemize}
+\item \textbf{메타데이터}: \f{run\_info.json} 에 \f{propagation\_method}, \f{method\_label}, \f{equations}, \f{representative\_frequency\_hz}, \f{reflection\_loss}, \f{reflection\_order}, \f{not\_implemented} 등. GeoTIFF 태그 \f{PROPAGATION\_METHOD}.
+\item \textbf{혼용 방지}: 같은 결과 폴더에 다른 방법의 결과가 있으면 \f{run} 중단. 지도·3D 뷰어는 \f{run\_info.json} 의 방법이 하나이고 설정과 같을 때만 만든다.
+\item \textbf{분리 확인}: 분리 전후 기준 사례 CSV 바이트 동일, 전농사거리 기준선 SHA-256 동일.
+\end{itemize}
+
+\subsection{공통 기하(\f{geometry.py})}
+음원 S →[반사점]→ 수음점 R 의 전개된 수직단면을 \f{profile\_step}(1 m) 간격으로 표본한다.
+\begin{itemize}
+\item 차폐: 단면의 상부 볼록 껍질(고무줄법, RLS-19 3.5.5 주석). 회절 모서리 1개 = 단일, 2개 이상 = 다중(첫·끝 모서리, 사이 경로 = RLS-19 $C$ = ISO $e$). $z = A + B + C - s$.
+\item 평균 높이 $h_m = F/s_\mathrm{gr}$(RLS-19 3.5.4, 그림 11). $F$ 는 부호 있는 면적이고 수음점 앞 마지막 표본 뒤 구간은 $h_r$ 로 더한다(TEST-20 I5·I6 로 확인, 2026-10-29). ISO 그림 3 의 $h_m = F/d$ 의 $d$ 가 수평거리인지는 \nob{}(코드는 두 방법 모두 $F/s_\mathrm{gr}$).
+\item 지면계수 $G_s, G_r, G_m$: 경로를 따라 G 래스터 평균(ISO 7.3.1 영역 구분).
+\item 측면 회절, 가시선 위 장애물의 음(−)의 $z$ 는 고려하지 않는다.
+\end{itemize}
+
+\subsection{ISO 9613-2(\f{iso9613\_2})}
+$L = L_W + D_c - A$, $A = A_\mathrm{div} + A_\mathrm{atm} + A_\mathrm{gr} + A_\mathrm{bar}$($A_\mathrm{misc}$ = 0).
+\begin{itemize}
+\item 식 (7) $A_\mathrm{div} = 20\lg d + 11$($d \ge 0.1$ m 하한, 프로젝트 설정).
+\item 식 (8) $A_\mathrm{atm} = \alpha d/1000$. $\alpha$ 는 ISO 9613-1 식으로 계산(기본 15 °C, 70 \%, 101.325 kPa → 500 Hz 에서 2.36 dB/km). ISO 9613-2 표 2 의 8개 값을 1 \% 안에서 재현(시험).
+\item 식 (9) 일반법(기본): $A_\mathrm{gr} = A_s + A_r + A_m$, 표 3. 500 Hz: $A_{s,r} = -1.5 + G\,[1.5 + 14\,e^{-0.46h^2}(1-e^{-d_p/50})]$, $A_m = -3q(1-G_m)$, $q = 0$($d_p \le 30(h_s+h_r)$) 또는 $1 - 30(h_s+h_r)/d_p$.
+\item 식 (10) 대안법: $A_\mathrm{gr} = 4.8 - (2h_m/d)(17 + 300/d) \ge 0$, 식 (11) $D_\Omega = 10\lg\{1 + [d_p^2 + (h_s-h_r)^2]/[d_p^2 + (h_s+h_r)^2]\}$, $D_c = D_\Omega$. 대안법은 다공성 지면 전제라 포장 지면에서는 적용 조건 미충족 — 기본은 일반법.
+\item 식 (12) $A_\mathrm{bar} = D_z - A_\mathrm{gr}$(> 0 일 때만). 식 (14) $D_z = 10\lg[3 + (C_2/\lambda)C_3 z K_\mathrm{met}]$, $C_2$ = 20, $C_3 = [1 + (5\lambda/e)^2]/[1/3 + (5\lambda/e)^2]$(다중), $K_\mathrm{met} = \exp[-\frac{1}{2000}\sqrt{d_{ss}d_{sr}d/(2z)}]$, 상한 20 dB(단일)/25 dB(다중). $\lambda = 340/f$.
+\item 주파수: RLS-19 는 A 가중 단일값만 주므로 ISO 9613-2 1절 비고 1 에 따라 500 Hz 1대역(기본). 옥타브 스펙트럼은 출처를 확보하지 못해 쓰지 않는다.
+\item 기상: 순풍 조건 $L_{AT}(DW)$, $C_\mathrm{met}$ 미적용.
+\end{itemize}
+
+\lb{RLS-19 음원과의 결합} RLS-19 의 $L_W$ 는 반공간(Ω = 2π) 방사 기준이다. ISO 일반법에서 단단한 지면(G = 0)·근거리(q = 0)이면 $A_\mathrm{gr} = -3$ dB 이므로 $L = L_W - (20\lg d + 11) + 3 = L_W - 10\lg(2\pi d^2)$(오차 0.02 dB)가 되어 반공간 정의와 맞는다. 그래서 점음원 $L_W = L_W' + 10\lg l$ 을 ISO 식 (3)의 $L_W$ 로 쓰고, 일반법은 $D_c = 0$, 대안법은 $D_c = D_\Omega$ 로 한다. 직선 음원 해석해와 0.05 dB 안에서 맞음(시험). 이 결합은 어느 표준도 규정하지 않은 \textbf{프로젝트 구성 방법}이다. 국내 고시 제8호는 전달감쇠에 KS I ISO 9613 적용을 허용하나 예측식의 결합을 정한 것은 아니다(해석).
+
+\subsection{RLS-19 3.5(\f{rls19})}
+식 (11) $D_A = D_\mathrm{div} + D_\mathrm{atm} + \max\{D_\mathrm{gr};\ D_z\}$.
+\begin{itemize}
+\item 식 (12) $D_\mathrm{div} = 20\lg s + 10\lg 2\pi$(지면 반사를 2π 에 포함, 원문 주석). 식 (13) $D_\mathrm{atm} = s/200$.
+\item 식 (14) $D_\mathrm{gr} = \max\{4.8 - (h_m/s)(34 + 600/s);\ 0\}$. 식 (14) ≡ ISO 식 (10)(대수적으로 같음, 61×61 격자에서 1e-12 안).
+\item 식 (15) $D_z = 10\lg[3 + 80\,z\,K_w]$, 상한 규정 없음. 식 (17) $K_w = \exp[-\frac{1}{2000}\sqrt{ABs/(2z)}]$. 다중 회절은 $C$ 를 $A$·$B$ 중 큰 쪽에 더한다(3.5.5). $A = B$ 이면 $A$ 에 더함(원문에 규정 없음, 해석).
+\item 측면 회절은 규정상 제외. A 가중 단일값(대역 없음).
+\end{itemize}
+
+\subsection{두 방법 비교}
+\begin{longtable}{P{18mm}P{50mm}P{50mm}P{30mm}}
+\caption{항별 대응(\f{TECHNICAL\_NOTES.md} 4b절)}\label{tab:cmp}\\
+\toprule 항 & RLS-19 & ISO 9613-2 & 관계 \\ \midrule\endfirsthead
+\toprule 항 & RLS-19 & ISO 9613-2 & 관계 \\ \midrule\endhead
+발산 & $20\lg s + 10\lg 2\pi$ & $20\lg d + 11$ & 3.01 dB 차(지면 반사 위치) \\
+대기 & $s/200$(5 dB/km) & $\alpha d/1000$(2.36 dB/km) & 다름 \\
+지면 & 식 (14) & 식 (9) 또는 (10)+$D_\Omega$ & (14) ≡ (10) \\
+차폐 & $10\lg[3 + 80zK_w]$, 상한 없음 & $10\lg[3 + (C_2/\lambda)C_3zK_\mathrm{met}]$, 상한 20/25 & 다름 \\
+반사 & 3.6 높이 조건, $D_{RV}$ 0.5 dB/회 & 식 (19), $10\lg\rho$($\rho$ = 0.8) & 다름, 작도 공통 \\
+\bottomrule
+\end{longtable}
+\f{tools/compare\_methods.py}(평탄, G = 0, $h_s$ 0.5 m, $h_r$ 4 m): 차폐 없음에서 RLS − ISO 일반법은 50–200 m 에서 +2.9 – +5.9 dB(지면항 차이: ISO 일반법 G = 0 은 음수, RLS 식 (14)는 0 이상), 대안법과는 +0.1 – +0.5 dB. 방음벽 + 대안법은 +1.9 – +4.3 dB — ISO 대안법의 $D_\Omega$ 가 차폐 경로에도 더해지는데, 이것이 $D_z$($C_2$ = 20)와 중복인지는 \nob. 차이는 두 기준의 차이이며 오류가 아니다. 기준 사례 전체(반사 포함) RLS − ISO: 격자 LrT 중앙 −1.2 dB, 벽면 −0.7 dB.
+
+TEST-20 3절은 RLS-19 전파가 ISO 9613-2 식 (7)(8)(10)(11)(14)를 $\alpha$ = 5 dB/km, $D_\Omega$ = 3 dB 고정, $C_2$ = 20, $\lambda$ = 0.5 m 로 쓴 것과 같다고 밝힌다($h_m$ 계산은 약간 다름).
+
+%% =====================================================================
+\section{반사}
+
+\subsection{허상음원과 채택 조건}
+반사면에 대칭으로 허상음원을 두고 경로 S → P1 → [P2 → P3] → R 를 작도한다(두 벽 왕복 $f_1 = f_3$ 허용). 반사마다 채택 조건을 적용한다.
+\begin{itemize}
+\item \textbf{ISO 7.5}: 거울반사 작도 가능, $\rho > 0.2$, 식 (19) $1/\lambda > \frac{2}{(l_\mathrm{min}\cos\beta)^2}\cdot\frac{d_{so}d_{or}}{d_{so}+d_{or}}$(대역별). 이득 식 (20) $10\lg\rho$, $\rho$ = 0.8(표 4 ‘창이 있는 건물 벽’), 무지향($D_{Ir}$ = 0).
+\item \textbf{RLS-19 3.6}: $h_R \ge 1.0$ m 이고 $h_R \ge 0.3\sqrt{a_R}$. $h_R$ = 벽면 높이, $a_R$ = 음원–반사체·반사체–수음점 수평 거리 중 작은 값(둘 다 해석). 손실 $D_{RV}$ = 0.5 dB/회(표 8 ‘건물 외벽 및 반사성 방음벽’). 식 (19)는 쓰지 않는다.
+\item 2차 이득 = 1회 이득², 3차 = 1회 이득³.
+\end{itemize}
+
+\subsection{차수(기본 3차)}
+기본 차수는 격자·벽면·점 모두 3(\f{max\_order\_grid/\_facade/\_point}). 근거는 「소음지도의 작성방법」 별표 2 제8호 ``반사차수는 3차 이상 … 원칙''(주변 환경을 고려해 변경 가능)이며, RLS-19 3.6(1·2차)을 넘는 국내 조건이다. 2026-10-29 이전 기본값은 1/2/2.
+\begin{itemize}
+\item 탐색 제한(프로젝트 설정): 마지막 반사면은 수음점 \f{r\_second}(50 m) 이내, 앞 반사면은 다음 면과 중심 거리 50 m 이내이고 서로 마주보는 면(\f{solver.facade\_neighbors}).
+\item 중심 투영 가지치기(\f{solver.\_beam})는 결과 불변(비트 동일 확인). 3차는 2차보다 약 6배 느림.
+\item 영향(전농사거리 표본, 2→3차): LrT 변화 중앙 0.02–0.03 dB, 95 \% 0.6 dB, 최대 3.7 dB(격자)/1.1 dB(벽면).
+\end{itemize}
+
+\subsection{수음점 외벽(\f{own\_facade})}
+RLS-19 1장 ‘Immissionsort’ 주석은 ``마지막 반사가 수음점이 속한 외벽에서 일어나는 경로''만 제외한다. 기본 \f{last} 는 그대로 따르고, \f{all}(2026-10-29 이전 동작)은 모든 반사 순서에서 그 외벽을 제외한다. TEST-20 K2 에서 찾았다(\f{all} 이면 2차 반사가 없어 −0.37 dB). 기준 사례 벽면 LrT 새 − 이전: 중앙 +0.05, 95 \% +0.79, 최대 +3.28 dB. 기준선 설정은 \f{all} 을 명시해 원래 코드와의 비교 의미를 유지한다.
+
+\subsection{$D_\mathrm{refl}$ 과 허상음원}
+두 방법 모두 음원에 $D_\mathrm{refl}$(식 9)을 넣고 허상음원 반사도 계산한다(원문 3.3.8, 3.6; 사용자 결정 2026-10-29). 이중 계상 가능성은 \f{run\_info.json} 의 \f{D\_refl\_note} 에 기록한다.
+
+%% =====================================================================
+\section{합산과 지표}
+\begin{equation*}
+L_r = 10\lg \sum_i \sum_b w_b\, g_i\, 10^{0.1[L_{W,i} - (A - D_c)_{ib}]}
+\end{equation*}
+($i$ = 음원 구간·경로, $b$ = 대역, $w_b$ = 대역 가중, $g_i$ = 반사 이득. \f{solver.py} 머리말: ISO 식 (3)(5) / RLS-19 식 (2)). 주간 LrT(06–22시)·야간 LrN(22–06시)은 각각의 $M$, $p_1$, $p_2$ 로 계산한 $L_W'$ 을 쓴다. 기준 비교값 \f{LrT\_cmp} 은 3.1 에 따라 정수로 올린다(\f{rls19.round\_up}). 성분 \f{LrT\_direct}, \f{\_refl1}, \f{\_refl2}, \f{\_refl3} 을 함께 낸다.
+
+%% =====================================================================
+\section{단면 계산(\f{sori/section.py})}
+\begin{enumerate}
+\item 선 A→B(길이 $L$, 1 m 미만이면 오류)를 0.5 m 간격으로 표본해 지면고와 지붕 높이(DSM)를 구한다. 높이 범위 = 최저 지면고 ~ (최고 지붕 또는 지면 + 10 m).
+\item 간격: 점 수가 \f{max\_points}(4,000) 안쪽이 되게 $k = \sqrt{4000/(LH)}$ 로 정하고 $\Delta s = \max(1, \lceil 1/k \rceil)$ m, $\Delta z = \max(0.5, \lceil 2/k\rceil/2)$ m.
+\item 계산점: 모델 범위 안이고 지면 위($z > z_g + 0.05$)이며 건물이면 지붕 위($z > z_\mathrm{top} + 0.05$). 그 밖은 NaN.
+\item \f{run.\_run}(격자와 같은 함수)으로 계산. 반사 차수 = \f{max\_order\_grid}. 수음점 소속 건물·외벽은 없음(−1).
+\item 저장: \f{section\_result.csv}(s, x, y, z, zg, h, inside\_building, LrT, LrN, 성분), \f{section\_info.json}(끝점·간격·계산점 수·반사 차수·지형·지붕 단면), 규칙 이름 사본.
+\end{enumerate}
+검증: 단면 점 = \f{run.\_run} 직접 계산(시험), 같은 위치 지면 위 4 m 값이 격자 결과와 최대 0.007 dB(28점). 음원 바로 위 낮은 점은 근거리 값이 크다(전농사거리 최대 94.5 dB 관찰).
+
+%% =====================================================================
+\section{검증}
+
+\subsection{pytest}
+\f{QT\_QPA\_PLATFORM=offscreen .venv/bin/python -m pytest -q tests}: \textbf{236 통과, 1 xfailed}(2026-11-02, \f{2376a59}, 41 s).
+\begin{longtable}{P{52mm}P{10mm}P{90mm}}
+\caption{시험 파일별 수집 개수와 내용}\label{tab:tests}\\
+\toprule 파일 & 개수 & 내용 \\ \midrule\endfirsthead
+\toprule 파일 & 개수 & 내용 \\ \midrule\endhead
+\f{test\_verification.py} & 45 & 원문 식 재계산(같은 식을 다시 계산한 자기 일관성 확인, 원문 수치표 대조 아님), $\alpha$ 표 2, $A_\mathrm{gr}$·$D_z$ 수계산, 직선 음원 해석해(0.05 dB), 1·2·3차 반사 수계산(1e-6), 교차로 위상, 입력·음원 배치 회귀 \\
+\f{test\_rls19\_propagation.py} & 15 & RLS-19 식 (11)–(17) 수계산, 반사 높이 조건, 설정·메타데이터·혼용 방지 \\
+\f{test\_method\_verification.py} & 16 & 거리별 수계산(RLS, ISO 일반·대안), 경계, 식 (14) ≡ (10), 감쇠항 CSV 닫힘(1e-6 dB) \\
+\f{test\_test20\_emission.py} & 122 & TEST-20 방출 E1–E7(1개 xfail: Krad) \\
+\f{test\_test20\_immission.py} & 20 & TEST-20 전파 I1–I9·K1–K5(프로젝트 허용 오차 0.05 dB) \\
+\f{test\_reference.py} & 3 & 기준 사례 재계산 비교(0.01 dB) \\
+\f{test\_crs.py} & 6 & 좌표 변환(EPSG) \\
+\f{test\_section.py} & 3 & 단면 배치·직접 계산·격자 비교 \\
+\f{test\_naming.py} & 3 & 파일명 규칙 \\
+\f{test\_gui\_qt.py} & 4 & 화면(열기·클릭·3D·단면·저장, 설정 격리) \\
+\bottomrule
+\end{longtable}
+DEM 재투영 시험은 없다(이전 판에 통과로 잘못 적혀 있었음, 2026-10-17 정정).
+
+\subsection{기준 사례와 자가 점검}
+저장소의 가상 교차로(실제 지역 아님, \f{tests/reference/synthetic/})를 계산해 기준값과 비교한다. 허용 오차 0.01 dB·m 단위(프로젝트 임의 설정). 기준값은 \f{tools/reference.py make} 로 만들고 커밋·환경은 \f{expected/meta.json} 에 남는다. 마지막 재생성: \f{572fb72}(코드 \f{952f07d}, \f{own\_facade: last}). 앱의 자가 점검은 같은 비교와 좌표 변환 8항목을 앱 안에서 실행한다. 결과: macOS 로컬·Actions macOS·Actions Windows(화면 없이) 모두 최대 차이 5e-11 dB(CSV 저장 자릿수 수준).
+
+\subsection{좌표 변환}
+EPSG 5186·5179·4326 사이 변환을 기준값과 비교(pyproj·rasterio). 세 환경 모두 통과, Windows 차이 0.0.
+
+\subsection{RLS-19 공식 시험과제 TEST-20}
+합격 기준(TEST-20 3절): 방출·전파 모두 시험결과와 ±0.01 dB.
+\begin{itemize}
+\item 방출 E1–E7: 122 항목 중 121 통과, E7 외곽 1 은 Krad 차량군 미지원(손계산 91.52 dB 는 일치).
+\item 전파 I1–I9·K1–K5: 지형·벽·건물을 래스터로 만들어 \f{solver.compute}(rls19, 2차 반사, $D_{RV}$ 0.5 dB)로 재현. 엄격 기준 18/20 통과. I5 IO2 −0.02 dB(래스터 벽 모서리 위치 오차), K4 +0.04 dB(구간 나누기에 따라 43.50–43.67 dB, TEST-20 구간 배치는 원문에 없음).
+\item 기준 범위(기준 설정): I9·K4 는 범위 밖. 기준 설정의 정의(DIN ISO 17534-1)는 열람하지 못해 재현하지 않음 \nob.
+\item 대조로 고친 것: 수음점 외벽 반사 규칙(6.3절), $h_m$ 끝 구간·부호 있는 면적, numba 캐시(10.3절).
+\end{itemize}
+
+\subsection{전농사거리 기준선}
+\f{python tools/check\_baseline.py}: \f{baseline/} 의 \f{sources.csv}·\f{lv\_base.csv} SHA-256 비교(맨 앞 BOM 제외, 약 1분). 기본값에서 결과가 바뀌지 않았는지 확인하는 용도이며, 기준선 설정은 생성 당시 차수(1/2)와 \f{own\_facade: all} 을 명시한다. 2026-10-29 엔진 변경 각 단계(분리, 3차 구현, 기본값 변경)에서 동일을 확인했다.
+
+\subsection{미해결 검증}
+\begin{itemize}
+\item \textbf{RLS-19 다이어그램 III}: SORI 계산이 원문 그림 판독값보다 $h$ = 0 m 에서 0.8–1.0 dB, 높을수록 최대 4.6 dB 작다. TEST-20 은 높은 수음점도 본문 식으로 맞으므로 다이어그램 쪽 생성 조건 차이로 판단하고 본문 식을 유지했다. 통과로 처리하지 않음.
+\item 실제 Windows PC 화면 미확인(패키징). 현장 측정 비교는 \f{field\_measurement/2026-10-22} 에 있으며 이 매뉴얼에서는 다루지 않는다.
+\end{itemize}
+
+%% =====================================================================
+\section{패키징 구조}
+
+\subsection{PyInstaller(\f{SORI.spec})}
+\begin{itemize}
+\item onedir·windowed(\f{console=False}). 결과: macOS \f{dist/SORI.app}, Windows \f{dist/SORI/SORI.exe}. UPX 미사용.
+\item \f{sori} 는 \f{.py} 원본째 넣음(\f{module\_collection\_mode}) — numba \f{cache=True} 는 원본 파일이 있어야 동작.
+\item 데이터: sori 의 templates·vendor(three.js)·fonts(Noto Sans KR, OFL), 기준 사례 \f{tests/reference/synthetic}, Qt 고지 \f{licenses/THIRD\_PARTY\_Qt.txt}, pyproj·rasterio·pyogrio 데이터(PROJ·GDAL).
+\item hiddenimports: sori 하위 모듈, \f{reference\_case}, \f{sori\_qt}, rasterio·pyproj·pyogrio 하위 모듈 전체(Cython 내부 import), matplotlib 백엔드 agg·pdf·qtagg.
+\item excludes: streamlit·folium·pytest·IPython·PyQt5/6, PySide6 의 WebEngine·Qt3D·QtQuick.
+\item Qt(PySide6)는 LGPLv3. onedir 라 Qt 라이브러리를 사용자가 바꿔 끼울 수 있다.
+\end{itemize}
+
+\subsection{macOS dylib 후처리(\f{packaging/macos\_fix\_dylibs.py})}
+pyproj·rasterio 휠이 같은 이름 \f{libproj.25.9.8.1.dylib} 를 넣는데 rasterio 판은 심볼이 \f{internal\_proj\_*} 로 바뀌어 있다. PyInstaller 가 최상위에 하나만 연결하면 \f{Symbol not found: \_proj\_context\_create} 로 실패한다. 후처리는 \f{Contents/Frameworks/<패키지>/\_\_dot\_\_dylibs} 가 있는 패키지마다 자기 사본을 \f{@loader\_path} 상대경로로 가리키게 고치고 install name 을 패키지별로 바꾼 뒤 ad-hoc 재서명한다(2026-10-29: 이름 겹침 9개, 72개 파일). Windows(delvewheel)·Linux(auditwheel) 휠은 라이브러리 이름에 해시를 붙여 이 문제가 없다. PyInstaller·휠 판을 올리면 앱 \f{--selfcheck} 로 다시 확인해야 한다.
+
+\subsection{numba 캐시}
+\begin{itemize}
+\item 개발 실행: \f{sori/\_\_init\_\_.py} 가 \f{sori/*.py} 내용의 SHA-256 이 바뀌면 \f{sori/\_\_pycache\_\_} 의 \f{*.nbi}·\f{*.nbc} 를 지운다. \f{cache=True} 는 다른 모듈의 njit 함수(예: \f{geometry.path\_geometry})가 바뀌어도 부르는 쪽 캐시를 다시 만들지 않기 때문이다(2026-10-29 확인).
+\item 앱(frozen): 번들 안에 쓰면 서명이 깨지므로 위 정리를 건너뛴다. \f{resources.setup\_numba\_cache} 가 \f{NUMBA\_CACHE\_DIR} 을 사용자 폴더 \f{numba\_cache/<sori 소스 해시 12자리>} 로 정하고, numba 가 먼저 import 된 경우 \f{numba.core.config.reload\_config()} 로 다시 읽게 한다. 앱 판이 바뀌면 다른 폴더를 써 옛 캐시를 쓰지 않는다.
+\item 사용자 폴더: macOS \f{\textasciitilde/Library/Application Support/SORI}, Windows \f{\%LOCALAPPDATA\%\textbackslash SORI}. 같은 곳에 \f{settings.json}(지난번 설정·결과 폴더).
+\end{itemize}
+
+\subsection{자료 경로}
+\f{resources.resource\_path} 는 개발 실행이면 저장소 루트, 앱이면 \f{sys.\_MEIPASS}(onedir 의 \f{\_internal}) 기준이다. 결과 기본 위치는 \f{문서/SORI}. 프로그램 폴더 안에는 쓰지 않는다.
+
+\subsection{CI(\f{.github/workflows/build.yml})}
+Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{requirements-build.txt}) → \f{pytest tests} → PyInstaller → 빌드한 앱으로 \f{--selfcheck}, \f{--run}(기준 사례 입력), \f{tools/reference.py compare}, macOS \f{codesign --verify} → zip 과 점검 기록 업로드. Windows 는 창 실행 파일이라 표준 출력이 없어 종료 코드와 결과 파일로 판정한다. 화면(GUI) 동작은 CI 에서 확인하지 않는다. 마지막 실행 41304716344(\f{2376a59}) 성공.
+
+%% =====================================================================
+\section{가정·한계·근거 미확인}
+\begin{itemize}
+\item 교통량: 입력이 없는 도로는 차로수별 가정 DTV. $M$ 한쪽 보충(\f{missing\_m: estimate})은 표 2 계수 비율이라 서울 간선에서 LrN 이 약 4.2 dB 과소 계산될 수 있다(TECHNICAL\_NOTES 5a-12).
+\item 단단한 지면의 장거리: ISO 일반법(G = 0)은 먼 지점에서 RLS-19 전파식보다 최대 약 3 dB 높다(기준 차이).
+\item 도로 종단경사는 자연지형 등고선 기준이라 깎거나 쌓은 도로와 다를 수 있다(\f{grade} 열로 지정).
+\item 미구현: 측면 회절(ISO 식 13), 음의 $z$, $A_\mathrm{misc}$, $C_\mathrm{met}$, 4차 이상 반사, Krad 차량군, 감쇠항 CSV 의 2·3차 경로.
+\item 국내 고시의 다른 원칙(영향 소음원 거리 2,000 m, 격자 높이 1.5 m, 지역 5년 연평균 기상)은 기본값에 없음.
+\item \nob: ISO $h_m = F/d$ 의 $d$, ISO 대안법 $D_\Omega$ 와 $D_z$ 중복, 다이어그램 III 적분 변수(단위 길이 적분으로 해석), TEST-20 기준 설정(DIN ISO 17534-1), 파사드 수음점 높이 2.8 m, 차로폭 국내 규칙 값, 횡단경사 2 \%(가정값).
+\item 해석: RLS 3.6 $h_R$(벽면 높이)·$a_R$(수평 거리), 다중 회절 $A = B$ 일 때 $C$ 를 $A$ 에, $D_\mathrm{refl}$ 과 허상음원 반사의 함께 적용(이중 계상 가능성 기록), 교차로 \f{nearest\_signal}.
+\end{itemize}
+
+%% =====================================================================
+\section{변경 이력}
+\begin{longtable}{P{22mm}P{24mm}P{106mm}}
+\caption{계산에 영향을 준 주요 변경(앱 개발 기간)}\label{tab:hist}\\
+\toprule 날짜 & 커밋 & 내용 \\ \midrule\endfirsthead
+\toprule 날짜 & 커밋 & 내용 \\ \midrule\endhead
+2026-10-29 & \f{93e8329} & 공통 기하와 ISO 감쇠 분리, RLS-19 전파, \f{propagation\_method}(ISO 결과 바이트 동일) \\
+2026-10-29 & \f{a42c664} & 3차 허상음원 반사, 이웃 목록·가지치기 \\
+2026-10-29 & \f{e9d1298} & 기본 반사 차수 3/3/3 \\
+2026-10-29 & \f{0fd0763} & 파일명 규칙 사본 \\
+2026-10-29 & \f{952f07d} & TEST-20 대조, \f{own\_facade: last}, $h_m$ 끝 구간·부호 있는 면적, numba 캐시 정리 \\
+2026-10-30 & \f{8e102af} & 앱에서 캐시 정리 건너뜀, 캐시 폴더 소스 해시별 \\
+2026-11-01 & \f{46d5b62} & 단면 계산 \f{sori/section.py}, \f{plots.draw\_facade\_3d} 분리(그림 불변) \\
+2026-11-01 & \f{6ccc855} & \f{maps\_hq.draw\_grid}·\f{layout} 분리(그림 불변) \\
+\bottomrule
+\end{longtable}
+그 이전 변경(원래 코드 대비 수정 1–27, 도로 음원 모델링 S1–S10)은 \f{TECHNICAL\_NOTES.md} 4절에 있다.
+
+%% =====================================================================
+\appendix
+\section{식 ↔ 함수 대응}
+\begin{longtable}{P{52mm}P{100mm}}
+\toprule 원문 & 함수 \\ \midrule\endfirsthead
+\toprule 원문 & 함수 \\ \midrule\endhead
+RLS-19 식 (4) / (5)(6) 표 3 & \f{rls19.LW\_prime} / \f{LW\_vehicle}, \f{LW0} \\
+RLS-19 표 4a·4b / 식 (7) & \f{rls19.D\_SD} / \f{D\_LN} \\
+RLS-19 식 (8) 표 5 / 식 (9) & \f{rls19.D\_K}(+ \f{build} 교차로) / \f{D\_refl}(+ \f{build.detect\_canyon}) \\
+RLS-19 표 2 / 3.1 & \f{rls19.TAB2} / \f{round\_up} \\
+RLS-19 3.3.1, Bild 6 & \f{build.lane\_layout}, \f{source\_offsets} \\
+RLS-19 식 (11)–(17) & \f{rls19\_propagation.D\_A}, \f{D\_div}, \f{D\_atm}, \f{D\_gr}, \f{D\_z}, \f{K\_w} \\
+RLS-19 3.6, 표 8 & \f{rls19\_propagation.accept\_reflection}, \f{solver.\_accept}, \f{propagation.RLS19Propagation} \\
+ISO 식 (7)(8) / ISO 9613-1 & \f{iso9613.A\_div}, \f{A\_atm} / \f{alpha\_iso9613\_1} \\
+ISO 식 (9) / (10)(11) & \f{iso9613.A\_gr\_general} / \f{A\_gr\_alternative}, \f{D\_omega} \\
+ISO 식 (12)(14)(18) & \f{iso9613.D\_z}, \f{atten\_iso} \\
+ISO 7.5 식 (19)(20) & \f{solver.\_crit}, \f{compute} \\
+ISO 식 (3)(5) 합산 & \f{solver.compute}, \f{\_band\_factor} \\
+공통 기하 & \f{geometry.path\_geometry} \\
+단면 & \f{section.receivers}, \f{compute}, \f{main} \\
+\bottomrule
+\end{longtable}
+
+\section{기호}
+\begin{tabularx}{\textwidth}{P{28mm}L}
+\toprule
+$L_W'$, $L_W$ & 음원선 1 m 당 / 점음원 음향파워레벨 \\
+$M$, $p_1$, $p_2$, $v$ & 시간당 교통량, Lkw1·Lkw2 비율, 속도 \\
+$s$, $d$, $s_\mathrm{gr}$, $d_p$ & 3D 거리, 지면 투영 거리 \\
+$h_s$, $h_r$, $h_m$ & 음원·수음점 높이, 평균 높이 \\
+$z$, $A$, $B$, $C$($e$) & 경로차, 음원–첫 모서리, 끝 모서리–수음점, 모서리 사이 경로 \\
+$G$ & 지면계수(0 = 단단, 1 = 다공성) \\
+$\rho$, $D_{RV}$ & 반사계수(ISO), 반사 손실(RLS) \\
+\bottomrule
+\end{tabularx}
+
+\end{document}
