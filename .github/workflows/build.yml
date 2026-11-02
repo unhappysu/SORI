@@ -22,9 +22,9 @@ jobs:
     env:
       PYTHONUTF8: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"          # 로컬 개발 환경 Python 3.14.6 과 맞춤
           cache: pip
@@ -71,7 +71,7 @@ jobs:
           Compress-Archive -Path dist\SORI -DestinationPath "SORI-windows.zip"
 
       - name: 앱 업로드
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: SORI-${{ runner.os }}
           path: SORI-*.zip
@@ -79,7 +79,7 @@ jobs:
 
       - name: 점검 기록 업로드
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: selfcheck-${{ runner.os }}
           path: |
