@@ -245,7 +245,7 @@ Actions 40999508740(\f{8e102af}) & Windows·macOS 모두 성공, pytest 229 통�
 \begin{itemize}
 \item 새 화면 시험 1개(방법 선택 → 결과 폴더 \f{output\_rls19}, rls19 로 계산, 설정 파일 불변, 사본·실행 조건 기록, 결과를 다시 열면 칸이 결과 방법으로, 보고서 지도 표시). pytest 237 통과·1 xfailed.
 \item 다시 빌드한 \f{SORI.app}(611 MB): \f{--selfcheck} 통과(최대 차이 5.0e-11 dB), \f{--run}(기준 사례, \f{--method rls19}) 성공 — \f{run\_info.json} 의 결과 방법 grid·facade 모두 rls19. 실행 뒤 codesign 검증 통과. 빌드한 앱 화면을 \f{--snapshot} 으로 캡처해 전파 방법 칸 확인.
-\item Windows 는 이 변경을 확인하지 않음(Actions 미실행).
+\item GitHub Actions 41385892196(\f{b5f0e2d}): Windows 7분 47초·macOS 6분 57초 모두 성공, Windows \f{SORI.exe} 자가 점검 최대 차이 5e-11 dB. CI 는 기본 방법 예제 계산과 자가 점검만 하므로 Windows 에서 \f{--method}·전파 방법 칸 동작은 확인하지 않음(화면 없이 실행만, 실제 PC GUI 미확인).
 \end{itemize}
 
 %% =====================================================================
