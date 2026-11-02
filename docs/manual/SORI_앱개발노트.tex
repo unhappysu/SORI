@@ -1,0 +1,276 @@
+%% SORI 앱 개발노트 — 전현수 (2022890065), 2026-10-29 – 11-02
+%% 컴파일: docs/manual 에서 xelatex SORI_앱개발노트.tex (목차·참조 반영을 위해 2회) — build.sh
+%% 근거: git log(브랜치 packaging/app), docs/작업기록_2026-10-29_패키징.md, docs/작업기록_2026-10-29_전파방법.md,
+%%       GitHub Actions 실행 기록(gh run list/view), 2026-11-02 pytest 재실행
+%% 본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.
+\documentclass[10.5pt,a4paper]{article}
+\def\docheader{SORI 앱 개발노트}
+\input{preamble}
+\begin{document}
+\sloppy
+
+\begin{titlepage}
+\centering\vspace*{45mm}
+{\sffamily\Huge\bfseries\color{navy} SORI 앱 개발노트\par}
+\vspace{6mm}
+{\sffamily\large 더블클릭 앱 패키징(macOS·Windows)과 PySide6 결과 화면\par}
+\vspace{20mm}
+{\large 전현수 (2022890065)\par}
+\vspace{2mm}
+{서울시립대학교 환경공학부 · 소음진동설계 (2026학년도 2학기)\par}
+\vspace{10mm}
+{기록 기간: 2026-10-29 (목) – 2026-11-01 (일)\par}
+{작성일: 2026-11-02\par}
+\vfill
+\begin{minipage}{0.85\textwidth}\small
+\textbf{문서 구분.} 이 개발노트는 SORI v0.1 을 Python 설치 없이 쓰는 데스크톱 앱(\f{SORI.app}, \f{SORI.exe})으로 만든 과정의 소프트웨어 기록이다: 커밋, 목적, 수행 내용, 검증, 오류와 원인, 미해결 문제. 같은 기간 같은 브랜치의 계산 엔진 변경(전파 방법 선택, 반사 3차, TEST-20)은 다른 세션이 수행했으며 여기서는 앱에 영향을 준 부분만 요약하고, 자세한 내용은 \f{docs/작업기록\_2026-10-29\_전파방법.md}와 Technical Manual 에 있다. 수치는 커밋 메시지·작업기록·실행 결과에서 옮겼고, 실행하지 않은 검증은 적지 않았다. 확인하지 않은 내용은 \chk{}로 표시하였다.\par\vspace{2mm}
+\textbf{AI 활용 표기.} 본 개발노트는 AI(Claude, Anthropic)를 활용하여 제작하였다. 코드도 Claude 가 작성하였고, 나는 요구사항과 판단 기준을 정하고 결과를 확인하였다.
+\end{minipage}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+%% =====================================================================
+\section{개요}
+
+\begin{table}[h]\centering\small
+\caption{기간 요약}\label{tab:summary}
+\begin{tabularx}{\textwidth}{P{30mm}L}
+\toprule
+항목 & 내용 \\ \midrule
+저장소·브랜치 & \f{noisemap\_rls19\_iso9613}, \f{packaging/app}(분기점 \f{rename/sori} 의 \f{a96bb00}). 원격 github.com/unhappysu/SORI 에 push. \f{main} 에는 아직 합치지 않음 \\
+목적 & ① Python 없이 더블클릭으로 쓰는 앱(macOS·Windows) ② 결과를 보고서 수준 지도로 보는 데스크톱 화면 \\
+산출물 & \f{SORI.spec}(PyInstaller), \f{packaging/macos\_fix\_dylibs.py}, \f{.github/workflows/build.yml}, \f{sori\_gui.py}(tkinter·명령 모드), \f{sori\_qt.py}(PySide6 화면), \f{sori/section.py}(단면 계산) \\
+계산 엔진 & 앱 작업 자체는 계산식을 바꾸지 않음. 같은 기간 다른 세션이 엔진을 바꿈(\ref{sec:engine}절) \\
+시험 & 63 통과·1 생략(작업 전) → 236 통과·1 xfailed(2026-11-01 최종, 2026-11-02 \f{2376a59} 에서 다시 실행해 같음) \\
+앱 크기 & \f{dist/SORI.app} 552 MB(10-29, Qt 없음) → 611 MB(PySide6 포함, 2026-11-02 \f{du -sh} 로 확인) \\
+환경 & macOS 27.0.1 arm64, Python 3.14.6(\f{.venv}), PyInstaller 6.22.3 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[h]\centering\small
+\caption{확인 범위 구분(이 노트 전체에 적용)}\label{tab:scope}
+\begin{tabularx}{\textwidth}{P{28mm}L}
+\toprule
+환경 & 확인한 것 \\ \midrule
+macOS 로컬(arm64) & 빌드, 빌드한 앱의 \f{--selfcheck}·\f{--run}, \f{open dist/SORI.app} 실행, \f{codesign} 검증, 화면은 \f{--snapshot}(창을 PNG 로 저장)으로 캡처해 확인 \\
+GitHub Actions macOS 러너 & 빌드, pytest, 빌드한 앱의 \f{--selfcheck}·\f{--run}·기준 사례 비교, \f{codesign} 검증 \\
+GitHub Actions Windows 러너 & 빌드, pytest, \f{SORI.exe} 의 \f{--selfcheck}·\f{--run} 을 \textbf{화면 없이 실행만} 확인(Windows Server 2025, x64) \\
+실제 Windows PC & \textbf{미확인} — 화면(GUI), SmartScreen 경고 절차, Windows 10/11 일반 PC 실행 모두 확인하지 않음 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{longtable}{P{11mm}P{24mm}P{118mm}}
+\caption{커밋 목록(앱 관련, 시간순)}\label{tab:commits}\\
+\toprule
+날짜 & 커밋 & 주요 변경 \\ \midrule\endfirsthead
+\toprule 날짜 & 커밋 & 주요 변경 \\ \midrule\endhead
+10-29 & \f{6510a4c} & 의존성 버전 고정 \f{requirements-lock.txt}, 빌드 도구 \f{requirements-build.txt}, \f{.gitignore} \\
+10-29 & \f{d538ea6} & 회귀 시험: 기준 사례(가상 교차로) 기준값, \f{test\_reference.py}, 좌표 변환 \f{test\_crs.py}, \f{tools/reference.py} \\
+10-29 & \f{e055bf1} & 크로스플랫폼 정리: \f{sori/resources.py}, Noto Sans KR 글꼴 포함, CSV 인코딩 처리 \\
+10-29 & \f{5ceb52a} & tkinter 화면 \f{sori\_gui.py}(\f{--run}, \f{--selfcheck}), \f{SORI.command} \\
+10-29 & \f{08f638e} & \f{SORI.spec}, macOS dylib 충돌 후처리, numba 캐시 위치 수정 \\
+10-29 & \f{ff35ab1} & GitHub Actions 워크플로 \f{build.yml} \\
+10-29 & \f{5e5106a} & README 0.1절(더블클릭 앱), 패키징 작업기록 \\
+10-29 & \f{ea459c0}, \f{f3c5e86} & 워크플로 등록을 위한 빈 커밋·주석 \\
+10-29 & \f{7b69192} & 문서: Actions 결과 반영 \\
+10-29 & \f{4882ce7} & 화면: 지난번 설정 파일·결과 폴더 기억, \f{--config} \\
+10-29 & \f{757856d} & 문서: 화면 개편 1단계 설계안(별도 브랜치) \\
+10-29 & \f{d28cc5c} & PySide6(Qt) 화면 시제품(별도 브랜치 \f{claude/intelligent-austin-ef4384}) \\
+10-30 & \f{8e102af} & numba 캐시 정리가 앱 번들 안에 써서 서명이 깨지던 문제 수정 \\
+10-30 & \f{3acf815} & 기록: 최신 엔진 재빌드·CI·전농사거리 재계산 \\
+11-01 & \f{11321e3} & 합치기: Qt 화면 시제품을 \f{packaging/app} 에(충돌 없음) \\
+11-01 & \f{2eaeea7} & 화면: 건물 클릭 시 벽면 소음지도, 지도 PNG·PDF 저장 \\
+11-01 & \f{372f428} & 화면: 다른 설정의 결과 폴더가 섞여 열리던 문제 수정 \\
+11-01 & \f{46d5b62} & 화면: 건물 클릭 3D 파사드, 단면(수직) 소음지도(\f{sori/section.py}) \\
+11-01 & \f{6ccc855} & 화면: 격자 지도를 보고서 수준(\f{HQ\_grid} 와 같은 그림)으로 \\
+11-01 & \f{2376a59} & 시험: 화면 시험이 사용자 \f{settings.json} 을 바꾸지 않도록 격리 \\
+\bottomrule
+\end{longtable}
+
+%% =====================================================================
+\section{패키징 준비 (2026-10-29)}
+
+\subsection{의존성 고정과 회귀 기준 (\f{6510a4c}, \f{d538ea6})}
+\lb{목적} 앱으로 묶은 뒤에도 계산 결과가 개발 환경과 같은지 판정할 기준을 먼저 만든다.
+
+\lb{수행} \f{requirements-lock.txt} 에 실제 쓰는 패키지 판을 고정했다(numpy 2.5.4, numba 0.68.1, llvmlite 0.50.0, pandas 3.1.0, geopandas 1.2.0, pyogrio 0.13.0, shapely 2.2.0, rasterio 1.5.2, pyproj 3.8.0(PROJ 9.8.1), matplotlib 3.11.2). 저장소에 들어 있는 가상 교차로(실제 지역 아님)를 기준 사례로 정하고 결과를 \f{tests/reference/synthetic/expected/} 에 저장했다(\f{meta.json} 에 커밋·환경). 기준값과의 비교 허용 오차는 0.01 dB(프로젝트 임의 설정, \f{--sori-tol} 로 변경).
+
+\lb{검증}
+\begin{itemize}
+\item 작업 전 pytest: Anaconda 환경 63 통과·1 생략(field\_survey 의 \f{formulas} 모듈 없음), \f{.venv}(openpyxl 추가) 63 통과·1 생략.
+\item 기준값 생성 직후 같은 코드로 재계산: 최대 차이 5e-11 dB, 4.97e-7 m.
+\item 새 시험 9개를 다른 환경(Anaconda, numba 0.65.1, numpy 2.4.6)에서 실행: 통과.
+\item \f{--sori-tol 1e-12}: 의도대로 실패(허용 오차 옵션 동작 확인).
+\end{itemize}
+
+\subsection{크로스플랫폼 정리 (\f{e055bf1})}
+\lb{목적} 앱 번들 안에서도 자료 파일을 찾고, 한글 그림이 어느 PC 에서나 같게 나오게 한다.
+
+\lb{수행} \f{sori/resources.py}(\f{resource\_path}: 개발 실행·PyInstaller 공통, 사용자 폴더, 결과 기본 위치 \f{문서/SORI}). Noto Sans KR(SIL OFL 1.1)을 \f{sori/fonts} 에 넣고 그림 글꼴로 먼저 쓰게 했다. 결과 CSV 쓰기를 \f{utf-8-sig} 로 통일하고, \f{check\_baseline} 은 맨 앞 BOM 만 빼고 SHA-256 을 비교하게 했다. 계산 로직은 바꾸지 않았다.
+
+\lb{검증} pytest 72 통과·1 생략, 기준 사례 최대 차이 5e-11 dB, 전농사거리 기준선(\f{sources.csv}·\f{lv\_base.csv}) SHA 동일, 그림 글꼴이 Noto Sans KR 로 기록됨.
+
+\subsection{실행 진입점 (\f{5ceb52a}, \f{4882ce7})}
+\lb{수행} \f{sori\_gui.py}: 설정 파일·결과 폴더 선택, 계산 대상(격자·벽면·점), 계산 실행(별도 스레드)·진행 막대·경고 표시, 결과 폴더 열기, 예제 불러오기, 자가 점검. 계산 엔진은 호출만 한다. 결과 폴더에 \f{config\_used.yaml}, \f{run\_conditions.json} 을 남긴다. 화면 없이 같은 일을 하는 \f{--run}, \f{--selfcheck} 모드를 두었다(CI 에서 씀). \f{4882ce7} 에서 사용자 폴더 \f{settings.json} 에 지난번 설정·결과 폴더를 기억하게 했다(전농사거리 기본 계산 폴더를 미리 선택해 두는 용도).
+
+\lb{검증} \f{sori\_gui.py --run}, \f{--selfcheck}(개발 실행) 통과(5e-11 dB). 창을 띄우고 ‘계산 실행’ 버튼 함수를 코드로 호출해 진행 막대 0→1, 기록창 32줄, 경고 표시, 요약 출력, 완료 상태를 확인. \f{SORI.command --selfcheck} 종료 코드 0. 창 화면 캡처는 그때 세션에 화면 기록 권한이 없어 하지 못했다.
+
+%% =====================================================================
+\section{PyInstaller 빌드와 CI (2026-10-29)}
+
+\subsection{\f{SORI.spec} 과 macOS 후처리 (\f{08f638e})}
+\lb{수행} onedir·windowed 빌드. \f{sori} 패키지는 \f{.py} 원본째 넣었다(numba \f{cache=True} 는 원본 파일이 있어야 동작). 데이터(templates, three.js, 글꼴, 기준 사례, PROJ·GDAL 자료)와 자동 탐지되지 않는 하위 모듈·matplotlib 백엔드를 명시했다. macOS 에서는 빌드 뒤 \f{packaging/macos\_fix\_dylibs.py} 가 같은 이름 dylib 충돌을 고치고 임시(ad-hoc) 서명을 다시 한다. Streamlit 웹 화면은 앱에 넣지 않았다.
+
+\lb{검증(macOS 로컬)}
+\begin{itemize}
+\item 빌드한 \f{SORI.app --selfcheck}: 좌표 변환 8항목 통과, 기준 사례 최대 차이 5.0e-11 dB·4.97e-7 m, numba 캐시 없이 18 s·캐시 후 4 s.
+\item \f{SORI.app --run}(가상 교차로, 그림 포함): PNG 20·PDF 8·\f{noise3d.html} 생성, Python 직접 실행 결과와 \f{sources}·\f{grid}·\f{facade} 전 행 최대 차이 0.0 dB.
+\item 실행 뒤 \f{codesign --verify --deep --strict}: 통과.
+\item \f{open dist/SORI.app}: 프로세스 시작·종료 확인(화면 캡처는 권한 없어 못 함).
+\end{itemize}
+
+\subsection{GitHub Actions (\f{ff35ab1}, \f{ea459c0}, \f{f3c5e86}, \f{7b69192})}
+\lb{수행} \f{.github/workflows/build.yml}: Windows·macOS 러너에서 의존성 설치 → \f{pytest tests} → PyInstaller → 빌드한 앱으로 \f{--selfcheck}·\f{--run}·\f{tools/reference.py compare} → zip 업로드. Windows 는 창 실행 파일이라 표준 출력이 없어 종료 코드와 결과 파일로 판정한다. 첫 push 뒤 워크플로가 등록되지 않아, 워크플로 파일을 바꾼 push(\f{f3c5e86})로 등록되었다.
+
+\begin{table}[h]\centering\small
+\caption{첫 Actions 실행 40835206806(\f{f3c5e86}, 2026-10-29) 결과}\label{tab:ci1}
+\begin{tabularx}{\textwidth}{P{34mm}LLL}
+\toprule
+항목 & macOS 로컬 & Actions macOS & Actions Windows \\ \midrule
+OS · 칩 & macOS 27.0.1 · arm64 & macOS 26.6.2 · arm64 & Windows Server 2025 · AMD64 \\
+Python & 3.14.6 & 3.14.9 & 3.14.9 \\
+pytest tests & 53 통과 & 53 통과 & 53 통과 \\
+앱 \f{--selfcheck} & 통과 & 통과 & 통과(화면 없이) \\
+기준 사례 최대 차이 & 5.0e-11 dB & 5.0e-11 dB & 5.0e-11 dB \\
+앱 \f{--run} & 파일 29개 & 파일 29개 & 파일 29개(화면 없이) \\
+zip 크기 & — & 189 MB & 225 MB \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+%% =====================================================================
+\section{같은 기간의 엔진 변경과 앱 재검증 (2026-10-29 – 10-30)}\label{sec:engine}
+
+다른 세션이 같은 브랜치에 엔진 변경을 올렸다: 전파 방법 선택 \f{propagation\_method}(\f{93e8329}), 3차 허상음원 반사와 기본 차수 3/3/3(\f{a42c664}, \f{e9d1298}), 파일명 규칙 사본(\f{0fd0763}), RLS-19 공식 시험과제 TEST-20 대조와 수음점 외벽 반사 규칙 \f{own\_facade: last}·$h_m$ 계산·numba 캐시 수정(\f{952f07d}), 기준값 재생성(\f{393241e}, \f{572fb72}). 식과 근거는 Technical Manual 에 정리하였다.
+
+\lb{앱에 준 영향} \f{952f07d} 의 numba 캐시 정리 함수(\f{sori/\_\_init\_\_.py} \f{\_purge\_stale\_numba\_cache})가 앱 번들 안 \f{Contents/Resources/sori/\_\_pycache\_\_/numba\_source.sha256} 에 파일을 써서 실행 뒤 서명이 깨졌다. \f{8e102af} 에서 앱(frozen)에서는 건너뛰고, 앱 캐시 폴더를 sori 소스 해시별로 나누었다.
+
+\begin{table}[h]\centering\small
+\caption{최신 엔진 재검증(2026-10-30)}\label{tab:rebuild}
+\begin{tabularx}{\textwidth}{P{50mm}L}
+\toprule
+항목 & 결과 \\ \midrule
+pytest tests(로컬) & 229 통과, 1 xfailed(TEST-20 E7 Krad 미지원) \\
+\f{SORI.app --selfcheck}(수정 후) & 통과, 최대 차이 5.0e-11 dB, 실행 뒤 codesign 검증 통과 \\
+Actions 40999508740(\f{8e102af}) & Windows·macOS 모두 성공, pytest 229 통과, 앱 자가 점검·예제 계산 통과(Windows 는 화면 없이) \\
+전농사거리 기본 계산(앱 \f{--run}) & 성공, 21분 28초. 격자 LrT 최대 82.2 dB, 측정점 P1 76.83·P2 77.56 dB. 이전 엔진 대비 격자 평균 +0.38(최대 +14.05) dB, 벽면 평균 +0.27(최대 +10.13) dB. 큰 차이의 점별 원인은 확인하지 않음 \chk \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+%% =====================================================================
+\section{PySide6 결과 화면 (2026-10-29 – 11-01)}
+
+\subsection{시제품과 합치기 (\f{757856d}, \f{d28cc5c}, \f{11321e3})}
+\lb{목적} tkinter 화면은 계산 실행만 가능하고 결과를 볼 수 없었다. 결과 지도·표를 앱 안에서 보도록 화면을 바꾼다.
+
+\lb{수행} 별도 브랜치에서 설계안(\f{docs/화면개편\_1단계\_설계.md})과 Qt 시제품을 만들었다: 프로젝트 트리·지도·속성 창·실행 관리·결과 표. \f{sori\_gui.py} 는 Qt 화면을 먼저 쓰고 PySide6 가 없으면 tkinter 로 연다. \f{--snapshot} 으로 화면을 PNG 로 저장할 수 있게 했다. \f{SORI.spec} 에 PySide6 를 넣고(WebEngine 등 제외) Qt LGPLv3 고지(\f{packaging/THIRD\_PARTY\_Qt.txt})를 포함했다. 11-01 에 \f{packaging/app} 으로 합쳤고, 화면 파일만 바뀌어 충돌이 없었다.
+
+\lb{검증} 시제품 커밋: 시험 89개 통과, 원본·빌드 앱 자가 점검 통과(커밋 메시지 기준). 합친 뒤 pytest 230 통과·1 xfailed.
+
+\subsection{건물 클릭·지도 저장 (\f{2eaeea7})}
+\lb{수행} 격자 지도에서 건물을 클릭하면 그 건물의 벽면 소음지도(평면 + 벽을 펼친 층별 그림)를 보이고, ‘지도 저장…’(Command+S)으로 지금 지도를 PNG(200 dpi)·PDF 로 저장한다. 기본 이름은 \f{sori.naming} 규칙. 그림 안에 AI 활용 고지를 넣었다.
+
+\lb{검증} 기준 사례 결과로 건물 클릭·펼친 그림 칸 수·저장·복귀를 시험. pytest 231 통과·1 xfailed.
+
+\subsection{결과 폴더 짝 기억 오류 수정 (\f{372f428})}
+\lb{오류} 빌드한 앱을 열었을 때 전농사거리 설정에 예제(가상 교차로) 결과가 지도에 나왔다.
+\lb{원인} 설정 파일과 결과 폴더를 따로 기억해서, 마지막으로 연 결과 폴더가 다른 설정의 것이어도 그대로 열었다.
+\lb{조치} 설정을 열 때 결과 폴더를 짝으로 기억하고, 앱 시작 때는 결과 폴더의 \f{run\_conditions.json} 의 \f{config\_path} 가 같은 설정일 때만 쓴다(아니면 설정 옆 \f{output}). 시험 추가.
+
+\subsection{3D 파사드와 단면 소음지도 (\f{46d5b62})}
+\lb{목적} 사용자가 건물 클릭 시 2D 펼친 그림 대신 기존 그림 파일(\f{facade\_3d\_*.png})과 같은 3D 파사드 지도를 원했고, 단면(수직) 소음지도를 요청했다.
+
+\lb{수행}
+\begin{itemize}
+\item \f{sori/plots.py}: \f{facade\_3d} 의 그리기 부분을 \f{draw\_facade\_3d} 로 분리. 화면은 클릭한 건물 중심 반경 80 m 의 건물을 그리고 층별 값 글자는 클릭한 건물에만 붙인다. 2D 펼친 그림은 없앴다.
+\item \f{sori/section.py}: 두 점 A→B 선을 따라 거리 × 표고 수음점을 배치하고 \f{run.\_run}(격자와 같은 함수)으로 계산한다. 반사 차수는 격자 값(\f{max\_order\_grid}). 건물 안(지붕 아래)·지면 아래 점은 계산하지 않는다. 결과 \f{section\_result.csv}, \f{section\_info.json}, 규칙 이름 사본.
+\item 화면: ‘단면 선 긋기’(두 점 클릭 → 백그라운드 계산 → 단면 지도), 파일\menu{}‘마지막 단면 보기’.
+\end{itemize}
+
+\lb{검증}
+\begin{itemize}
+\item \f{draw\_facade\_3d} 분리 전후 그림 파일이 픽셀 단위로 같음.
+\item 시험: 단면 배치(지면·건물 제외), 단면 점 = \f{run.\_run} 직접 계산, 같은 위치 지면 위 4 m 값이 격자 결과와 최대 0.007 dB(28점) 차이. 화면 3D·단면 동작. pytest 236 통과·1 xfailed.
+\item 전농사거리 180 m 단면: 3,182점, 약 25초.
+\end{itemize}
+
+\lb{관찰} 음원(노면 위 0.5 m) 바로 위의 낮은 점은 근거리라 최대 94.5 dB 까지 나왔다. 계산 오류가 아니라 근거리 값이며, 사용자 매뉴얼에 주의로 적었다.
+
+\subsection{보고서 수준 격자 지도 (\f{6ccc855})}
+\lb{목적} 화면 격자 지도의 품질이 낮다는 지적 → 보고서 그림(\f{HQ\_grid\_*})과 같은 지도를 화면에 보인다.
+
+\lb{수행} \f{sori/maps\_hq.py} 의 \f{grid\_map} 그리기를 \f{draw\_grid}·\f{layout} 으로 분리하고 화면이 그것을 부르게 했다. A3 기준 글자 크기라 창에 A3 가 담기도록 화면 dpi 를 맞추고 창 크기가 바뀌면 다시 그린다. 설정 없이 결과 폴더만 열면 이전의 간단한 지도.
+
+\lb{검증} \f{HQ\_grid} 그림 파일이 분리 전후 픽셀 단위로 같음. pytest 236 통과·1 xfailed.
+
+\subsection{화면 시험 격리 (\f{2376a59})}
+\lb{오류} pytest 를 돌린 뒤 앱을 켜면 pytest 임시 폴더의 설정이 열렸다(빌드한 앱 화면에서 발견).
+\lb{원인} 화면 시험이 실제 사용자 폴더의 \f{settings.json} 에 ‘지난번 설정’을 기록했다.
+\lb{조치} 시험에서 설정 파일 위치를 임시 파일로 바꿈.
+
+\subsection{11-01 최종 확인}
+\begin{itemize}
+\item pytest(\f{QT\_QPA\_PLATFORM=offscreen .venv/bin/python -m pytest -q tests}): 236 통과·1 xfailed. 2026-11-02 \f{2376a59} 에서 다시 실행해 같음(41 s).
+\item GitHub Actions 41304716344(\f{2376a59}): Windows 11분 33초·macOS 7분 44초 모두 성공. 앱 자가 점검 기준 사례 최대 차이 5e-11 dB. Windows 는 \textbf{러너에서 화면 없이 실행만} 확인.
+\item 맥 앱 \f{dist/SORI.app} 611 MB. 빌드한 앱 화면을 \f{--snapshot} 으로 캡처해 확인.
+\item 같은 날 다른 Actions 실행: 41298879717(\f{372f428}) 성공, 41302890764(\f{46d5b62}) 성공, 41304596935(\f{6ccc855}) 취소(다음 커밋 실행으로 대체).
+\end{itemize}
+
+%% =====================================================================
+\section{발생한 오류와 원인 (전체)}
+
+\begin{longtable}{P{44mm}P{54mm}P{55mm}}
+\caption{오류·원인·조치}\label{tab:errors}\\
+\toprule
+오류 & 원인 & 조치(커밋) \\ \midrule\endfirsthead
+\toprule 오류 & 원인 & 조치(커밋) \\ \midrule\endhead
+앱에서 \f{Symbol not found: \_proj\_context\_create} & pyproj·rasterio 휠이 같은 이름 \f{libproj.25.9.8.1.dylib} 를 넣는데 rasterio 판은 심볼이 \f{internal\_proj\_*}. PyInstaller 가 최상위에 rasterio 판 하나만 연결 & 패키지별 자기 사본을 \f{@loader\_path} 로 가리키게 고치고 재서명(이름 겹침 9개, 72개 파일). macOS 휠만의 문제(\f{08f638e}) \\
+\f{install\_name\_tool -id} 실패(libgif 등) & dylib 헤더 여유 공간 부족 & id 변경은 가능할 때만, 경로 변경만으로 동작 확인 \\
+\f{No module named 'rasterio.serde'} & Cython 모듈 안의 import 를 PyInstaller 가 탐지 못함 & rasterio·pyproj·pyogrio 하위 모듈 전체를 hiddenimports 에 \\
+실행 뒤 서명 깨짐(\f{a sealed resource is missing}) & \f{sori/\_\_init\_\_.py} 가 numba 를 먼저 import → 나중에 정한 \f{NUMBA\_CACHE\_DIR} 무시 → 앱 안에 캐시 기록 & \f{setup\_numba\_cache} 에서 \f{reload\_config()}(\f{08f638e}) \\
+\f{No module named 'matplotlib.}\allowbreak\f{backends.backend\_pdf'} & savefig 가 형식별 백엔드를 이름으로 불러옴 & hiddenimports 에 backend\_agg·backend\_pdf \\
+Noto Sans KR 가변 글꼴이 가장 가는 굵기로 그려짐 & matplotlib 이 가변 글꼴 축을 고르지 못함 & fontTools 로 Regular·Bold 고정 굵기 판 생성(OFL 허용) \\
+엔진 변경 뒤 다시 서명 깨짐 & 캐시 정리 함수가 번들 안 \f{numba\_source.sha256} 기록 & 앱에서는 건너뜀, 캐시 폴더를 소스 해시별로(\f{8e102af}) \\
+전농사거리 설정에 예제 결과가 열림 & 설정·결과 폴더를 따로 기억 & 짝 기억 + \f{run\_conditions.json} 의 \f{config\_path} 확인(\f{372f428}) \\
+시험 뒤 앱에 pytest 임시 설정이 열림 & 화면 시험이 사용자 \f{settings.json} 기록 & 시험 격리(\f{2376a59}) \\
+GUI 창 화면 캡처 실패(10-29) & 세션에 화면 기록 권한 없음 & 버튼 함수 호출로 대체, 이후 \f{--snapshot} 추가 \\
+\bottomrule
+\end{longtable}
+
+%% =====================================================================
+\section{미해결 문제}
+
+\begin{enumerate}
+\item \textbf{실제 Windows PC 미확인}: Windows 는 CI 러너에서 화면 없이 \f{--selfcheck}·\f{--run} 실행만 확인. Windows 10/11 PC 에서 Qt 화면·SmartScreen 절차·한글 경로 동작은 확인하지 않음.
+\item \textbf{서명·공증 없음}: macOS 는 ad-hoc 서명뿐이라 처음 실행 때 Gatekeeper 경고, Windows 는 SmartScreen 경고(절차 미확인).
+\item \textbf{arm64 전용}: macOS 앱은 Apple Silicon 용. Intel Mac 용은 따로 빌드해야 함.
+\item \textbf{앱 크기} 611 MB(GDAL 두 벌, scipy, Qt 등).
+\item \textbf{HQ 지도 정보란}: 교통량 설명이 길면 주의 문구가 AI 고지와 겹침.
+\item \textbf{단면 화면 평면도}는 간단한 지도(보고서 수준 아님).
+\item \textbf{Actions 경고}: checkout@v4·setup-python@v5·upload-artifact@v4 가 Node.js 20 대상.
+\item \textbf{\f{main} 브랜치 미반영}: 이 작업은 \f{packaging/app} 에만 있음.
+\item \f{sori/inputs.py:118} affine \f{*} 연산 PendingDeprecationWarning(엔진 입력 코드, 손대지 않음). \f{field\_survey/tests} 는 openpyxl 필요(requirements 에 없음, CI 는 \f{tests/} 만).
+\item dylib 후처리는 현재 PyInstaller·휠 구조에 기대므로 판을 올리면 앱 \f{--selfcheck} 로 다시 확인해야 함.
+\item 웹 화면(\f{app.py}, Streamlit)은 패키징 대상이 아니며 결과를 저장소 안 \f{projects/} 에 저장.
+\end{enumerate}
+
+%% =====================================================================
+\section{AI 활용}
+코드·문서·시험은 Claude(Anthropic)가 작성하였다. 나는 앱의 목표(더블클릭 실행, 보고서 수준 지도, 3D 파사드, 단면), 확인 범위의 구분(특히 Windows 를 ‘실행만 확인’으로 적을 것), 오류 판정 기준을 정하고 결과를 확인하였다. 이 노트의 수치는 커밋 메시지, \f{docs/작업기록\_2026-10-29\_패키징.md}, GitHub Actions 실행 기록, 2026-11-02 pytest 재실행 결과에서 옮겼다.
+
+\end{document}

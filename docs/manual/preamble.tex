@@ -1,0 +1,61 @@
+%% SORI 문서 공통 머리말 — 개발노트·User's Manual·Technical Manual 이 \input 으로 씀
+%% 양식: 06_개발기록/개발노트/2022890065_전현수_개발노트_10.26.tex 와 같음(xelatex, A4, 글꼴 대체 규칙)
+%% 쓰기 전에 \def\docheader{머리 왼쪽 글} 을 정함
+%% 본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.
+\usepackage[a4paper,top=25mm,bottom=25mm,left=22mm,right=22mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xetexko}
+\IfFontExistsTF{Noto Serif CJK KR}{%
+  \setmainfont{Noto Serif CJK KR}\setsansfont{Noto Sans CJK KR}%
+  \setmainhangulfont{Noto Serif CJK KR}\setsanshangulfont{Noto Sans CJK KR}%
+  \setmonohangulfont{Noto Sans CJK KR}[Scale=0.85]}{%
+  \setmainfont{Times New Roman}\setsansfont{Apple SD Gothic Neo}% AppleMyungjo 는 라틴 확장 문자·굵은꼴이 없음
+  \setmainhangulfont{AppleMyungjo}[AutoFakeBold=2.5]\setsanshangulfont{Apple SD Gothic Neo}%
+  \setmonohangulfont{Apple SD Gothic Neo}[Scale=0.85]}
+\IfFontExistsTF{DejaVu Sans Mono}{\setmonofont{DejaVu Sans Mono}[Scale=0.85]}{% TeX Live 안의 파일로
+  \setmonofont{DejaVuSansMono.ttf}[Scale=0.85,BoldFont=DejaVuSansMono-Bold.ttf]}
+\usepackage{amsmath}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{needspace}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{fancyvrb}
+\usepackage[font=small,labelsep=colon]{caption}
+\usepackage[hidelinks]{hyperref}
+\linespread{1.25}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlist{itemsep=0.15em,topsep=0.3em,leftmargin=1.6em}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.18}
+\captionsetup[table]{name=표,skip=4pt}
+\captionsetup[figure]{name=그림}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+\definecolor{navy}{HTML}{1F3A5F}
+\definecolor{codebg}{HTML}{F4F6F8}
+\titleformat{\section}{\sffamily\Large\bfseries\color{navy}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\sffamily\large\bfseries\color{navy}}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\sffamily\normalsize\bfseries}{\thesubsubsection}{0.8em}{}
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.0em}{0.4em}
+\titlespacing*{\subsubsection}{0pt}{0.8em}{0.3em}
+\newcommand{\lb}[1]{\textbf{#1.}\ }
+\newcommand{\chk}{\textcolor{orange!80!black}{\textsf{[미확인]}}}
+\newcommand{\nob}{\textcolor{orange!80!black}{\textsf{[근거 미확인]}}}
+\newcommand{\f}[1]{\texttt{#1}}
+\newcommand{\ui}[1]{\textsf{\textbf{#1}}}
+\fvset{fontsize=\footnotesize,frame=single,rulecolor=\color{gray!50},framesep=2mm,xleftmargin=2mm,xrightmargin=2mm}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\sffamily\docheader}
+\fancyhead[R]{\small\sffamily 전현수 (2022890065)}
+\fancyfoot[C]{\small\thepage}
+\fancyfoot[R]{\scriptsize\sffamily\color{gray} AI(Claude) 활용 제작}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\contentsname}{목차}
+\newcommand{\menu}{\,$\triangleright$\,}
+\newcommand{\menupath}[1]{\ui{#1}}
