@@ -279,7 +279,7 @@ GUI 창 화면 캡처 실패(10-29) & 세션에 화면 기록 권한 없음 & �
 \item \textbf{앱 크기} 611 MB(GDAL 두 벌, scipy, Qt 등).
 \item \textbf{HQ 지도 정보란}: 교통량 설명이 길면 주의 문구가 AI 고지와 겹침.
 \item \textbf{단면 화면 평면도}는 간단한 지도(보고서 수준 아님).
-\item \textbf{Actions 경고}: checkout@v4·setup-python@v5·upload-artifact@v4 가 Node.js 20 대상.
+\item \textbf{Actions 경고}(해결, 2026-11-02 \f{e1d5912}): checkout@v5·setup-python@v6·upload-artifact@v6(Node.js 24)로 올림. 실행 41389046632 Windows·macOS 성공, Node.js 20 경고 없음.
 \item \textbf{\f{main} 브랜치 미반영}: 이 작업은 \f{packaging/app} 에만 있음.
 \item \f{sori/inputs.py:118} affine \f{*} 연산 PendingDeprecationWarning(엔진 입력 코드, 손대지 않음). \f{field\_survey/tests} 는 openpyxl 필요(requirements 에 없음, CI 는 \f{tests/} 만).
 \item dylib 후처리는 현재 PyInstaller·휠 구조에 기대므로 판을 올리면 앱 \f{--selfcheck} 로 다시 확인해야 함.
