@@ -37,6 +37,8 @@ log = logging.getLogger("sori")
 ROLE = Qt.UserRole
 KEYS = {"LrT": "주간 LrT (06–22시)", "LrN": "야간 LrN (22–06시)"}
 TARGETS = {"grid": "격자(소음지도)", "facade": "건물 벽면", "points": "점 수음점"}
+METHODS = {"iso9613_2": "ISO 9613-2 전파 (RLS-19 음원 + ISO 9613-2, 프로젝트 구성 방법)",
+           "rls19": "RLS-19 전파 (RLS-19 3.5·3.6 원문)"}
 
 
 # ================================================================ 표 모델(pandas DataFrame → QTableView)
@@ -123,7 +125,8 @@ class Worker(QtCore.QThread):
                 def prog(label, done, total, eta):
                     self.b.prog.emit(done / max(total, 1),
                                      f"{label} 계산 {done:,}/{total:,} 지점 · 남은 시간 약 {eta / 60:.1f}분")
-                r = G.run_job(self.kw["cfg"], self.kw["out"], self.kw["which"], self.kw["plots"], progress=prog)
+                r = G.run_job(self.kw["cfg"], self.kw["out"], self.kw["which"], self.kw["plots"], progress=prog,
+                              method=self.kw.get("method"))
                 self.b.done.emit("run", r)
             else:
                 rp = default_output_dir() / "selfcheck_report.json"
@@ -463,10 +466,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_check.clicked.connect(self.start_check)
         row.addWidget(self.btn_run)
         row.addWidget(self.btn_check)
-        f.addLayout(row, 2, 0, 1, 4)
-        f.addWidget(QtWidgets.QLabel("계산은 주간·야간을 모두 수행함. 전파 방법·반사 차수는 설정 파일 값(속성 창에서 확인)."),
-                    3, 0, 1, 4)
-        f.setRowStretch(4, 1)
+        f.addLayout(row, 3, 0, 1, 4)
+        # 전파 방법: 처음에는 설정 파일 값. 바꾸면 결과 폴더도 방법별로 나눔(한 폴더에 방법이 섞이지 않게)
+        self.cb_method = QtWidgets.QComboBox()
+        for k, v in METHODS.items():
+            self.cb_method.addItem(v, k)
+        self.cb_method.setToolTip("설정 파일의 propagation_method 대신 이 방법으로 계산(설정 파일은 바꾸지 않음)")
+        self.cb_method.currentIndexChanged.connect(self._on_method)
+        f.addWidget(QtWidgets.QLabel("전파 방법"), 2, 0)
+        f.addWidget(self.cb_method, 2, 1, 1, 3)
+        f.addWidget(QtWidgets.QLabel("계산은 주간·야간을 모두 수행함. 반사 차수는 설정 파일 값(속성 창에서 확인). "
+                                     "전파 방법을 설정 파일과 다르게 고르면 결과 폴더 이름 끝에 방법이 붙음."),
+                    4, 0, 1, 4)
+        f.setRowStretch(5, 1)
         f.setColumnStretch(1, 1)
         return w
 
@@ -505,7 +517,10 @@ class MainWindow(QtWidgets.QMainWindow):
             log.error("설정 파일 오류: %s", e)
             return self._err(f"설정 파일을 읽을 수 없습니다.\n{e}")
         self.cfg_path, self.cfg = path, cfg
-        out = Path(out) if out else path.parent / "output"
+        self.method0 = cfg.get("propagation_method") or "iso9613_2"     # 설정 파일의 전파 방법
+        self._base_out = path.parent / "output"
+        self._set_method(self.method0)
+        out = Path(out) if out else self._base_out
         self.ed_cfg.setText(str(path))
         self.ed_out.setText(str(out))
         G.save_settings(last_config=path, last_out=out.resolve())   # 설정과 결과 폴더를 짝으로 기억
@@ -542,6 +557,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self._err(f"이 폴더에서 SORI 결과를 찾지 못했습니다.\n{out}")
         self.R = R
         self.view, self.view_bid = "grid", None
+        ri = R.get("run_info") or {}
+        m = set((ri.get("outputs") or {}).values()) or {ri.get("propagation_method")}
+        if self.cfg is not None and len(m) == 1 and next(iter(m)) in METHODS:   # 연 결과의 방법으로 맞춤
+            self._set_method(next(iter(m)))
         self.act_last_sec.setEnabled("section" in R)
         if self.cfg is None and (out / "config_used.yaml").exists():
             log.info("결과 폴더만 열었음 — 설정은 config_used.yaml 을 속성에 표시(입력 경로는 원래 설정 폴더 기준)")
@@ -561,6 +580,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self._show_props(self._summary_props())
         if R:
             log.info("결과 폴더: %s (%s)", out, ", ".join(k for k in R if k in ("grid", "facade", "points", "terms")))
+
+    # ------------------------------------------------------------ 전파 방법
+    def _set_method(self, m):
+        """선택 칸과 메모리의 설정(self.cfg)을 전파 방법 m 으로. 결과 폴더는 바꾸지 않음"""
+        self.cb_method.blockSignals(True)
+        self.cb_method.setCurrentIndex(max(0, self.cb_method.findData(m)))
+        self.cb_method.blockSignals(False)
+        if self.cfg is not None:
+            self.cfg["propagation_method"] = m
+
+    def method_out(self, m):
+        """방법별 결과 폴더: 설정 파일의 방법이면 설정 옆 output, 다르면 output_<방법>"""
+        base = self._base_out
+        return base if m == self.method0 else base.with_name(f"{base.name}_{m}")
+
+    def _on_method(self, _i):
+        m = self.cb_method.currentData()
+        if self.cfg is None:
+            return
+        self.cfg["propagation_method"] = m
+        out = self.method_out(m)
+        self.ed_out.setText(str(out))
+        log.info("전파 방법 %s → 결과 폴더 %s%s", m, out, "" if m == self.method0 else " (설정 파일과 다른 방법)")
+        self.open_results(out, quiet=True)
 
     # ------------------------------------------------------------ 트리·속성
     def _fill_tree(self):
@@ -903,7 +946,8 @@ class MainWindow(QtWidgets.QMainWindow):
         G.save_settings(last_config=self.cfg_path, last_out=Path(out).resolve())
         self.tabs.setCurrentIndex(1)
         self._launch(Worker(self.bridge, "run", cfg=str(self.cfg_path), out=out, which=which,
-                            plots=self.chk_plots.isChecked()), "계산 중… (창을 닫지 마세요)")
+                            plots=self.chk_plots.isChecked(), method=self.cb_method.currentData()),
+                     "계산 중… (창을 닫지 마세요)")
         self._pending_out = out
 
     def start_check(self):

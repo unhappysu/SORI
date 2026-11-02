@@ -158,10 +158,22 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \begin{enumerate}
 \item \ui{계산 실행} 탭에서 \ui{결과 폴더}를 확인한다(\ui{찾아보기…}로 변경).
 \item 계산 대상을 고른다: \ui{격자(소음지도)}, \ui{건물 벽면}, \ui{점 수음점}(설정에 점 파일이 있을 때), \ui{그림·3D 뷰어 만들기}(보고서 그림 \f{HQ\_*}·\f{noise3d.html}).
-\item \ui{▶ 계산 실행}. 결과 폴더에 이미 파일이 있으면 덮어쓸지 묻는다. 계산은 주간·야간을 모두 수행하며 전파 방법·반사 차수는 설정 파일 값이다(속성 창에서 확인).
+\item \ui{전파 방법}을 고른다(4.3절). 처음에는 설정 파일 값이다.
+\item \ui{▶ 계산 실행}. 결과 폴더에 이미 파일이 있으면 덮어쓸지 묻는다. 계산은 주간·야간을 모두 수행하며 반사 차수는 설정 파일 값이다(속성 창에서 확인).
 \item 진행은 상태 줄(지점 수, 남은 시간)과 \ui{기록} 탭에서 본다. 끝나면 결과가 지도와 표에 나온다. 계산 중에 창을 닫으면 끝낼지 묻는다.
 \end{enumerate}
-결과 폴더에는 계산 결과(7장) 외에 \f{config\_used.yaml}(사용한 설정 사본)과 \f{run\_conditions.json}(실행 일시·설정 경로·계산 대상·소요 시간·요약·앱 환경)이 함께 저장된다.
+결과 폴더에는 계산 결과(8장) 외에 \f{config\_used.yaml}(사용한 설정 사본)과 \f{run\_conditions.json}(실행 일시·설정 경로·계산 대상·소요 시간·요약·앱 환경)이 함께 저장된다.
+
+\subsection{전파 방법 고르기}
+\ui{계산 실행} 탭의 \ui{전파 방법} 칸에서 고른다. 설정 파일(\f{propagation\_method})을 고치지 않고 이번 계산에만 쓴다.
+\begin{itemize}
+\item \ui{ISO 9613-2 전파}: 음원은 RLS-19, 전파는 ISO 9613-2(기본값, 어느 표준도 규정하지 않은 프로젝트 구성 방법).
+\item \ui{RLS-19 전파}: RLS-19 3.5·3.6 원문의 전파식.
+\item 설정 파일과 다른 방법을 고르면 결과 폴더가 \f{output\_rls19}(또는 \f{output\_iso9613\_2})로 바뀐다. 한 결과 폴더에는 한 방법의 결과만 둘 수 있기 때문이다. 그 폴더에 이미 결과가 있으면 지도에 바로 보이므로 칸을 바꿔 가며 두 방법의 결과를 비교할 수 있다.
+\item 계산하면 결과 폴더의 \f{config\_used.yaml} 사본에 쓴 방법이 적히고(그 사본만으로 같은 계산을 재현할 수 있음), \f{run\_conditions.json} 에 \f{propagation\_method}·\f{propagation\_method\_override} 가 남는다.
+\item 결과 폴더를 열면 칸이 그 결과의 방법으로 맞춰진다. 지도 정보란·파일 이름(\f{-ISO}/\f{-RLS})·속성 창 ``전파(결과)''로도 확인할 수 있다.
+\item 화면 없이: \f{sori\_gui.py --run config.yaml --out 폴더 --method rls19}.
+\end{itemize}
 
 \subsection{격자 소음지도(보고서 수준)}
 설정과 결과가 모두 열려 있으면 화면 지도는 보고서용 지도(\f{HQ\_grid\_*.png})와 같은 그림이다: 5 dB 등음선 채움, 간선도로 노면·건물·신호교차로·도로명, 방위표·축척, 범례·계산 조건·주의 문구(그림~\ref{fig:main}).
@@ -203,7 +215,7 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \end{itemize}
 
 \subsection{지도 저장}
-\ui{지도 저장…}(또는 \ui{파일}\menu\ui{지도 저장}, Command/Ctrl+S)으로 지금 보이는 지도(격자·3D 파사드·단면)를 PNG(200 dpi) 또는 PDF 로 저장한다. 확장자가 없거나 다르면 PNG 로 저장한다. 기본 이름은 결과 파일명 규칙을 따른다(7.1절). 예:
+\ui{지도 저장…}(또는 \ui{파일}\menu\ui{지도 저장}, Command/Ctrl+S)으로 지금 보이는 지도(격자·3D 파사드·단면)를 PNG(200 dpi) 또는 PDF 로 저장한다. 확장자가 없거나 다르면 PNG 로 저장한다. 기본 이름은 결과 파일명 규칙을 따른다(8.1절). 예:
 \begin{itemize}
 \item \f{전농사거리\_현황-ISO\_주간\_grid\_h4m.png}
 \item \f{전농사거리\_현황-ISO\_주간\_facade\_3D\_건물1498.png}
@@ -258,7 +270,7 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \item 교통량 서식: \f{python -m sori template -c config.yaml} → \f{traffic\_template.csv} 에 값 입력 → \f{traffic.csv} 로 저장.
 \item 교차로 확인(선택): \f{traffic\_template\_junctions\_auto.csv} 의 자동 판정(type)을 검토·수정해 \f{input.junctions.path} 로 지정.
 \item 실행: \f{python -m sori all -c config.yaml}(모델 구축 → 계산 → 그림). 나눠 하려면 \f{build}, \f{run}(\f{--grid}, \f{--facade}, \f{--points}), \f{plot}.
-\item 결과 확인: \f{output/}(7장). 앱으로 \f{config.yaml} 을 열어 지도로 봐도 된다.
+\item 결과 확인: \f{output/}(8장). 앱으로 \f{config.yaml} 을 열어 지도로 봐도 된다.
 \end{enumerate}
 가상 자료로 연습: \f{python tools/make\_synthetic\_data.py examples/synthetic} 후 그 폴더에서 \f{python -m sori all -c config.yaml}.
 
@@ -302,7 +314,7 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \toprule 항목 & 기본값 & 의미 \\ \midrule\endhead
 \f{project.name}, \f{scenario} & 소음지도, 현황 & 파일명 규칙의 프로젝트·시나리오 칸 \\
 \f{project.output\_dir} & output & 결과 폴더(설정 파일 기준 상대경로) \\
-\f{propagation\_method} & iso9613\_2 & 전파 방법. \f{rls19} = RLS-19 3.5·3.6. 한 결과 폴더에는 한 방법의 결과만(섞이면 실행 중단) \\
+\f{propagation\_method} & iso9613\_2 & 전파 방법. \f{rls19} = RLS-19 3.5·3.6. 한 결과 폴더에는 한 방법의 결과만(섞이면 실행 중단). 앱에서는 \ui{전파 방법} 칸으로 바꿀 수 있음(4.3절) \\
 \f{reflection.max\_order\_grid / \_facade / \_point} & 3 / 3 / 3 & 반사 차수 0–3. 3차는 2차보다 약 6배 느림(전농사거리 표본). 2026-10-29 이전 기본 1/2/2 \\
 \f{reflection.own\_facade} & last & 수음점이 놓인 외벽의 반사 제외 범위. \f{last} = 마지막 반사만, \f{all} = 모든 반사 순서(이전 동작) \\
 \f{reflection.rho} / \f{D\_RV} & 0.8 / 0.5 dB & 반사 손실(iso9613\_2 의 ρ / rls19 의 회당 dB) \\
@@ -350,7 +362,7 @@ LrT 는 주간(06–22시), LrN 은 야간(22–06시) RLS-19 평가레벨이다
 
 %% =====================================================================
 \section{계산 시간}
-단일 코어 기준 수음점 1개당 수 ms(가상 자료)–수십 ms(도심)이고 numba 가 CPU 코어를 모두 쓴다. 전농사거리 기본 계산은 약 21분(4장). 빠른 시험은 \f{grid.step} 을 10 m 로, 반사 차수를 1 로 낮춘다. 앱을 처음 실행하거나 새 판으로 바꾼 뒤 첫 계산은 컴파일 때문에 1분 정도 더 걸린다.
+단일 코어 기준 수음점 1개당 수 ms(가상 자료)–수십 ms(도심)이고 numba 가 CPU 코어를 모두 쓴다. 전농사거리 기본 계산은 약 21분(5장). 빠른 시험은 \f{grid.step} 을 10 m 로, 반사 차수를 1 로 낮춘다. 앱을 처음 실행하거나 새 판으로 바꾼 뒤 첫 계산은 컴파일 때문에 1분 정도 더 걸린다.
 
 %% =====================================================================
 \section{문제 해결}
@@ -371,7 +383,7 @@ Intel Mac 에서 열리지 않음 & 앱은 Apple Silicon(arm64) 전용 \\
 CSV 칸 수 오류 & 따옴표 없는 쉼표. 메모 칸을 따옴표로 묶음 \\
 건물 클릭 시 ``벽면 계산 결과 없음'' & 벽면 계산 반경 밖이거나 벽면을 계산하지 않음. \f{receivers.facade.radius} 를 키우고 \ui{건물 벽면}을 골라 다시 계산 \\
 \ui{단면 선 긋기}가 오류 & 설정 파일과 계산한 결과 폴더(\f{model\_rasters.npz})가 열려 있어야 함. 단면 선 1 m 미만, 모델 범위 밖도 오류 \\
-단면에서 도로 바로 위 값이 매우 큼 & 음원 근거리 값(오류 아님, 4.5절) \\
+단면에서 도로 바로 위 값이 매우 큼 & 음원 근거리 값(오류 아님, 4.6절) \\
 지도 정보란 글자가 겹침 & 교통량 설명이 길면 주의 문구가 AI 고지와 겹침(알려진 문제) \\
 자가 점검 실패 & \f{문서/SORI/selfcheck\_report.json} 의 실패 항목 확인. 좌표 변환 실패는 PROJ 자료 문제 가능성 \\
 \bottomrule

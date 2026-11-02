@@ -122,3 +122,39 @@ def test_remembered_output_must_match_config(tmp_path):
     (mine / "run_conditions.json").write_text(json.dumps({"config_path": str(cfg)}), encoding="utf-8")
     assert Q._out_for(cfg, str(mine)) == str(mine)
     assert Q._out_for(cfg, str(cfg.parent / "output")) == str(cfg.parent / "output")   # 아직 계산 전
+
+
+def test_method_select_runs_and_separates_folders(tmp_path):
+    """계산 실행 탭의 전파 방법 선택: 설정과 다른 방법이면 결과 폴더 output_<방법>, 계산은 그 방법으로,
+    설정 파일은 그대로이고 config_used.yaml·run_conditions.json 에 기록. 결과를 다시 열면 선택 칸이 결과 방법으로"""
+    import json
+    import shutil
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_gui as G
+    import sori_qt as Q
+    from sori import config as C
+    work = tmp_path / "case"
+    shutil.copytree(RC.INPUT, work)
+    src = (work / "config.yaml").read_text(encoding="utf-8")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_config(work / "config.yaml")
+    assert w.cb_method.currentData() == "iso9613_2" and Path(w.ed_out.text()) == work / "output"
+    w.cb_method.setCurrentIndex(w.cb_method.findData("rls19"))
+    out = Path(w.ed_out.text())
+    assert out == work / "output_rls19" and w.cfg["propagation_method"] == "rls19"
+    G.run_job(work / "config.yaml", out, ("grid",), do_plots=False, method=w.cb_method.currentData())
+    ri = json.loads((out / "run_info.json").read_text(encoding="utf-8"))
+    assert ri["outputs"]["grid"] == "rls19"
+    rc = json.loads((out / "run_conditions.json").read_text(encoding="utf-8"))
+    assert rc["propagation_method"] == "rls19" and rc["propagation_method_override"]
+    assert C.load(out / "config_used.yaml")["propagation_method"] == "rls19"
+    assert (work / "config.yaml").read_text(encoding="utf-8") == src                    # 설정 파일은 그대로
+    w.cb_method.setCurrentIndex(w.cb_method.findData("iso9613_2"))                     # 설정 파일 방법 → output
+    assert Path(w.ed_out.text()) == work / "output" and "grid" not in w.R
+    w.open_results(out)                                                                 # 결과 방법으로 맞춤
+    assert w.cb_method.currentData() == "rls19" and w.cfg["propagation_method"] == "rls19"
+    assert w.map.hq is not None                                                         # 보고서 지도(방법 일치)
+    w.close()
+    app.processEvents()

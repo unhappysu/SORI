@@ -231,6 +231,23 @@ Actions 40999508740(\f{8e102af}) & Windows·macOS 모두 성공, pytest 229 통�
 \item 같은 날 다른 Actions 실행: 41298879717(\f{372f428}) 성공, 41302890764(\f{46d5b62}) 성공, 41304596935(\f{6ccc855}) 취소(다음 커밋 실행으로 대체).
 \end{itemize}
 
+\subsection{화면에서 전파 방법 고르기 (2026-11-02)}
+\lb{목적} 사용자가 전파 방법(ISO 9613-2 / RLS-19)을 설정 파일을 고치지 않고 앱 화면에서 바꾸기를 원했다.
+
+\lb{수행}
+\begin{itemize}
+\item \f{sori\_qt.py}: \ui{계산 실행} 탭에 \ui{전파 방법} 칸. 처음에는 설정 파일 값이고, 설정과 다른 방법을 고르면 결과 폴더를 \f{output\_<방법>} 으로 바꾸고 그 폴더 결과를 연다(한 폴더에 방법이 섞이면 \f{run} 이 중단되므로). 결과 폴더를 열면 \f{run\_info.json} 의 방법으로 칸을 맞춘다. 메모리의 설정(\f{self.cfg})도 같은 방법으로 바꿔 보고서 지도·단면 계산이 결과와 같은 방법을 쓴다.
+\item \f{sori\_gui.run\_job(method=)}: 불러온 설정의 \f{propagation\_method} 만 바꿔 계산. 설정 파일은 그대로 두고 \f{config\_used.yaml} 사본의 해당 줄을 바꾸며 \f{run\_conditions.json} 에 \f{propagation\_method}·\f{propagation\_method\_override} 를 남긴다. 명령 모드 \f{--run … --method rls19}.
+\item 계산 엔진(\f{sori/})은 바꾸지 않았다.
+\end{itemize}
+
+\lb{검증}
+\begin{itemize}
+\item 새 화면 시험 1개(방법 선택 → 결과 폴더 \f{output\_rls19}, rls19 로 계산, 설정 파일 불변, 사본·실행 조건 기록, 결과를 다시 열면 칸이 결과 방법으로, 보고서 지도 표시). pytest 237 통과·1 xfailed.
+\item 다시 빌드한 \f{SORI.app}(611 MB): \f{--selfcheck} 통과(최대 차이 5.0e-11 dB), \f{--run}(기준 사례, \f{--method rls19}) 성공 — \f{run\_info.json} 의 결과 방법 grid·facade 모두 rls19. 실행 뒤 codesign 검증 통과. 빌드한 앱 화면을 \f{--snapshot} 으로 캡처해 전파 방법 칸 확인.
+\item Windows 는 이 변경을 확인하지 않음(Actions 미실행).
+\end{itemize}
+
 %% =====================================================================
 \section{발생한 오류와 원인 (전체)}
 

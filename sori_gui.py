@@ -65,8 +65,10 @@ def save_settings(**kv):
 
 
 # ================================================================ 계산 작업(화면과 무관)
-def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True, period="LrT", progress=None):
-    """설정 파일로 build → run → (그림) 실행. 결과·사용 설정·계산 조건은 out_dir 에 저장"""
+def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True, period="LrT", progress=None,
+            method=None):
+    """설정 파일로 build → run → (그림) 실행. 결과·사용 설정·계산 조건은 out_dir 에 저장.
+    method(iso9613_2 | rls19)를 주면 설정 파일의 propagation_method 대신 씀(설정 파일은 그대로, 사본에 기록)"""
     from sori import config as C, build, run
     cfg_path = Path(cfg_path).resolve()
     out = Path(out_dir).resolve()
@@ -74,6 +76,13 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
     cfg = C.load(cfg_path)
     cfg["project"]["output_dir"] = str(out)
     shutil.copy(cfg_path, out / "config_used.yaml")
+    m0 = cfg.get("propagation_method") or "iso9613_2"
+    if method and method != m0:
+        from sori.propagation import get_model
+        cfg["propagation_method"] = method
+        get_model(cfg)                                  # 잘못된 이름이면 여기서 오류
+        _set_method_in_copy(out / "config_used.yaml", method, m0)
+        log.info("전파 방법: %s (설정 파일 값 %s 대신 화면에서 고름)", method, m0)
     cond = {
         "software": f"SORI v{__version__}",
         "notice": AI_NOTICE,
@@ -84,6 +93,8 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
         "targets": list(which),
         "plots": bool(do_plots),
         "summary_period": period,
+        "propagation_method": cfg.get("propagation_method") or "iso9613_2",
+        "propagation_method_override": bool(method and method != m0),
         "app": {"frozen": is_frozen(), "python": platform.python_version(),
                 "os": platform.platform(), "machine": platform.machine()},
         "status": "running",
@@ -115,6 +126,17 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
         raise
     finally:
         cpath.write_text(json.dumps(cond, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _set_method_in_copy(path, method, original):
+    """config_used.yaml 사본의 propagation_method 를 바꿈(그 사본만으로 같은 계산을 재현하도록)"""
+    import re
+    t = path.read_text(encoding="utf-8")
+    line = f"propagation_method: {method}    # 앱에서 고름(원래 설정 파일 값 {original})"
+    t, n = re.subn(r"^propagation_method\s*:.*$", line, t, count=1, flags=re.M)
+    if not n:
+        t = t.rstrip("\n") + "\n\n" + line + "\n"
+    path.write_text(t, encoding="utf-8")
 
 
 def summarize(out, key):
@@ -411,12 +433,13 @@ def main(argv=None):
         ap.add_argument("config")
         ap.add_argument("--out", required=True)
         ap.add_argument("--no-plots", action="store_true")
+        ap.add_argument("--method", choices=["iso9613_2", "rls19"], help="설정 파일 대신 이 전파 방법으로")
         a = ap.parse_args(argv[1:])
         out = Path(a.out)
         out.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(level=logging.INFO, filename=str(out / "sori_run.log"), encoding="utf-8",
                             format="%(asctime)s %(levelname)s %(message)s")
-        run_job(a.config, out, do_plots=not a.no_plots)
+        run_job(a.config, out, do_plots=not a.no_plots, method=a.method)
         return 0
     use_tk = "--tk" in argv or os.environ.get("SORI_GUI") == "tk"
     argv = [a for a in argv if a != "--tk"]
