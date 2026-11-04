@@ -1102,6 +1102,9 @@ def restore(win, config=None, out=None):
 def main(config=None, out=None, snapshot=None):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
     app.setApplicationName("SORI")
+    icon = resource_path("sori", "assets", "SORI.png")    # 창·Dock·작업 표시줄 아이콘(앱 파일 아이콘은 SORI.spec)
+    if icon.is_file():
+        app.setWindowIcon(QtGui.QIcon(str(icon)))
     win = MainWindow()
     win.show()
     restore(win, config, out)

@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from sori import __version__  # noqa: E402
 
 datas = []
-# sori 패키지의 데이터 파일: templates(설정 서식), vendor(three.js), fonts(Noto Sans KR, OFL)
+# sori 패키지의 데이터 파일: templates(설정 서식), vendor(three.js), fonts(Noto Sans KR, OFL), assets(창 아이콘 SORI.png)
 datas += collect_data_files("sori", excludes=["**/__pycache__/**"])
 # 자가 점검·예제용 기준 사례(가상 교차로) 입력과 기준값
 datas += [(str(ROOT / "tests" / "reference" / "synthetic"), "tests/reference/synthetic")]
@@ -57,6 +57,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="SORI",
+    icon=str(ROOT / "packaging" / "icon" / "SORI.ico"),   # Windows exe 아이콘(macOS 는 아래 BUNDLE 의 .icns)
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -74,7 +75,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="SORI.app",
-        icon=None,
+        icon=str(ROOT / "packaging" / "icon" / "SORI.icns"),
         bundle_identifier="kr.sori.noisemap",
         version=__version__,
         info_plist={
