@@ -88,3 +88,31 @@ jobs:
             app_run/sori_run.log
             app_run/run_conditions.json
           if-no-files-found: ignore
+
+  release:
+    # v* 태그로 실행했을 때만: 두 OS 빌드·점검이 모두 성공하면 앱 zip 을 붙인 GitHub Release "초안"을 만듦.
+    # 초안은 공개되지 않음 — 저장소 Releases 화면에서 내용을 확인한 뒤 사람이 공개(Publish)함.
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 앱 zip 내려받기·이름 붙이기
+        run: |
+          gh run download "${{ github.run_id }}" -R "${{ github.repository }}" -p "SORI-*" -D artifacts
+          mkdir -p release
+          mv artifacts/SORI-macOS/SORI-macos.zip "release/SORI-${TAG}-macos-arm64.zip"
+          mv artifacts/SORI-Windows/SORI-windows.zip "release/SORI-${TAG}-windows-x64.zip"
+          (cd release && sha256sum *.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Release 초안 만들기
+        run: |
+          notes="docs/release/${TAG}.md"
+          [ -f "$notes" ] || { echo "릴리스 설명 파일 없음: $notes"; exit 1; }
+          gh release create "$TAG" release/* --draft --verify-tag --title "SORI ${TAG}" --notes-file "$notes"
