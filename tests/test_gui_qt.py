@@ -158,3 +158,32 @@ def test_method_select_runs_and_separates_folders(tmp_path):
     assert w.map.hq is not None                                                         # 보고서 지도(방법 일치)
     w.close()
     app.processEvents()
+
+
+def test_load_jeonnong_without_and_with_map(tmp_path):
+    """전농사거리 예제: 수치지도 없으면 안내 후 False(설정·교통량은 복사됨), zip 을 넣으면 풀고 설정을 엶"""
+    import zipfile
+    from PySide6 import QtWidgets
+    import sori_qt as Q
+    from sori import config as C
+    from sori.inputs import read_csv_any
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    dst = tmp_path / "전농사거리"
+    assert w.load_jeonnong(dst, quiet=True) is False
+    for f in ("config.yaml", "traffic.csv", "points.csv", "README.md", "traffic/A_현장계수_50kmh.csv"):
+        assert (dst / f).exists(), f
+    cfg = C.load(dst / "config.yaml")
+    assert cfg["input"]["map"]["folders"] == [str((dst / "data" / "map").resolve())]
+    assert len(read_csv_any(dst / "traffic.csv")) > 0
+    # 국토정보플랫폼 zip 처럼 한글 폴더명(cp949, UTF-8 표시 없음) 안에 SHP 가 든 zip
+    z = dst / "data" / "map" / "도엽.zip"
+    # zipfile 은 ASCII 가 아닌 이름에 UTF-8 표시를 붙이므로, 같은 길이(8바이트) ASCII 이름으로 만든 뒤 바이트만 바꿈
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("(B010)XXXXXXXX_377051742/N1A_B0010000.shp", b"shp")
+    z.write_bytes(z.read_bytes().replace(b"XXXXXXXX", "수치지도".encode("cp949")))
+    assert w.load_jeonnong(dst, quiet=True) is True
+    assert (dst / "data" / "map" / "도엽" / "(B010)수치지도_377051742" / "N1A_B0010000.shp").exists()
+    assert w.cfg_path == (dst / "config.yaml").resolve()
+    w.close()
+    app.processEvents()

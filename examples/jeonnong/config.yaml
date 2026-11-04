@@ -1,0 +1,30 @@
+# =====================================================================
+# SORI 기본 계산 설정 — 전농사거리 (서울 동대문구, 사가정로·전농로·답십리로·서울시립대로)
+# 입력 조건은 결과보고서 6.8절 소음지도(사가정로 50 km/h)와 같다:
+#   noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG_v50/config.yaml 에서 경로만 이 폴더 기준 상대경로로 바꿈.
+# 수치지도는 이 예제에 들어 있지 않음(국토지리정보원 자료, 재배포 조건 미확인) — README.md 대로 받아 data/map 에 넣음.
+# 반사 차수·외벽 반사 규칙은 SORI 현재 기본값(3차, own_facade: last, 2026-10-29 변경)을 따르므로 보고서 값과 다르다.
+#   보고서 계산(1·2차, own_facade: all)을 재현하려면 아래 propagation 줄의 주석을 푼다.
+# 실행: SORI 앱에서 이 파일을 고르고 '계산 실행' (또는 python -m sori all -c config.yaml). 약 21분(맥북 arm64).
+# ※ 본 설정은 Claude(Anthropic의 AI)를 활용하여 작성하였음. 계산 결과의 검토·검증 책임은 사용자에게 있음.
+# =====================================================================
+project: {name: "전농사거리", output_dir: "output"}
+crs: 5186                          # 수치지도 1:1,000 좌표계(EPSG:5186)
+
+input:
+  map: {folders: ["data/map"]}     # 국토지리정보원 수치지형도 v2.0, 2025, 도엽 377051731~33·41~43·51~53
+  # dem: {path: "data/dem/37705/37705.img"}   # 선택. 보고서 계산은 DEM 없이 등고선·표고점만 사용
+  traffic: {path: "traffic.csv"}   # 기본 = traffic/A_현장계수_50kmh.csv 사본. 다른 교통량은 traffic/ 의 README 참고
+  road_alias: {"전농로25길": "전농로"}
+  surface_map: {"아스팔트": "AC11", "아스팔트콘크리트": "AC11"}
+  junctions: {dk_rule: nearest_signal}
+
+receivers:
+  center: [205108.0, 553110.0]     # 전농사거리 교차점 부근(EPSG:5186)
+  grid: {enabled: true, size: [480.0, 520.0], step: 2.5, heights: [4.0]}
+  facade: {enabled: true, radius: 230.0}
+  points: {path: "points.csv"}     # 2026-10-22 현장 측정점 P1·P2
+
+# propagation: {reflection: {max_order_grid: 1, max_order_facade: 2, max_order_point: 2, own_facade: all}}   # 보고서 재현용
+
+plots: {limits: {LrT: 68, LrN: 58, label: "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"}}

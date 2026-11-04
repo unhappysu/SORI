@@ -1,0 +1,5 @@
+key,key_type,road_type,DTV,M_day,M_night,p1_day,p2_day,p1_night,p2_night,v_pkw,v_lkw,surface,note
+사가정로,name,gemeinde,45000,,,,,,,50,50,,가정값(실측 아님) - TOPIS로 교체 필요
+전농로,name,gemeinde,45000,,,,,,,50,50,,가정값(실측 아님)
+답십리로,name,gemeinde,35000,,,,,,,50,50,,가정값(실측 아님)
+서울시립대로,name,gemeinde,30000,,,,,,,50,50,,가정값(실측 아님)

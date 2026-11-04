@@ -36,6 +36,46 @@ from matplotlib.figure import Figure  # noqa: E402
 log = logging.getLogger("sori")
 ROLE = Qt.UserRole
 KEYS = {"LrT": "주간 LrT (06–22시)", "LrN": "야간 LrN (22–06시)"}
+# 전농사거리 예제(examples/jeonnong)가 쓰는 국토지리정보원 수치지형도 v2.0 도엽 — 수치지도는 앱에 넣지 않음(재배포 조건 미확인)
+JEONNONG_SHEETS = ["377051731", "377051732", "377051733", "377051741", "377051742", "377051743",
+                   "377051751", "377051752", "377051753"]
+
+
+def extract_map_zips(folder):
+    """folder 안의 수치지도 zip 을 같은 이름 폴더로 풀기(이미 푼 것은 건너뜀). 한글 파일명(cp949) 보정,
+    zip 안의 zip 도 한 단계 더 풂. 푼 zip 개수 반환. 원본 zip 은 지우지 않음"""
+    import shutil
+    import zipfile
+    n = 0
+    for z in sorted(Path(folder).rglob("*.zip")):
+        dest = z.with_suffix("")
+        if dest.exists():
+            continue
+        root = dest.resolve()
+        with zipfile.ZipFile(z) as zf:
+            for info in zf.infolist():
+                name = info.filename
+                if not info.flag_bits & 0x800:                  # UTF-8 표시가 없으면 cp949 로 다시 읽음
+                    try:
+                        name = name.encode("cp437").decode("cp949")
+                    except (UnicodeEncodeError, UnicodeDecodeError):
+                        pass
+                target = (dest / name).resolve()
+                if not target.is_relative_to(root):              # 압축 밖 경로로 쓰는 항목 막음
+                    continue
+                if info.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as a, open(target, "wb") as b:
+                    shutil.copyfileobj(a, b)
+        n += 1
+    return n
+
+
+def has_building_layer(folder):
+    """수치지도 건물 레이어(N1A_B0010000.shp)가 하나라도 있는지"""
+    return any(Path(folder).rglob("N1A_B0010000*.shp"))
 TARGETS = {"grid": "격자(소음지도)", "facade": "건물 벽면", "points": "점 수음점"}
 METHODS = {"iso9613_2": "ISO 9613-2 전파 (RLS-19 음원 + ISO 9613-2, 프로젝트 구성 방법)",
            "rls19": "RLS-19 전파 (RLS-19 3.5·3.6 원문)"}
@@ -405,6 +445,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction("설정 파일 열기…", self.pick_cfg, QtGui.QKeySequence.Open)
         m.addAction("결과 폴더 열기…", self.pick_out)
         m.addAction("예제 불러오기(가상 교차로)", self.load_example)
+        m.addAction("전농사거리 불러오기(수치지도는 따로 받음)…", self.load_jeonnong)
         m.addSeparator()
         m.addAction("지도 저장(PNG·PDF)…", self.save_map, QtGui.QKeySequence.Save)
         self.act_last_sec = m.addAction("마지막 단면 보기", self.show_section)
@@ -507,6 +548,33 @@ class MainWindow(QtWidgets.QMainWindow):
             shutil.copytree(resource_path("tests", "reference", "synthetic", "input"), dst, dirs_exist_ok=True)
         log.info("예제(가상 교차로, 실제 지역 아님): %s", dst)
         self.open_config(dst / "config.yaml", dst / "output")
+
+    def load_jeonnong(self, dst=None, quiet=False):
+        """전농사거리 예제(설정·교통량·측정점)를 문서/SORI/전농사거리 에 복사해 엶. 수치지도는 사용자가 받아
+        data/map 에 넣음(zip 그대로 넣으면 여기서 풂). 수치지도가 없으면 받는 방법을 알리고 폴더를 엶 → False"""
+        import shutil
+        dst = Path(dst) if dst else default_output_dir() / "전농사거리"
+        if not (dst / "config.yaml").exists():
+            shutil.copytree(resource_path("examples", "jeonnong"), dst, dirs_exist_ok=True)
+            log.info("전농사거리 예제 복사: %s", dst)
+        mp = dst / "data" / "map"
+        mp.mkdir(parents=True, exist_ok=True)
+        n = extract_map_zips(mp)
+        if n:
+            log.info("수치지도 압축 %d개를 풀었음: %s", n, mp)
+        if not has_building_layer(mp):
+            msg = ("전농사거리 수치지도가 아직 없습니다(앱에는 설정·교통량·측정점만 들어 있음).\n\n"
+                   "국토정보플랫폼(map.ngii.go.kr) → 공간정보 → 수치지도 → 수치지형도 v2.0(1:1,000, SHP)에서\n"
+                   f"도엽 {', '.join(JEONNONG_SHEETS)} 을 받아\n{mp}\n에 넣은 뒤(zip 그대로 가능) "
+                   "다시 '파일 ▸ 전농사거리 불러오기' 를 누르세요.")
+            log.warning("전농사거리 수치지도 없음: %s", mp)
+            if not quiet:
+                QtWidgets.QMessageBox.information(self, "SORI — 전농사거리", msg)
+                G.open_folder(mp)
+            self.lbl_status.setText(f"전농사거리 수치지도를 {mp} 에 넣어 주세요")
+            return False
+        self.open_config(dst / "config.yaml", dst / "output")
+        return True
 
     def open_config(self, path, out=None):
         from sori import config as C
