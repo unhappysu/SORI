@@ -393,7 +393,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.map = MapView()
         self.map.clicked.connect(self._on_map_click)
         self.map.moved.connect(lambda x, y: self.lbl_xy.setText(f"X {x:,.1f}  Y {y:,.1f}"))
-        self.setCentralWidget(self.map)
+        # 나란히 보기: 왼쪽 격자 지도(self.map), 오른쪽 3D 파사드(self.map3d). 끄면 예전처럼 한 창에서 바꿔 봄
+        self.map3d = MapView()
+        self.map3d.message("격자 지도에서 건물을 클릭하면\n여기에 3D 파사드 소음지도가 나옵니다.")
+        self.facade_bid = None    # 오른쪽 창에 보이는 건물(나란히 보기)
+        self.split = QtWidgets.QSplitter(Qt.Horizontal)
+        self.split.addWidget(self.map)
+        self.split.addWidget(self.map3d)
+        self.split.setChildrenCollapsible(False)
+        self.split.setSizes([1, 1])
+        self.setCentralWidget(self.split)
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["프로젝트"])
@@ -434,6 +443,10 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.addSeparator()
         self.act_back = tb.addAction("◀ 격자 지도", self.show_grid)
         self.act_back.setEnabled(False)
+        self.act_split = tb.addAction("격자+파사드 나란히", self._toggle_split)
+        self.act_split.setCheckable(True)
+        self.act_split.setChecked(True)
+        self.act_split.setToolTip("켜면 왼쪽 격자 지도는 그대로 두고, 클릭한 건물의 3D 파사드를 오른쪽 창에 함께 표시")
         self.act_sec = tb.addAction("단면 선 긋기", self._toggle_section)
         self.act_sec.setCheckable(True)
         self.act_sec.setToolTip("격자 지도에서 두 점(A, B)을 차례로 클릭하면 그 선의 수직 단면 소음지도를 계산")
@@ -448,6 +461,7 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction("전농사거리 불러오기(수치지도는 따로 받음)…", self.load_jeonnong)
         m.addSeparator()
         m.addAction("지도 저장(PNG·PDF)…", self.save_map, QtGui.QKeySequence.Save)
+        m.addAction("오른쪽 3D 파사드 저장(PNG·PDF)…", lambda: self.save_map(side=True))
         self.act_last_sec = m.addAction("마지막 단면 보기", self.show_section)
         self.act_last_sec.setEnabled(False)
         m.addAction("결과 폴더를 파인더/탐색기로 보기", lambda: self.out and G.open_folder(self.out))
@@ -625,6 +639,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._err(f"이 폴더에서 SORI 결과를 찾지 못했습니다.\n{out}")
         self.R = R
         self.view, self.view_bid = "grid", None
+        self.facade_bid = None
+        self.map3d.message("격자 지도에서 건물을 클릭하면\n여기에 3D 파사드 소음지도가 나옵니다.")
         ri = R.get("run_info") or {}
         m = set((ri.get("outputs") or {}).values()) or {ri.get("propagation_method")}
         if self.cfg is not None and len(m) == 1 and next(iter(m)) in METHODS:   # 연 결과의 방법으로 맞춤
@@ -774,11 +790,30 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------ 지도
     def redraw(self):
+        self._redraw_main()
+        if self.act_split.isChecked() and self.facade_bid is not None:     # 오른쪽 3D 도 시간대에 맞춤
+            self._draw_facade(self.facade_bid, self.map3d)
+
+    def _redraw_main(self):
         if self.view == "facade":
             return self._draw_facade(self.view_bid)
         if self.view == "section":
             return self._draw_section()
         self.act_back.setEnabled(False)
+        self._redraw_grid()
+        self._mark_building()
+
+    def _mark_building(self):
+        """나란히 보기에서 오른쪽에 보이는 건물을 왼쪽 격자 지도에 빨간 테두리로 표시"""
+        B, ax = self.R.get("buildings"), self.map.ax
+        if not self.act_split.isChecked() or self.facade_bid is None or B is None or ax is None or self.view != "grid":
+            return
+        b = B[B.bid == self.facade_bid]
+        if len(b):
+            b.boundary.plot(ax=ax, color="#e00000", lw=2.2, zorder=30)
+            self.map.canvas.draw_idle()
+
+    def _redraw_grid(self):
         R, crs = self.R, (self.cfg or {}).get("crs")
         extent = None
         if self.cfg:
@@ -794,7 +829,8 @@ class MainWindow(QtWidgets.QMainWindow):
             C = self._hq_ctx()
             if C is not None:                                       # 보고서 수준 지도(maps_hq 와 같은 그리기)
                 try:
-                    return self.map.draw_hq_grid(C, C.cfg, key, h, self.redraw)
+                    return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
+                                                 lambda: (self._redraw_grid(), self._mark_building()))
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key)
@@ -845,9 +881,27 @@ class MainWindow(QtWidgets.QMainWindow):
         if FR is None or self.R.get("facades") is None or not (FR.bid == bid).any():
             self.lbl_status.setText(f"건물 {bid}: 벽면 계산 결과 없음(벽면 계산 반경 밖이거나 벽면 계산을 하지 않음)")
             return False
+        if self.act_split.isChecked():                   # 나란히: 왼쪽 격자는 그대로, 오른쪽에 3D
+            prev, self.facade_bid = self.facade_bid, bid
+            if prev != bid:
+                self._redraw_main()                      # 빨간 테두리 옮김
+            self._draw_facade(bid, self.map3d)
+            return True
         self.view, self.view_bid = "facade", bid
         self.redraw()
         return True
+
+    def _toggle_split(self, on):
+        self.map3d.setVisible(on)
+        if on:
+            if self.view == "facade":                    # 한 창에서 보던 건물을 오른쪽으로 옮김
+                self.facade_bid, self.view, self.view_bid = self.view_bid, "grid", None
+            self.redraw()
+        else:
+            bid, self.facade_bid = self.facade_bid, None
+            self.redraw()
+            if bid is not None:
+                self.lbl_status.setText(f"한 창 보기 — 건물을 클릭하면 3D 파사드로 바뀜(직전 건물 {bid})")
 
     def show_grid(self):
         self.view, self.view_bid = "grid", None
@@ -858,7 +912,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.view = "section"
             self.redraw()
 
-    def _draw_facade(self, bid):
+    def _draw_facade(self, bid, target=None):
+        """target: 그릴 지도 창(None = 가운데 창 self.map, 나란히 보기면 self.map3d)"""
+        side = target is not None
+        target = target or self.map
         R, key = self.R, self.cb_key.currentData()
         B, FR, F = R["buildings"], R["facade"], R["facades"]
         b = B[B.bid == bid].iloc[0]
@@ -873,9 +930,12 @@ class MainWindow(QtWidgets.QMainWindow):
         name = f" {b.bname}" if isinstance(b.get("bname"), str) and b.bname else ""
         title = (f"건물 {bid}{name} · {b.kind} · {int(b.floors)}층 — 3D 파사드 소음지도 {KEYS[key]} "
                  f"(최대 {FRb[key].max():.1f} dB, 층별 값은 이 건물만, 외벽 앞 수음점)")
-        self.map.draw_facade3d(B, FR, F, T, bid, key, view, fh, float(pc.get("elev_3d", 28.0)),
-                               float(pc.get("azim_3d", -60.0)), title)
-        self.act_back.setEnabled(True)
+        if side:                                         # 좁은 오른쪽 창: 두 줄로
+            title = title.replace(" — ", "\n", 1).replace(" (최대", "\n(최대", 1)
+        target.draw_facade3d(B, FR, F, T, bid, key, view, fh, float(pc.get("elev_3d", 28.0)),
+                             float(pc.get("azim_3d", -60.0)), title)
+        if not side:
+            self.act_back.setEnabled(True)
         self.m_facade.set(FRb.sort_values(key, ascending=False).reset_index(drop=True))
         rows = [("건물 번호", str(bid)), ("종류", str(b.kind)), ("층수", str(int(b.floors))), ("높이 m", f"{b.H:.1f}"),
                 ("벽 수(계산)", str(FRb.fid.nunique())), ("수음점", f"{len(FRb):,}"),
@@ -884,7 +944,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if key in lim:
             rows.append((f"기준 {lim[key]} dB 초과", f"{int((FRb[key] > float(lim[key])).sum()):,}점"))
         self._show_props(rows)
-        self.lbl_status.setText(f"건물 {bid} 3D 파사드 — 마우스로 끌어 돌려 보기, '◀ 격자 지도'로 돌아감, "
+        self.lbl_status.setText(f"건물 {bid} 3D 파사드(오른쪽) — 마우스로 끌어 돌려 보기, 다른 건물 클릭하면 바뀜, "
+                                f"층별 값 전체는 아래 '벽면' 표" if side else
+                                f"건물 {bid} 3D 파사드 — 마우스로 끌어 돌려 보기, '◀ 격자 지도'로 돌아감, "
                                 f"층별 값 전체는 아래 '벽면' 표")
 
     # ------------------------------------------------------------ 단면 소음지도
@@ -951,14 +1013,17 @@ class MainWindow(QtWidgets.QMainWindow):
         A[np.searchsorted(ys, Gh.y), np.searchsorted(xs, Gh.x)] = Gh[key]
         return A, (xs[0] - step / 2, xs[-1] + step / 2, ys[0] - step / 2, ys[-1] + step / 2)
 
-    def save_map(self):
-        """지금 보이는 지도(격자 또는 벽면)를 파일로 저장. 기본 이름은 결과 파일명 규칙(sori.naming)"""
-        if self.map.ax is None and self.map.ax3d is None:
-            return self._err("저장할 지도가 없습니다. 결과를 먼저 여세요.")
+    def save_map(self, side=False):
+        """지금 보이는 지도(격자 또는 벽면)를 파일로 저장. 기본 이름은 결과 파일명 규칙(sori.naming).
+        side=True: 나란히 보기 오른쪽 3D 파사드 창을 저장"""
+        mv = self.map3d if side else self.map
+        if mv.ax is None and mv.ax3d is None:
+            return self._err("저장할 지도가 없습니다. 결과를 먼저 열고" + (" 건물을 클릭하세요." if side else " 여세요."))
         key, h = self.cb_key.currentData(), self.cb_h.currentData()
-        kind, extra = {"grid": ("grid", f"_h{h:g}m" if h is not None else ""),
-                       "facade": ("facade", f"_3D_건물{self.view_bid}"),
-                       "section": ("section", "")}[self.view]
+        kind, extra = ("facade", f"_3D_건물{self.facade_bid}") if side else \
+            {"grid": ("grid", f"_h{h:g}m" if h is not None else ""),
+             "facade": ("facade", f"_3D_건물{self.view_bid}"),
+             "section": ("section", "")}[self.view]
         try:
             from sori.naming import rule_name
             name = rule_name(self.cfg, kind, key, extra)
@@ -967,13 +1032,14 @@ class MainWindow(QtWidgets.QMainWindow):
         base = Path(self.out or default_output_dir()) / f"{name}.png"
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "지도 저장", str(base), "PNG 그림 (*.png);;PDF 문서 (*.pdf)")
         if path:
-            self.save_map_to(path)
+            self.save_map_to(path, mv)
 
-    def save_map_to(self, path):
+    def save_map_to(self, path, mv=None):
+        mv = mv or self.map
         path = Path(path)
         if path.suffix.lower() not in (".png", ".pdf"):
             path = path.with_suffix(".png")
-        self.map.fig.savefig(path, dpi=200, facecolor=self.map.fig.get_facecolor())
+        mv.fig.savefig(path, dpi=200, facecolor=mv.fig.get_facecolor())
         log.info("지도 저장: %s", path)
         self.lbl_status.setText(f"지도 저장: {path}")
         return path

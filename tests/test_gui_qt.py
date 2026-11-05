@@ -49,6 +49,8 @@ def test_building_click_3d_facade_and_save(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     w = Q.MainWindow()
     w.open_results(out)
+    w.act_split.setChecked(False)                     # 한 창 보기(격자 ↔ 3D 바꿔 보기)
+    w._toggle_split(False)
     FR, B = w.R["facade"], w.R["buildings"]
     bid = int(FR.bid.value_counts().index[0])
     g = B[B.bid == bid].iloc[0].geometry.representative_point()
@@ -65,6 +67,35 @@ def test_building_click_3d_facade_and_save(tmp_path):
     w.show_grid()
     assert w.view == "grid" and not w.act_back.isEnabled() and w.map.ax.images
     assert w.save_map_to(tmp_path / "grid.png").exists()
+    w.close()
+    app.processEvents()
+
+
+def test_grid_and_facade_side_by_side(tmp_path):
+    """나란히 보기(기본): 건물 클릭 → 왼쪽 격자 그대로 + 빨간 테두리, 오른쪽 3D 파사드. 시간대 바꾸면 둘 다 바뀜"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_results(out)
+    assert w.act_split.isChecked()
+    FR, B = w.R["facade"], w.R["buildings"]
+    bid = int(FR.bid.value_counts().index[0])
+    g = B[B.bid == bid].iloc[0].geometry.representative_point()
+    w._on_map_click(g.x, g.y)
+    assert w.view == "grid" and w.facade_bid == bid and not w.act_back.isEnabled()
+    assert w.map.ax is not None and w.map.ax.images                       # 왼쪽 격자 유지
+    assert w.map3d.ax3d is not None                                        # 오른쪽 3D
+    t = w.map3d.ax3d.get_title()
+    assert f"건물 {bid}" in t and "LrT" in t
+    w.cb_key.setCurrentIndex(w.cb_key.findData("LrN"))                     # 시간대 → 양쪽 다시 그림
+    assert "LrN" in w.map3d.ax3d.get_title() and w.map.ax.images
+    assert w.save_map_to(tmp_path / "side.png", w.map3d).exists()
+    w.act_split.setChecked(False)                                          # 끄면 오른쪽 숨김
+    w._toggle_split(False)
+    assert w.facade_bid is None and w.map3d.isHidden()
     w.close()
     app.processEvents()
 
