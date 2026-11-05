@@ -71,6 +71,74 @@ def test_building_click_3d_facade_and_save(tmp_path):
     app.processEvents()
 
 
+def test_home_screen_and_tasks(tmp_path):
+    """홈 화면으로 시작 → 프로젝트를 열면 최근 목록·작업 단추가 켜짐 → 작업 단추로 작업 화면, ⌂ 홈으로 복귀"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    assert w.stack.currentIndex() == 0 and w.tb_view.isHidden()
+    assert not w.home.tiles["run"].isEnabled() and w.home.tiles["check"].isEnabled()
+    w.open_config(tmp_path / "case" / "config.yaml", out)
+    assert w.home.lst.count() == 1 and w.home.tiles["run"].isEnabled()
+    assert w.home.tiles["grid"].isEnabled() and w.home.tiles["facade"].isEnabled()
+    w.home.tiles["facade"].click()
+    assert w.stack.currentIndex() == 1 and not w.tb_view.isHidden() and w.act_split.isChecked()
+    w.show_home()
+    w.home.tiles["grid"].click()
+    assert w.stack.currentIndex() == 1 and not w.act_split.isChecked() and w.view == "grid"
+    w.show_home()
+    w.home.tiles["section"].click()
+    assert w.act_sec.isChecked()
+    w.show_home()
+    assert w.stack.currentIndex() == 0 and w.tb_view.isHidden()
+    w.close()
+    app.processEvents()
+
+
+def test_input_editor_edit_and_save(tmp_path, monkeypatch):
+    """입력값 창: 설정 파일 값이 칸에 채워짐 → 고쳐 저장하면 config.yaml 에 반영(원본 .bak), 틀린 값은 저장 안 함"""
+    import shutil
+    import yaml
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    work = tmp_path / "case"
+    shutil.copytree(RC.INPUT, work)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_config(work / "config.yaml")
+    E = w.editor
+    assert E.isEnabled() and E.values()["receivers.grid.step"] == w.cfg["receivers"]["grid"]["step"]
+    w.home.tiles["input"].click()                                          # 입력값 전용 화면(지도·Dock 없음)
+    assert w.stack.currentIndex() == 2 and w.tb_view.isHidden()
+    E.w["receivers.grid.step"][0].setText("7.5")
+    E.w["receivers.grid.heights"][0].setText("1.5, 4")
+    w._start_pick_center()                                                 # 지도 화면으로 갔다가
+    assert w.stack.currentIndex() == 1 and not w.tb_view.isHidden()
+    w._on_map_click(1234.5, 6789.0)                                        # 클릭하면 중심 넣고 입력값 화면으로
+    assert E.values()["receivers.center"] == [1234.5, 6789.0] and w.stack.currentIndex() == 2
+    E._preview()                                                           # 범위 보기 → 지도 화면
+    assert w.stack.currentIndex() == 1 and w._prev_box[:2] == (1234.5, 6789.0)
+    w.show_input()
+    assert E.save()
+    raw = yaml.safe_load((work / "config.yaml").read_text(encoding="utf-8"))
+    assert raw["receivers"]["grid"]["step"] == 7.5 and raw["receivers"]["grid"]["heights"] == [1.5, 4.0]
+    assert raw["receivers"]["center"] == [1234.5, 6789.0]
+    assert (work / "config.yaml.bak").exists()
+    assert w.cfg["receivers"]["grid"]["step"] == 7.5 and w.stack.currentIndex() == 2   # 저장 뒤 다시 읽고 입력값 화면 유지
+    w.home.tiles["map"].click()                                            # 입력 지도 확인(지도 화면)
+    assert w.stack.currentIndex() == 1 and w.map.ax is not None
+    E.w["propagation.reflection.rho"][0].setText("1.5")                    # ISO 9613-2: 0.2 < ρ ≤ 1 → 저장 거부
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *a, **k: None)
+    assert not E.save()
+    assert yaml.safe_load((work / "config.yaml").read_text(encoding="utf-8"))["propagation"]["reflection"]["rho"] != 1.5
+    w.close()
+    app.processEvents()
+
+
 def test_grid_and_facade_side_by_side(tmp_path):
     """나란히 보기(기본): 건물 클릭 → 왼쪽 격자 그대로 + 빨간 테두리, 오른쪽 3D 파사드. 시간대 바꾸면 둘 다 바뀜"""
     from PySide6 import QtWidgets

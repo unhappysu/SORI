@@ -217,10 +217,11 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
     az, el = np.radians(azim), np.radians(elev)
     cam = np.array([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az)])
     polys, cols = [], []
+    ax.set_autoscale_on(False)                       # 범위는 아래에서 직접 정함(자동 범위가 NaN·Inf 로 튀어 화면이 꺼지는 일 방지)
     z0min = B.z0.min(); g = view.bounds
     ground = Poly3DCollection([[(g[0], g[1], z0min - 0.2), (g[2], g[1], z0min - 0.2), (g[2], g[3], z0min - 0.2),
                                 (g[0], g[3], z0min - 0.2)]], facecolors="#9ac09a", edgecolors="none", zorder=0)
-    ax.add_collection3d(ground)                      # 지면은 항상 맨 뒤(깊이 정렬 오류 방지)
+    ax.add_collection3d(ground, autolim=False)                      # 지면은 항상 맨 뒤(깊이 정렬 오류 방지)
     for b in B.itertuples():
         if b.bid in T:
             continue
@@ -257,7 +258,7 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
             polys.append([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)])
             cols.append(cmap(norm(rr[key])))
     ax.add_collection3d(Poly3DCollection(polys, facecolors=cols, edgecolors=(0.3, 0.3, 0.5, 0.25),
-                                         linewidths=0.2, zorder=1))
+                                         linewidths=0.2, zorder=1), autolim=False)
     for x, y, z, t in labels3d:
         ax.text(x, y, z, t, fontsize=7, ha="center", va="center", zorder=100)
     ax.set_xlim(g[0], g[2]); ax.set_ylim(g[1], g[3])

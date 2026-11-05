@@ -361,6 +361,440 @@ class MapView(QtWidgets.QWidget):
             self.moved.emit(e.xdata, e.ydata)
 
 
+# ================================================================ 입력값 편집(config.yaml 을 칸에 넣어 고치고 저장)
+# (설정 키 경로, 이름, 종류, 선택지·설명) — 종류: text, int, float, float?(비우면 null), floats(쉼표 목록), xy(두 값),
+#   choice, bool, file?(파일, 비우면 null), file, dirs(폴더 목록)
+ROAD_TYPES = ["gemeinde", "landesstrasse", "bundesstrasse", "autobahn"]
+INPUT_FIELDS = [
+    ("프로젝트", [
+        ("project.name", "프로젝트 이름", "text", None),
+        ("project.scenario", "시나리오", "text", "파일명 규칙에 들어감(예: 현황, 방음벽안)"),
+        ("crs", "좌표계 EPSG", "int", "수치지도 1:1,000 = 5186"),
+    ]),
+    ("입력 파일", [
+        ("input.map.folders", "수치지도 폴더", "dirs", "국토지리정보원 수치지형도 v2.0 SHP 폴더(여러 개는 ; 로 구분)"),
+        ("input.traffic.path", "교통량 CSV", "file?", "비우면 차로 수 기준 가정 교통량"),
+        ("input.traffic.default_road_type", "기본 도로 유형", "choice", ROAD_TYPES),
+        ("input.dem.path", "지형 DEM", "file?", "비우면 등고선·표고점만 사용"),
+        ("input.junctions.path", "교차로 CSV", "file?", "비우면 자동 판정"),
+        ("input.ground.soft_polygons", "녹지 다각형", "file?", "SHP/GPKG, 비우면 없음"),
+    ]),
+    ("계산 범위·수음점", [
+        ("receivers.center", "격자 중심 X, Y (m)", "xy", "‘지도에서 중심 찍기’로도 넣을 수 있음"),
+        ("receivers.grid.size", "격자 크기 가로, 세로 (m)", "xy", None),
+        ("receivers.grid.step", "격자 간격 (m)", "float", None),
+        ("receivers.grid.heights", "격자 높이 (m)", "floats", "쉼표로 여러 개, 예: 1.5, 4"),
+        ("receivers.facade.enabled", "건물 벽면 계산", "bool", None),
+        ("receivers.facade.radius", "벽면 계산 반경 (m)", "float", "격자 중심에서"),
+        ("model.floor_height", "층 높이 (m)", "float", "수치지도 층수 × 층 높이 = 건물 높이"),
+        ("receivers.points.path", "점 수음점 CSV", "file?", "point_id, x, y, h"),
+        ("receivers.points.default_height", "점 수음점 기본 높이 (m)", "float?", "h 가 빈 행에 씀"),
+    ]),
+    ("전파·반사", [
+        ("propagation_method", "전파 방법", "choice", list(METHODS)),
+        ("input.ground.method", "지면 계산법", "choice", ["general", "alternative"]),
+        ("input.ground.default_G", "기본 지면 계수 G", "float", "0 = 포장, 1 = 녹지"),
+        ("propagation.temperature_C", "기온 (°C)", "float", None),
+        ("propagation.humidity_pct", "상대습도 (%)", "float", None),
+        ("propagation.reflection.rho", "반사계수 ρ", "float", "ISO 9613-2 표 4: 창 있는 벽 0.8"),
+        ("propagation.reflection.max_order_grid", "반사 차수 — 격자", "int", "0~3"),
+        ("propagation.reflection.max_order_facade", "반사 차수 — 벽면", "int", "0~3"),
+        ("propagation.reflection.max_order_point", "반사 차수 — 점 수음점", "int", "0~3"),
+    ]),
+]
+
+
+def _get(d, path):
+    for k in path.split("."):
+        if not isinstance(d, dict) or k not in d:
+            return None
+        d = d[k]
+    return d
+
+
+def _set(d, path, v):
+    ks = path.split(".")
+    for k in ks[:-1]:
+        if not isinstance(d.get(k), dict):
+            d[k] = {}
+        d = d[k]
+    d[ks[-1]] = v
+
+
+def _num(t):
+    t = t.strip()
+    return None if t == "" else float(t)
+
+
+class InputEditor(QtWidgets.QWidget):
+    """설정 파일의 주요 입력값을 칸으로 보여 주고 고쳐 저장. 저장 전 sori.config.load 로 검사하고, 처음 저장할 때
+    원본을 config.yaml.bak 로 남김(YAML 주석은 저장하면 사라짐)"""
+    saved = QtCore.Signal(str)
+    pick_center = QtCore.Signal()
+    preview = QtCore.Signal(object)               # 저장 전 범위 미리보기: (cx, cy, w, h)
+
+    def __init__(self):
+        super().__init__()
+        self.path = None
+        self.w = {}
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        self.lbl = QtWidgets.QLabel("설정 파일을 열면 입력값을 고칠 수 있습니다.")
+        self.lbl.setWordWrap(True)
+        lay.addWidget(self.lbl)
+        sc = QtWidgets.QScrollArea(widgetResizable=True)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner = QtWidgets.QWidget()
+        il = QtWidgets.QGridLayout(inner)                 # 두 열: 왼쪽 프로젝트·입력 파일, 오른쪽 계산 범위·전파
+        il.setHorizontalSpacing(18)
+        for i, (title, fields) in enumerate(INPUT_FIELDS):
+            gb = QtWidgets.QGroupBox(title)
+            fl = QtWidgets.QFormLayout(gb)
+            fl.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
+            for key, label, kind, extra in fields:
+                fl.addRow(label, self._make(key, kind, extra))
+            il.addWidget(gb, i % 2, i // 2)
+        il.setRowStretch(2, 1)
+        il.setColumnStretch(0, 1)
+        il.setColumnStretch(1, 1)
+        sc.setWidget(inner)
+        lay.addWidget(sc, 1)
+        row = QtWidgets.QHBoxLayout()
+        b = QtWidgets.QPushButton("지도에서 격자 중심 찍기")
+        b.setToolTip("지도 화면으로 가서 한 번 클릭하면 그 점이 격자 중심이 되고 이 화면으로 돌아옴")
+        b.clicked.connect(self.pick_center.emit)
+        row.addWidget(b)
+        self.btn_prev = QtWidgets.QPushButton("지도에서 범위 보기")
+        self.btn_prev.setToolTip("저장하지 않고 지도 화면에 새 계산 범위(주황 점선)를 그려 봄")
+        self.btn_prev.clicked.connect(self._preview)
+        self.btn_reset = QtWidgets.QPushButton("되돌리기")
+        self.btn_reset.clicked.connect(lambda: self.path and self.load(self.path))
+        self.btn_save = QtWidgets.QPushButton("저장")
+        self.btn_save.setDefault(True)
+        self.btn_save.clicked.connect(self.save)
+        row.addWidget(self.btn_prev)
+        row.addStretch(1)
+        for x in (self.btn_reset, self.btn_save):
+            x.setMinimumWidth(110)
+            row.addWidget(x)
+        lay.addLayout(row)
+        self.setEnabled(False)
+
+    # 칸 만들기·읽기·쓰기
+    def _make(self, key, kind, extra):
+        if kind == "choice":
+            w = QtWidgets.QComboBox()
+            for v in extra:
+                w.addItem(METHODS.get(v, v), v)
+        elif kind == "bool":
+            w = QtWidgets.QCheckBox()
+        elif kind in ("file?", "file", "dirs"):
+            w = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            e = QtWidgets.QLineEdit()
+            btn = QtWidgets.QToolButton(text="…")
+            btn.clicked.connect(lambda _=False, e=e, k=kind: self._browse(e, k))
+            h.addWidget(e, 1)
+            h.addWidget(btn)
+            w.edit = e
+            if isinstance(extra, str):
+                e.setPlaceholderText(extra)
+        else:
+            w = QtWidgets.QLineEdit()
+            if isinstance(extra, str):
+                w.setPlaceholderText(extra)
+        if isinstance(extra, str):
+            w.setToolTip(extra)
+        self.w[key] = (w, kind)
+        return w
+
+    def _rel(self, p):
+        """설정 파일 폴더 안이면 상대 경로로(파일을 옮겨도 함께 움직이게)"""
+        if p in (None, ""):
+            return None
+        p = Path(p)
+        try:
+            return p.resolve().relative_to(self.path.parent).as_posix()
+        except ValueError:
+            return str(p)
+
+    def _browse(self, e, kind):
+        start = str(self.path.parent if self.path else Path.home())
+        if kind == "dirs":
+            p = QtWidgets.QFileDialog.getExistingDirectory(self, "수치지도 폴더", start)
+        else:
+            p, _ = QtWidgets.QFileDialog.getOpenFileName(self, "파일 선택", start)
+        if p:
+            e.setText(self._rel(p))
+
+    def load(self, path, cfg=None):
+        """설정 파일을 칸에 채움(적지 않은 항목은 기본값으로 보임)"""
+        from sori import config as C
+        self.path = Path(path).resolve()
+        cfg = cfg or C.load(self.path)
+        for key, (w, kind) in self.w.items():
+            v = _get(cfg, key)
+            if kind == "choice":
+                w.setCurrentIndex(max(0, w.findData(v or "iso9613_2" if key == "propagation_method" else v)))
+            elif kind == "bool":
+                w.setChecked(bool(v))
+            elif kind == "dirs":
+                w.edit.setText("; ".join(self._rel(p) for p in (v or [])))
+            elif kind in ("file?", "file"):
+                w.edit.setText(self._rel(v) or "")
+            elif kind in ("xy", "floats"):
+                w.setText(", ".join(f"{float(x):g}" for x in v) if v is not None else "")
+            elif kind == "int":
+                w.setText("" if v is None else str(int(v)))
+            else:
+                w.setText("" if v is None else (f"{v:g}" if isinstance(v, float) else str(v)))
+        self.lbl.setText(f"설정 파일: {self.path}\n"
+                         "고친 뒤 ‘저장’ → 설정 파일에 씀. 결과는 홈 ▸ ‘계산 실행’으로 다시 계산해야 바뀜")
+        self.lbl.setToolTip(str(self.path))
+        self.setEnabled(True)
+
+    def values(self):
+        """칸 값 → {키 경로: 값}. 형식이 틀리면 ValueError(칸 이름 포함)"""
+        out = {}
+        names = {k: lab for _, fs in INPUT_FIELDS for k, lab, _, _ in fs}
+        for key, (w, kind) in self.w.items():
+            try:
+                if kind == "choice":
+                    v = w.currentData()
+                elif kind == "bool":
+                    v = w.isChecked()
+                elif kind == "dirs":
+                    v = [s.strip() for s in w.edit.text().split(";") if s.strip()]
+                elif kind in ("file?", "file"):
+                    v = w.edit.text().strip() or None
+                elif kind == "xy":
+                    v = [float(s) for s in w.text().replace(" ", "").split(",") if s]
+                    if len(v) != 2:
+                        raise ValueError("두 값을 쉼표로")
+                elif kind == "floats":
+                    v = [float(s) for s in w.text().replace(" ", "").split(",") if s]
+                    if not v:
+                        raise ValueError("하나 이상")
+                elif kind == "int":
+                    v = int(w.text().strip())
+                elif kind == "float":
+                    v = float(w.text().strip())
+                elif kind == "float?":
+                    v = _num(w.text())
+                else:
+                    v = w.text().strip()
+            except ValueError as e:
+                raise ValueError(f"‘{names[key]}’ 값이 올바르지 않음: {e}") from None
+            out[key] = v
+        for k in ("max_order_grid", "max_order_facade", "max_order_point"):
+            if not 0 <= out[f"propagation.reflection.{k}"] <= 3:
+                raise ValueError(f"‘{names['propagation.reflection.' + k]}’ 는 0~3")
+        return out
+
+    def _preview(self):
+        try:
+            v = self.values()
+        except ValueError as e:
+            return QtWidgets.QMessageBox.warning(self, "SORI — 입력값", str(e))
+        (cx, cy), (w, h) = v["receivers.center"], v["receivers.grid.size"]
+        self.preview.emit((cx, cy, w, h))
+
+    def set_center(self, x, y):
+        self.w["receivers.center"][0].setText(f"{x:.1f}, {y:.1f}")
+
+    def save(self):
+        """원본 YAML 에 고친 값만 덮어써 저장. 저장 전에 같은 폴더의 임시 파일로 load 검사"""
+        import yaml
+        from sori import config as C
+        try:
+            vals = self.values()
+        except ValueError as e:
+            QtWidgets.QMessageBox.warning(self, "SORI — 입력값", str(e))
+            return False
+        raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+        for k, v in vals.items():
+            if k == "receivers.center":
+                _set(raw, "receivers.grid.bbox", None)        # 중심·크기로 범위를 정함
+            _set(raw, k, v)
+        text = ("# SORI 화면(입력값)에서 저장함 — 원래 주석은 config.yaml.bak 에 있음\n"
+                + yaml.safe_dump(raw, allow_unicode=True, sort_keys=False, default_flow_style=None))
+        tmp = self.path.with_name(".sori_check_config.yaml")
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            C.load(tmp)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "SORI — 입력값", f"저장하지 않았습니다. 설정 검사 오류:\n{e}")
+            return False
+        finally:
+            tmp.unlink(missing_ok=True)
+        bak = self.path.with_name(self.path.name + ".bak")
+        if not bak.exists():
+            bak.write_text(self.path.read_text(encoding="utf-8"), encoding="utf-8")
+        self.path.write_text(text, encoding="utf-8")
+        log.info("입력값 저장: %s (원본 백업 %s)", self.path, bak.name)
+        self.saved.emit(str(self.path))
+        return True
+
+
+# ================================================================ 홈 화면(프로젝트 고르기 → 작업 고르기)
+def recent_projects():
+    """최근에 연 설정 파일 [(경로, 프로젝트 이름)], 새것부터. 없어진 파일은 뺌"""
+    try:
+        rows = json.loads(G.load_settings().get("recent") or "[]")
+    except ValueError:
+        rows = []
+    return [(p, n) for p, n in rows if Path(p).is_file()]
+
+
+def add_recent(path, name):
+    rows = [(p, n) for p, n in recent_projects() if Path(p).resolve() != Path(path).resolve()]
+    G.save_settings(recent=json.dumps([(str(path), name)] + rows[:7], ensure_ascii=False))
+
+
+# 작업 단추: (열쇠, 제목, 설명, 필요한 것) — 필요한 것: cfg = 설정 파일, grid = 격자 결과, facade = 벽면 결과, None = 없음
+TASKS = [
+    ("input", "입력값 설정", "입력 파일·계산 범위·전파 조건을 칸에 넣어 고치고 설정 파일에 저장", "cfg"),
+    ("map", "입력 지도 확인", "수치지도 건물·도로와 계산 범위를 지도에서 확인(값은 속성 표)", "cfg"),
+    ("run", "계산 실행", "전파 방법·계산 대상을 골라 격자·벽면·점 수음점 계산", "cfg"),
+    ("grid", "격자 소음지도", "높이·시간대별 격자 소음지도, 격자점 클릭 → 값", "grid"),
+    ("facade", "격자 + 3D 파사드", "왼쪽 격자 지도에서 건물을 클릭하면 오른쪽에 층별 3D 파사드", "facade"),
+    ("section", "단면 소음지도", "지도에 A→B 선을 그어 수직 단면 소음 분포 계산", "grid"),
+    ("check", "자가 점검", "좌표 변환과 기준 사례(가상 교차로) 계산으로 프로그램 상태 확인", None),
+]
+
+
+class HomePage(QtWidgets.QWidget):
+    """시작 화면. 왼쪽: 프로젝트 열기·최근 프로젝트, 오른쪽: 현재 프로젝트와 들어갈 작업"""
+    task = QtCore.Signal(str)
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        self.setObjectName("home")
+        self.setStyleSheet("""
+            #home { background: #ffffff; }
+            #home QLabel#title { font-size: 26px; font-weight: 700; color: #16365c; }
+            #home QLabel#sub { font-size: 13px; color: #555; }
+            #home QLabel#head { font-size: 14px; font-weight: 700; color: #16365c; padding-top: 6px; }
+            #home QFrame#card { background: #f5f8fc; border: 1px solid #d5dfeb; border-radius: 8px; }
+            #home QPushButton#side { text-align: left; padding: 8px 12px; font-size: 13px;
+                                     border: 1px solid #c9d6e6; border-radius: 6px; background: #ffffff; }
+            #home QPushButton#side:hover { background: #e8f0fb; }
+            #home QPushButton#tile { text-align: left; padding: 14px 16px; border: 1px solid #c9d6e6;
+                                     border-radius: 8px; background: #ffffff; font-size: 12px; color: #444; }
+            #home QPushButton#tile:hover { background: #e8f0fb; border-color: #2f6fd6; }
+            #home QPushButton#tile:disabled { background: #f3f3f3; border-color: #e0e0e0; }
+            #home QLabel#tt { font-size: 15px; font-weight: 700; color: #16365c; background: transparent; }
+            #home QLabel#td { font-size: 12px; color: #555; background: transparent; }
+            #home QLabel#tt:disabled, #home QLabel#td:disabled { color: #b8b8b8; }
+            #home QListWidget { border: 1px solid #d5dfeb; border-radius: 6px; font-size: 13px; }
+        """)
+        out = QtWidgets.QVBoxLayout(self)
+        out.setContentsMargins(36, 28, 36, 16)
+        # 머리: 아이콘 + 이름
+        top = QtWidgets.QHBoxLayout()
+        icon = resource_path("sori", "assets", "SORI.png")
+        if icon.is_file():
+            lb = QtWidgets.QLabel()
+            lb.setPixmap(QtGui.QPixmap(str(icon)).scaled(72, 72, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            top.addWidget(lb)
+        tt = QtWidgets.QVBoxLayout()
+        t = QtWidgets.QLabel(f"SORI v{__version__}", objectName="title")
+        s = QtWidgets.QLabel("Simulation of Outdoor Road-noise Impact — 도로교통소음 예측 (RLS-19 음원 + ISO 9613-2 / RLS-19 전파)",
+                             objectName="sub")
+        tt.addWidget(t)
+        tt.addWidget(s)
+        top.addLayout(tt, 1)
+        out.addLayout(top)
+        out.addSpacing(12)
+
+        body = QtWidgets.QHBoxLayout()
+        body.setSpacing(24)
+        out.addLayout(body, 1)
+        # 왼쪽: 프로젝트
+        left = QtWidgets.QVBoxLayout()
+        left.addWidget(QtWidgets.QLabel("프로젝트 열기", objectName="head"))
+        for text, fn in (("설정 파일(config.yaml) 열기…", win.pick_cfg),
+                         ("결과 폴더만 열기…", win.pick_out),
+                         ("예제: 가상 교차로(실제 지역 아님)", win.load_example),
+                         ("예제: 전농사거리(수치지도는 따로 받음)", win.load_jeonnong)):
+            b = QtWidgets.QPushButton(text, objectName="side")
+            b.clicked.connect(lambda _=False, f=fn: f())
+            left.addWidget(b)
+        left.addWidget(QtWidgets.QLabel("최근 프로젝트 (두 번 클릭해 열기)", objectName="head"))
+        self.lst = QtWidgets.QListWidget()
+        self.lst.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.lst.setTextElideMode(Qt.ElideMiddle)
+        self.lst.setSpacing(3)
+        self.lst.itemDoubleClicked.connect(lambda it: win.open_config(it.data(ROLE)))
+        left.addWidget(self.lst, 1)
+        lw = QtWidgets.QWidget()
+        lw.setLayout(left)
+        lw.setFixedWidth(380)
+        body.addWidget(lw)
+        # 오른쪽: 현재 프로젝트 + 작업
+        right = QtWidgets.QVBoxLayout()
+        right.addWidget(QtWidgets.QLabel("현재 프로젝트", objectName="head"))
+        card = QtWidgets.QFrame(objectName="card")
+        cl = QtWidgets.QVBoxLayout(card)
+        self.lbl_proj = QtWidgets.QLabel()
+        self.lbl_proj.setWordWrap(True)
+        self.lbl_proj.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        cl.addWidget(self.lbl_proj)
+        right.addWidget(card)
+        right.addWidget(QtWidgets.QLabel("작업 선택", objectName="head"))
+        grid = QtWidgets.QGridLayout()
+        grid.setSpacing(12)
+        self.tiles = {}
+        for i, (k, title, desc, _need) in enumerate(TASKS):
+            b = QtWidgets.QPushButton(objectName="tile")
+            bl = QtWidgets.QVBoxLayout(b)
+            bl.setContentsMargins(18, 12, 18, 12)
+            for text, name in ((f"{i + 1}  {title}", "tt"), (desc, "td")):
+                lb = QtWidgets.QLabel(text, objectName=name)
+                lb.setWordWrap(True)
+                lb.setAttribute(Qt.WA_TransparentForMouseEvents)
+                bl.addWidget(lb)
+            b.setFixedHeight(92)
+            b.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            b.clicked.connect(lambda _=False, key=k: self.task.emit(key))
+            grid.addWidget(b, i // 2, i % 2)
+            self.tiles[k] = b
+        right.addLayout(grid)
+        right.addStretch(1)
+        body.addLayout(right, 1)
+        foot = QtWidgets.QLabel(f"※ {AI_NOTICE}  계산 결과의 검토·검증 책임은 사용자에게 있음.", objectName="sub")
+        out.addWidget(foot)
+        self.refresh()
+
+    def refresh(self):
+        w = self.win
+        self.lst.clear()
+        for p, n in recent_projects():
+            short = "…/" + "/".join(Path(p).parts[-3:-1])          # 마지막 폴더 두 단계만(전체 경로는 풍선 도움말)
+            it = QtWidgets.QListWidgetItem(f"{n}\n   {short}")
+            it.setData(ROLE, p)
+            it.setToolTip(p)
+            self.lst.addItem(it)
+        R = w.R
+        have = {"cfg": w.cfg is not None, "grid": "grid" in R, "facade": "facade" in R and "facades" in R, None: True}
+        for k, _t, _d, need in TASKS:
+            self.tiles[k].setEnabled(have[need])
+        if w.cfg is None and not w.out:
+            self.lbl_proj.setText("열린 프로젝트가 없습니다. 왼쪽에서 설정 파일이나 예제를 여세요.")
+            return
+        name = (w.cfg or {}).get("project", {}).get("name") or (Path(w.out).name if w.out else "")
+        ri = R.get("run_info") or {}
+        res = ", ".join(lbl for k, lbl in (("grid", "격자"), ("facade", "벽면"), ("points", "점 수음점")) if k in R)
+        self.lbl_proj.setText(
+            f"<b style='font-size:15px'>{name}</b><br>"
+            f"설정 파일: {w.cfg_path or '(없음 — 결과 폴더만 열림)'}<br>"
+            f"결과 폴더: {w.out or '(없음)'}<br>"
+            f"계산 결과: {res or '아직 없음 — 계산 실행을 고르세요'}"
+            + (f" · 계산 시각 {ri.get('time')}" if ri.get("time") else ""))
+
+
 # ================================================================ 주 창
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -402,7 +836,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.split.addWidget(self.map3d)
         self.split.setChildrenCollapsible(False)
         self.split.setSizes([1, 1])
-        self.setCentralWidget(self.split)
+        self.stack = QtWidgets.QStackedWidget()           # 0 = 홈 화면, 1 = 작업 화면(지도)
+        self.setCentralWidget(self.stack)
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["프로젝트"])
@@ -414,7 +849,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.props.horizontalHeader().setStretchLastSection(True)
         self.props.verticalHeader().hide()
         self.props.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self._dock("속성", self.props, Qt.RightDockWidgetArea)
+        d_props = self._dock("속성", self.props, Qt.RightDockWidgetArea)
+        self.editor = InputEditor()
+        self.editor.saved.connect(self._on_input_saved)
+        self.editor.pick_center.connect(self._start_pick_center)
+        self.editor.preview.connect(self._preview_extent)
+        self._picking_center = False
+        self.input_page = QtWidgets.QWidget()           # 입력값 전용 화면(지도 없음)
+        ip = QtWidgets.QVBoxLayout(self.input_page)
+        ip.setContentsMargins(24, 14, 24, 10)
+        hd = QtWidgets.QHBoxLayout()
+        bh = QtWidgets.QPushButton("⌂ 홈")
+        bh.clicked.connect(self.show_home)
+        hd.addWidget(bh)
+        tl = QtWidgets.QLabel("입력값 설정")
+        tl.setStyleSheet("font-size: 20px; font-weight: 700; color: #16365c; padding-left: 10px;")
+        hd.addWidget(tl)
+        hd.addStretch(1)
+        bm = QtWidgets.QPushButton("입력 지도 확인 ▶")
+        bm.clicked.connect(lambda: self.enter_task("map"))
+        hd.addWidget(bm)
+        ip.addLayout(hd)
+        ip.addWidget(self.editor, 1)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self._run_panel(), "계산 실행")
@@ -428,8 +884,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dock("계산·결과 표", self.tabs, Qt.BottomDockWidgetArea)
 
         # 지도 위 도구 줄: 결과 높이·시간대
-        tb = self.addToolBar("결과 보기")
+        tb = self.tb_view = self.addToolBar("결과 보기")
         tb.setObjectName("view")
+        tb.addAction("⌂ 홈", self.show_home).setToolTip("홈 화면: 프로젝트·작업 다시 고르기")
+        tb.addAction("✎ 입력값", self.show_input).setToolTip("입력값 설정 화면으로")
+        tb.addSeparator()
         tb.addWidget(QtWidgets.QLabel(" 격자 높이 "))
         self.cb_h = QtWidgets.QComboBox()
         tb.addWidget(self.cb_h)
@@ -455,6 +914,8 @@ class MainWindow(QtWidgets.QMainWindow):
         tb.addWidget(QtWidgets.QLabel("   건물 클릭 → 3D 파사드 소음지도(마우스로 회전)"))
 
         m = self.menuBar().addMenu("파일")
+        m.addAction("홈 화면", self.show_home, QtGui.QKeySequence("Ctrl+Shift+H"))
+        m.addSeparator()
         m.addAction("설정 파일 열기…", self.pick_cfg, QtGui.QKeySequence.Open)
         m.addAction("결과 폴더 열기…", self.pick_out)
         m.addAction("예제 불러오기(가상 교차로)", self.load_example)
@@ -486,12 +947,69 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resizeDocks([self.findChild(QtWidgets.QDockWidget, "속성")], [300], Qt.Horizontal)
         self.resizeDocks([self.findChild(QtWidgets.QDockWidget, "계산·결과 표")], [230], Qt.Vertical)
 
+        self.home = HomePage(self)
+        self.home.task.connect(self.enter_task)
+        self.stack.addWidget(self.home)
+        self.stack.addWidget(self.split)
+        self.stack.addWidget(self.input_page)            # 2 = 입력값 설정
+        self.show_home()
+
+    # ------------------------------------------------------------ 홈 화면 ↔ 작업 화면
+    def _work_chrome(self, on):
+        """작업 화면에서만 쓰는 창(트리·속성·표 Dock, 지도 도구 줄)을 보이거나 숨김"""
+        for d in self.findChildren(QtWidgets.QDockWidget):
+            d.setVisible(on)
+        self.tb_view.setVisible(on)
+
+    def show_home(self):
+        self.home.refresh()
+        self._work_chrome(False)
+        self.stack.setCurrentIndex(0)
+        self.lbl_status.setText("홈 — 프로젝트를 열고 작업을 고르세요")
+
+    def show_input(self):
+        self._work_chrome(False)
+        self.stack.setCurrentIndex(2)
+        self.lbl_status.setText("입력값 설정 — 칸을 고친 뒤 ‘저장’. 범위는 ‘지도에서 범위 보기’로 확인")
+
+    def enter_task(self, key):
+        """홈 화면 작업 단추 → 입력값 화면 또는 지도 작업 화면으로 들어가 그 작업에 맞게 준비"""
+        if key == "input":
+            return self.show_input()
+        self.stack.setCurrentIndex(1)
+        self._work_chrome(True)
+        if self.act_sec.isChecked():
+            self.act_sec.setChecked(False)
+            self.sec_pts = []
+        split = key == "facade"
+        if self.act_split.isChecked() != split:
+            self.act_split.setChecked(split)
+            self._toggle_split(split)
+        if self.view != "grid":
+            self.show_grid()
+        if key == "map":
+            self._show_props(self._config_props())
+            self.lbl_status.setText("입력 지도 확인 — 왼쪽 트리 항목을 고르면 속성 표에 값. 값을 고치려면 ‘✎ 입력값’")
+        elif key == "run":
+            self.tabs.setCurrentIndex(0)
+            self.lbl_status.setText("계산 실행 — 아래 '계산 실행' 탭에서 전파 방법·대상을 고르고 ▶ 계산 실행")
+        elif key == "grid":
+            self.lbl_status.setText("격자 소음지도 — 격자점 클릭 → 값, 건물 클릭 → 3D 파사드(한 창)")
+        elif key == "facade":
+            self.lbl_status.setText("격자 + 3D 파사드 — 왼쪽 지도에서 건물을 클릭하세요")
+        elif key == "section":
+            self.act_sec.setChecked(True)
+            self._toggle_section(True)
+        elif key == "check":
+            self.start_check()
+
     def _dock(self, title, w, area):
         d = QtWidgets.QDockWidget(title, self)
         d.setObjectName(title)
         d.setWidget(w)
         d.setFeatures(QtWidgets.QDockWidget.DockWidgetMovable | QtWidgets.QDockWidget.DockWidgetFloatable)
         self.addDockWidget(area, d)
+        return d
         return d
 
     def _run_panel(self):
@@ -606,6 +1124,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ed_cfg.setText(str(path))
         self.ed_out.setText(str(out))
         G.save_settings(last_config=path, last_out=out.resolve())   # 설정과 결과 폴더를 짝으로 기억
+        add_recent(path, cfg["project"].get("name") or path.parent.name)
+        self.editor.load(path, cfg)
+        self._prev_box = None
         log.info("설정 파일: %s", path)
         self.open_results(out, quiet=True)
 
@@ -662,6 +1183,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._fill_tree()
         self.redraw()
         self._show_props(self._summary_props())
+        if hasattr(self, "home"):
+            self.home.refresh()
         if R:
             log.info("결과 폴더: %s (%s)", out, ", ".join(k for k in R if k in ("grid", "facade", "points", "terms")))
 
@@ -802,6 +1325,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_back.setEnabled(False)
         self._redraw_grid()
         self._mark_building()
+        self._draw_preview()
 
     def _mark_building(self):
         """나란히 보기에서 오른쪽에 보이는 건물을 왼쪽 격자 지도에 빨간 테두리로 표시"""
@@ -830,7 +1354,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if C is not None:                                       # 보고서 수준 지도(maps_hq 와 같은 그리기)
                 try:
                     return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
-                                                 lambda: (self._redraw_grid(), self._mark_building()))
+                                                 lambda: (self._redraw_grid(), self._mark_building(), self._draw_preview()))
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key)
@@ -1044,7 +1568,48 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_status.setText(f"지도 저장: {path}")
         return path
 
+    # ------------------------------------------------------------ 입력값 편집
+    def _on_input_saved(self, path):
+        self.open_config(path, self.out)
+        self.show_input()
+        self.lbl_status.setText("입력값 저장함 — 결과는 예전 값으로 계산된 것. 새 값으로 보려면 ‘계산 실행’")
+
+    def _start_pick_center(self):
+        self.enter_task("map")
+        self._picking_center = True
+        self.lbl_status.setText("지도에서 새 격자 중심을 클릭하세요 — 클릭하면 입력값 화면으로 돌아감")
+
+    def _preview_extent(self, v):
+        self._prev_box = v
+        if self.stack.currentIndex() != 1:
+            self.enter_task("map")                     # 지도 화면에서 보여 줌(그리면서 상자도 덧그림)
+        else:
+            self._redraw_main()
+        cx, cy, w, h = v
+        self.lbl_status.setText(f"새 계산 범위(주황 점선) {w:g} × {h:g} m — 저장 전 미리보기, 고치려면 ‘✎ 입력값’")
+
+    def _draw_preview(self):
+        """입력값 ‘범위 미리보기’ 상자(주황 점선). 지도를 다시 그려도 남도록 그릴 때마다 덧그림"""
+        v, ax = getattr(self, "_prev_box", None), self.map.ax
+        if v is None or ax is None or self.view != "grid":
+            return
+        cx, cy, w, h = v
+        x0, y0, x1, y1 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+        xl, yl = ax.get_xlim(), ax.get_ylim()
+        ax.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0], "--", color="#e07000", lw=2.2, zorder=40)
+        ax.plot([cx], [cy], "+", color="#e07000", ms=14, mew=2, zorder=40)
+        ax.set_xlim(min(xl[0], x0 - 10), max(xl[1], x1 + 10))     # 새 범위가 밖으로 나가면 보이게 넓힘
+        ax.set_ylim(min(yl[0], y0 - 10), max(yl[1], y1 + 10))
+        self.map.canvas.draw_idle()
+
     def _on_map_click(self, x, y):
+        if self._picking_center:                                   # 입력값: 격자 중심 찍기
+            self._picking_center = False
+            self.editor.set_center(x, y)
+            self._prev_box = None
+            self.show_input()
+            self.lbl_status.setText(f"격자 중심 ({x:.1f}, {y:.1f}) 을 넣었음 — ‘저장’해야 설정 파일에 반영")
+            return
         if self.act_sec.isChecked() and self.view == "grid":         # 단면 선 긋기 중
             return self._section_click(x, y)
         if self.view == "section":
@@ -1165,14 +1730,42 @@ def restore(win, config=None, out=None):
         win.open_results(out)
 
 
+def light_theme(app):
+    """운영체제가 다크 모드여도 흰 바탕 밝은 화면으로 고정(지도·표가 흰 그림과 어울리게)"""
+    try:
+        app.styleHints().setColorScheme(Qt.ColorScheme.Light)       # Qt 6.8 이상
+    except AttributeError:
+        pass
+    app.setStyle("Fusion")
+    P, R = QtGui.QPalette, QtGui.QPalette.ColorRole
+    p = P()
+    for role, c in ((R.Window, "#ffffff"), (R.WindowText, "#1a1a1a"), (R.Base, "#ffffff"),
+                    (R.AlternateBase, "#f4f6f8"), (R.Text, "#1a1a1a"), (R.Button, "#f2f2f2"),
+                    (R.ButtonText, "#1a1a1a"), (R.ToolTipBase, "#ffffe0"), (R.ToolTipText, "#1a1a1a"),
+                    (R.Highlight, "#2f6fd6"), (R.HighlightedText, "#ffffff"), (R.PlaceholderText, "#8a8a8a"),
+                    (R.Mid, "#c8c8c8"), (R.Midlight, "#e6e6e6"), (R.Dark, "#a0a0a0"), (R.Light, "#ffffff")):
+        p.setColor(role, QtGui.QColor(c))
+    for role in (R.WindowText, R.Text, R.ButtonText):
+        p.setColor(P.ColorGroup.Disabled, role, QtGui.QColor("#a8a8a8"))
+    app.setPalette(p)
+
+
 def main(config=None, out=None, snapshot=None):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
     app.setApplicationName("SORI")
+    light_theme(app)
     icon = resource_path("sori", "assets", "SORI.png")    # 창·Dock·작업 표시줄 아이콘(앱 파일 아이콘은 SORI.spec)
     if icon.is_file():
         app.setWindowIcon(QtGui.QIcon(str(icon)))
     win = MainWindow()
     win.show()
+
+    def _hook(et, ev, tb):                            # 지도 마우스 조작 중 오류: 앱을 끄지 않고 기록·상태 줄에 남김
+        import traceback
+        sys.__stderr__.write("".join(traceback.format_exception(et, ev, tb)))
+        log.error("화면 처리 중 오류(앱은 계속 사용 가능): %s", ev)
+        win.lbl_status.setText(f"화면 오류: {ev} — 지도를 다시 그리려면 시간대를 바꾸거나 건물을 다시 클릭")
+    sys.excepthook = _hook
     restore(win, config, out)
     if snapshot:                                      # 화면 확인용: 그린 뒤 PNG 저장하고 끝냄
         for _ in range(20):
