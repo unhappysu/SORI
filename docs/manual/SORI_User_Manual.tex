@@ -22,7 +22,7 @@
 {서울시립대학교 환경공학부 · 소음진동설계 (2026학년도 2학기)\par}
 \vspace{10mm}
 {문서 기준: 브랜치 \f{packaging/app} 커밋 \f{2376a59}\par}
-{작성일: 2026-11-02\par}
+{작성일: 2026-11-02 \quad 개정: 2026-11-05\par}
 \vfill
 \begin{minipage}{0.85\textwidth}\small
 \textbf{AI 활용 표기.} 본 매뉴얼과 SORI 소프트웨어는 AI(Claude, Anthropic)를 활용하여 제작하였다. 계산 결과의 검토·검증 책임은 사용자에게 있다.\par\vspace{2mm}
@@ -73,22 +73,29 @@ SORI(Simulation of Outdoor Road-noise Impact) v0.1 은 도로교통소음을 예
 \section{설치와 실행}
 
 \subsection{받는 파일과 확인 상태}
-앱 파일은 GitHub Actions(\f{.github/workflows/build.yml})가 만들어 실행 결과물(artifact)로 올린다.
+앱 파일은 GitHub Actions(\f{.github/workflows/build.yml})가 만든다. 받는 곳은 두 가지다.
+\begin{itemize}
+\item \textbf{판 번호 빌드}(\f{v0.1} 같은 \f{v*} 태그): 두 OS 빌드·점검이 모두 통과하면 저장소 Releases 에 \textbf{초안(Draft)}이 만들어지고 아래 표의 파일이 붙는다. 초안은 공개되지 않아 저장소 관리자만 받을 수 있다. v0.1 은 공개하지 않기로 했다(2026-11-04).
+\item \textbf{수동 빌드}(Actions\menu\ui{build}\menu\ui{Run workflow}): 실행 결과물(artifact) \f{SORI-macOS}·\f{SORI-Windows} 안의 \f{SORI-macos.zip}·\f{SORI-windows.zip}. 내용은 같고 이름만 다르다.
+\end{itemize}
 
 \begin{table}[h]\centering\small
-\caption{앱 파일과 확인 상태(2026-11-02 기준)}\label{tab:files}
-\begin{tabularx}{\textwidth}{P{27mm}P{37mm}L}
+\caption{앱 파일과 확인 상태(2026-11-04 태그 빌드 41818867637 기준)}\label{tab:files}
+\begin{tabularx}{\textwidth}{P{27mm}P{40mm}L}
 \toprule
 구분 & 받는 파일 · 실행 & 확인 상태 \\ \midrule
-macOS (Apple Silicon) & \f{SORI-macOS} artifact 안 \f{SORI-macos.zip} → \f{SORI.app} 더블클릭 & macOS 27.0.1(arm64)에서 빌드·실행·화면 확인. Actions macOS 러너에서 빌드·자가 점검 통과. Intel Mac 은 지원하지 않음 \\
-Windows 10/11 (64비트) & \f{SORI-Windows} artifact 안 \f{SORI-windows.zip} → 폴더째 풀고 \f{SORI\textbackslash SORI.exe} 더블클릭 & Actions Windows 러너(Windows Server 2025, x64)에서 빌드하고 \f{SORI.exe} 의 자가 점검·예제 계산을 \textbf{화면 없이 실행만} 확인. \textbf{실제 Windows PC 의 화면(GUI)·보안 경고 절차는 미확인} \chk \\
+macOS (Apple Silicon) & \f{SORI-v0.1-macos-arm64.zip}(222 MB) → 풀고 \f{SORI.app} 더블클릭 & macOS 27.0.1(arm64)에서 빌드·실행·화면 확인. Actions macOS 러너에서 빌드·자가 점검 통과. 초안에 붙은 zip 을 받아 해시·서명 검증·자가 점검(5e-11 dB) 통과. Intel Mac 은 지원하지 않음 \\
+Windows 10/11 (64비트) & \f{SORI-v0.1-windows-x64.zip}(272 MB) → 폴더째 풀고 \f{SORI\textbackslash SORI.exe} 더블클릭 & Actions Windows 러너(Windows Server 2025, x64)에서 빌드하고 \f{SORI.exe} 의 자가 점검·예제 계산을 \textbf{화면 없이 실행만} 확인. \textbf{실제 Windows PC 의 화면(GUI)·보안 경고 절차·아이콘은 미확인} \chk \\
+공통 & \f{SHA256SUMS.txt} & 두 zip 의 SHA-256 해시(아래 확인 방법) \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
+\paragraph{받은 파일 확인(선택).} zip 과 \f{SHA256SUMS.txt} 를 같은 폴더에 두고 macOS 터미널에서 \f{shasum -a 256 -c SHA256SUMS.txt --ignore-missing}, Windows PowerShell 에서 \f{Get-FileHash SORI-v0.1-windows-x64.zip} 으로 나온 값을 파일 속 값과 비교한다. 같으면 받는 중에 깨지지 않은 것이다.
+
 \subsection{macOS}
 \begin{enumerate}
-\item zip 을 풀어 \f{SORI.app} 을 원하는 곳(예: 응용 프로그램 폴더)에 둔다.
+\item zip 을 풀어 \f{SORI.app} 을 원하는 곳(예: 응용 프로그램 폴더)에 둔다. 앱 아이콘은 SORI 아이콘(둥근 사각형)이다(2026-11-04 추가).
 \item \f{SORI.app} 을 더블클릭한다. 처음 한 번은 계산 코드를 컴파일하느라 계산이 1분 정도 더 걸린다. 컴파일 캐시는 \f{\textasciitilde/Library/Application Support/SORI} 에 저장된다.
 \end{enumerate}
 
@@ -128,7 +135,7 @@ macOS 에서는 저장소의 \f{SORI.command} 를 Finder 에서 더블클릭해�
 \begin{tabularx}{\textwidth}{P{30mm}L}
 \toprule
 부분 & 내용 \\ \midrule
-메뉴 \ui{파일} & 설정 파일 열기(Command/Ctrl+O), 결과 폴더 열기, 예제 불러오기(가상 교차로), 지도 저장(PNG·PDF, Command/Ctrl+S), 마지막 단면 보기, 결과 폴더를 파인더/탐색기로 보기, 끝내기 \\
+메뉴 \ui{파일} & 설정 파일 열기(Command/Ctrl+O), 결과 폴더 열기, 예제 불러오기(가상 교차로), 전농사거리 불러오기(수치지도는 따로 받음, \ref{sec:jn}장), 지도 저장(PNG·PDF, Command/Ctrl+S), 마지막 단면 보기, 결과 폴더를 파인더/탐색기로 보기, 끝내기 \\
 메뉴 \ui{계산} & 계산 실행, 자가 점검 \\
 메뉴 \ui{도움말} & SORI 정보(판, 적용 기준, AI 활용 고지) \\
 도구 줄 & 격자 높이, 시간대(주간 LrT / 야간 LrN), \ui{◀ 격자 지도}, \ui{단면 선 긋기}, \ui{지도 저장…} \\
@@ -150,6 +157,7 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \begin{itemize}
 \item \ui{파일}\menu\ui{설정 파일 열기…}로 \f{config.yaml} 을 고른다. 결과 폴더는 설정 파일 옆 \f{output} 으로 정해지고, 그 폴더에 결과가 있으면 지도에 바로 보인다.
 \item 처음이면 \ui{파일}\menu\ui{예제 불러오기(가상 교차로)}. 앱 안의 가상 교차로(실제 지역 아님) 입력을 \f{문서/SORI/예제\_가상교차로} 에 복사해 연다.
+\item 실제 지역으로 해 보려면 \ui{파일}\menu\ui{전농사거리 불러오기(수치지도는 따로 받음)…}. 수치지도를 따로 받아 넣어야 한다(\ref{sec:jn}장).
 \item 앱은 마지막에 연 설정과 결과 폴더를 짝으로 기억한다(사용자 폴더 \f{settings.json}). 다음에 켜면 그 설정이 열린다. 기억된 결과 폴더가 다른 설정으로 계산한 것이면(\f{run\_conditions.json} 의 \f{config\_path} 로 판단) 쓰지 않고 설정 옆 \f{output} 을 연다.
 \item 계산 결과 폴더만 보려면 \ui{파일}\menu\ui{결과 폴더 열기…}. 이 경우 설정이 없어 격자 지도는 간단한 지도로 보이고 단면 계산은 할 수 없다.
 \end{itemize}
@@ -233,9 +241,23 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 지금까지 macOS 로컬·Actions macOS·Actions Windows(화면 없이) 모두 최대 차이 5e-11 dB 로 통과했다.
 
 %% =====================================================================
-\section{전농사거리 기본 계산 폴더}
+\section{전농사거리 예제와 기본 계산 폴더}\label{sec:jn}
 
-수업 대상지(전농사거리)를 바로 계산할 수 있게 입력과 설정을 모은 폴더가 저장소 밖에 있다: \f{소음진동설계/03\_전농사거리\_SORI계산}.
+\subsection{앱에 들어 있는 전농사거리 예제(2026-11-04 추가)}
+앱에는 수업 대상지(서울 동대문구 전농사거리)의 계산 설정(\f{config.yaml})·교통량(2026-10-22 현장 계수 포함, 표 \ref{tab:jn} 의 \f{traffic.csv}·\f{traffic/})·측정점(\f{points.csv})만 들어 있다. \textbf{국토지리정보원 수치지도는 들어 있지 않다}(재배포 조건을 확인하지 못해 넣지 않음). 수치지도는 사용자가 직접 받아 넣는다.
+\begin{enumerate}
+\item \ui{파일}\menu\ui{전농사거리 불러오기(수치지도는 따로 받음)…}를 누른다. 예제가 \f{문서/SORI/전농사거리} 에 복사된다. 수치지도가 아직 없으면 받는 방법 안내 창이 뜨고 \f{data/map} 폴더가 열린다.
+\item 국토정보플랫폼(\url{https://map.ngii.go.kr})\menu 공간정보\menu 수치지도\menu 수치지형도 v2.0(1:1,000, SHP)에서 도엽 \textbf{377051731·732·733·741·742·743·751·752·753}(9장)을 받아 그 \f{data/map} 폴더에 넣는다. 받은 zip 을 \textbf{풀지 않고 그대로} 넣어도 된다.
+\item 다시 \ui{파일}\menu\ui{전농사거리 불러오기…}를 누른다. 앱이 zip 을 같은 이름 폴더로 풀고(원본 zip 은 남김, 한글 파일 이름 보정, 압축 밖 경로로 쓰는 항목은 막음) 건물 레이어(\f{N1A\_B0010000*.shp})를 찾으면 설정을 연다.
+\item \ui{▶ 계산 실행}. 기본값(반사 3차)으로 약 21분 걸린다(macOS arm64).
+\end{enumerate}
+\begin{itemize}
+\item 이미 복사한 폴더가 있으면(\f{config.yaml} 이 있으면) 덮어쓰지 않는다. 고친 설정·교통량은 그대로 남는다. 처음 상태로 돌리려면 \f{문서/SORI/전농사거리} 폴더 이름을 바꾸고 다시 불러온다.
+\item 실제 국토정보플랫폼 zip 9개로 풀기·레이어 찾기(건물·도로·등고선·표고점 각 9)를 확인했다(2026-11-04, macOS). Windows 에서는 확인하지 않았다 \chk.
+\end{itemize}
+
+\subsection{저장소 밖 기본 계산 폴더}
+개발자 맥에는 같은 입력에 수치지도와 계산 결과까지 모은 폴더가 저장소 밖에 있다: \f{소음진동설계/03\_전농사거리\_SORI계산}. 앱 예제와 설정·교통량·측정점은 같고, 이 폴더에는 수치지도와 결과가 더 있다.
 
 \begin{table}[h]\centering\small
 \caption{폴더 구성}\label{tab:jn}
@@ -385,6 +407,7 @@ CSV 칸 수 오류 & 따옴표 없는 쉼표. 메모 칸을 따옴표로 묶음 
 \ui{단면 선 긋기}가 오류 & 설정 파일과 계산한 결과 폴더(\f{model\_rasters.npz})가 열려 있어야 함. 단면 선 1 m 미만, 모델 범위 밖도 오류 \\
 단면에서 도로 바로 위 값이 매우 큼 & 음원 근거리 값(오류 아님, 4.6절) \\
 지도 정보란 글자가 겹침 & 교통량 설명이 길면 주의 문구가 AI 고지와 겹침(알려진 문제) \\
+전농사거리 불러오기를 해도 ``수치지도가 아직 없습니다'' 창이 다시 뜸 & \f{문서/SORI/전농사거리/data/map} 에 건물 레이어(\f{N1A\_B0010000*.shp})가 없음. 9도엽 zip 을 그 폴더에 넣었는지, 수치지형도 v2.0 SHP 판인지 확인(\ref{sec:jn}장) \\
 자가 점검 실패 & \f{문서/SORI/selfcheck\_report.json} 의 실패 항목 확인. 좌표 변환 실패는 PROJ 자료 문제 가능성 \\
 \bottomrule
 \end{longtable}
@@ -397,7 +420,7 @@ python -m sori init 폴더                 # 작업 폴더·설정 예제
 python -m sori template -c config.yaml   # 교통량·교차로 서식
 python -m sori all -c config.yaml        # build → run → plot
 python -m sori run -c config.yaml --points   # 점 수음점만
-python -m pytest -q tests                # 시험(236 통과·1 xfailed, 2026-11-02)
+python -m pytest -q tests                # 시험(238 통과·1 xfailed, 2026-11-05)
 python tools/check_baseline.py           # 전농사거리 기준선 비교(약 1분)
 python tools/reference.py make|compare   # 기준 사례 기준값 만들기·비교
 \end{Verbatim}

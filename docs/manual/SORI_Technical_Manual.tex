@@ -22,7 +22,7 @@
 {서울시립대학교 환경공학부 · 소음진동설계 (2026학년도 2학기)\par}
 \vspace{10mm}
 {문서 기준: 브랜치 \f{packaging/app} 커밋 \f{2376a59}\par}
-{작성일: 2026-11-02\par}
+{작성일: 2026-11-02 \quad 개정: 2026-11-05\par}
 \vfill
 \begin{minipage}{0.85\textwidth}\small
 \textbf{AI 활용 표기.} 본 매뉴얼과 SORI 소프트웨어는 AI(Claude, Anthropic)를 활용하여 제작하였다. 계산 결과의 검토·검증 책임은 사용자에게 있다.\par\vspace{2mm}
@@ -259,7 +259,7 @@ L_r = 10\lg \sum_i \sum_b w_b\, g_i\, 10^{0.1[L_{W,i} - (A - D_c)_{ib}]}
 \section{검증}
 
 \subsection{pytest}
-\f{QT\_QPA\_PLATFORM=offscreen .venv/bin/python -m pytest -q tests}: \textbf{236 통과, 1 xfailed}(2026-11-02, \f{2376a59}, 41 s).
+\f{QT\_QPA\_PLATFORM=offscreen .venv/bin/python -m pytest -q tests}: \textbf{238 통과, 1 xfailed}(2026-11-05, \f{ea2af63}, 42 s). Actions 태그 빌드(41818867637)에서도 두 OS 모두 같은 결과.
 \begin{longtable}{P{52mm}P{10mm}P{90mm}}
 \caption{시험 파일별 수집 개수와 내용}\label{tab:tests}\\
 \toprule 파일 & 개수 & 내용 \\ \midrule\endfirsthead
@@ -273,7 +273,7 @@ L_r = 10\lg \sum_i \sum_b w_b\, g_i\, 10^{0.1[L_{W,i} - (A - D_c)_{ib}]}
 \f{test\_crs.py} & 6 & 좌표 변환(EPSG) \\
 \f{test\_section.py} & 3 & 단면 배치·직접 계산·격자 비교 \\
 \f{test\_naming.py} & 3 & 파일명 규칙 \\
-\f{test\_gui\_qt.py} & 4 & 화면(열기·클릭·3D·단면·저장, 설정 격리) \\
+\f{test\_gui\_qt.py} & 6 & 화면(열기·클릭·3D·단면·저장, 설정 격리, 전농사거리 불러오기: 지도 없을 때 안내, cp949 이름 zip 풀기 후 설정 열기) \\
 \bottomrule
 \end{longtable}
 DEM 재투영 시험은 없다(이전 판에 통과로 잘못 적혀 있었음, 2026-10-17 정정).
@@ -309,10 +309,20 @@ EPSG 5186·5179·4326 사이 변환을 기준값과 비교(pyproj·rasterio). �
 \begin{itemize}
 \item onedir·windowed(\f{console=False}). 결과: macOS \f{dist/SORI.app}, Windows \f{dist/SORI/SORI.exe}. UPX 미사용.
 \item \f{sori} 는 \f{.py} 원본째 넣음(\f{module\_collection\_mode}) — numba \f{cache=True} 는 원본 파일이 있어야 동작.
-\item 데이터: sori 의 templates·vendor(three.js)·fonts(Noto Sans KR, OFL), 기준 사례 \f{tests/reference/synthetic}, Qt 고지 \f{licenses/THIRD\_PARTY\_Qt.txt}, pyproj·rasterio·pyogrio 데이터(PROJ·GDAL).
+\item 데이터: sori 의 templates·vendor(three.js)·fonts(Noto Sans KR, OFL)·assets(\f{SORI.png}, 창·Dock 아이콘), 기준 사례 \f{tests/reference/synthetic}, 전농사거리 예제 \f{examples/jeonnong}(설정·교통량·측정점, 수치지도 제외), Qt 고지 \f{licenses/THIRD\_PARTY\_Qt.txt}, pyproj·rasterio·pyogrio 데이터(PROJ·GDAL).
 \item hiddenimports: sori 하위 모듈, \f{reference\_case}, \f{sori\_qt}, rasterio·pyproj·pyogrio 하위 모듈 전체(Cython 내부 import), matplotlib 백엔드 agg·pdf·qtagg.
 \item excludes: streamlit·folium·pytest·IPython·PyQt5/6, PySide6 의 WebEngine·Qt3D·QtQuick.
 \item Qt(PySide6)는 LGPLv3. onedir 라 Qt 라이브러리를 사용자가 바꿔 끼울 수 있다.
+\item 아이콘(2026-11-04, \f{ea2af63}): \f{EXE(icon=packaging/icon/SORI.ico)}, \f{BUNDLE(icon=packaging/icon/SORI.icns)}, 실행 중에는 \f{sori\_qt.main()} 이 \f{app.setWindowIcon}(\f{sori/assets/SORI.png}, 1024 px). macOS 임시 빌드에서 \f{CFBundleIconFile} 확인. Windows 빌드의 아이콘 표시는 확인하지 않음 \chk.
+\end{itemize}
+
+\subsection{전농사거리 예제 불러오기(\f{sori\_qt.py})}
+2026-11-04(\f{44e65c1}). 국토지리정보원 수치지도는 재배포 조건을 확인하지 못해 앱에 넣지 않고, 사용자가 받아 넣게 한다.
+\begin{itemize}
+\item \f{MainWindow.load\_jeonnong}: \f{resource\_path("examples","jeonnong")} 을 \f{문서/SORI/전농사거리} 로 복사(이미 \f{config.yaml} 이 있으면 복사하지 않음 — 사용자가 고친 파일 보존) → \f{data/map} 의 zip 풀기 → 건물 레이어가 없으면 받는 방법(도엽 9장 \f{JEONNONG\_SHEETS})을 알리고 폴더를 연 뒤 \f{False}, 있으면 \f{open\_config(config.yaml, output)}.
+\item \f{extract\_map\_zips(folder)}: 각 zip 을 같은 이름 폴더로 풂(그 폴더가 있으면 건너뜀, 원본 zip 은 지우지 않음). zip 항목에 UTF-8 표시(0x800)가 없으면 이름을 cp437 → cp949 로 다시 읽어 한글 파일 이름을 살림. 풀 위치가 대상 폴더 밖이면(\f{../} 등) 그 항목을 쓰지 않음.
+\item \f{has\_building\_layer(folder)}: \f{N1A\_B0010000*.shp} 가 하나라도 있으면 수치지도가 있다고 봄.
+\item 예제 \f{config.yaml} 의 지도 경로는 설정 파일 기준 상대경로 \f{data/map}. 확인: 실제 국토정보플랫폼 zip 9개로 풀기·레이어 탐색(건물·도로·등고선·표고점 각 9) 통과(macOS). Windows 미확인 \chk.
 \end{itemize}
 
 \subsection{macOS dylib 후처리(\f{packaging/macos\_fix\_dylibs.py})}
@@ -329,7 +339,7 @@ pyproj·rasterio 휠이 같은 이름 \f{libproj.25.9.8.1.dylib} 를 넣는데 r
 \f{resources.resource\_path} 는 개발 실행이면 저장소 루트, 앱이면 \f{sys.\_MEIPASS}(onedir 의 \f{\_internal}) 기준이다. 결과 기본 위치는 \f{문서/SORI}. 프로그램 폴더 안에는 쓰지 않는다.
 
 \subsection{CI(\f{.github/workflows/build.yml})}
-Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{requirements-build.txt}) → \f{pytest tests} → PyInstaller → 빌드한 앱으로 \f{--selfcheck}, \f{--run}(기준 사례 입력), \f{tools/reference.py compare}, macOS \f{codesign --verify} → zip 과 점검 기록 업로드. Windows 는 창 실행 파일이라 표준 출력이 없어 종료 코드와 결과 파일로 판정한다. 화면(GUI) 동작은 CI 에서 확인하지 않는다. 마지막 실행 41304716344(\f{2376a59}) 성공.
+Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{requirements-build.txt}) → \f{pytest tests} → PyInstaller → 빌드한 앱으로 \f{--selfcheck}, \f{--run}(기준 사례 입력), \f{tools/reference.py compare}, macOS \f{codesign --verify} → zip 과 점검 기록 업로드. Windows 는 창 실행 파일이라 표준 출력이 없어 종료 코드와 결과 파일로 판정한다. 화면(GUI) 동작은 CI 에서 확인하지 않는다. \f{v*} 태그로 실행하면 두 OS 빌드가 모두 성공한 뒤 \f{release} 작업(ubuntu, \f{contents: write})이 이어진다: 실행 결과물 zip 을 받아 \f{SORI-<태그>-macos-arm64.zip}·\f{SORI-<태그>-windows-x64.zip} 으로 이름을 바꾸고 \f{SHA256SUMS.txt} 를 만든 뒤, \f{docs/release/<태그>.md} 를 설명문으로 GitHub Release \textbf{초안}(\f{gh release create --draft --verify-tag})을 만든다. 공개는 사람이 한다. 마지막 실행: 태그 \f{v0.1}(\f{44e65c1}) 41818867637 — 빌드 두 OS·release 작업 성공. 초안의 macOS zip 을 내려받아 해시·\f{codesign --verify}·자가 점검(5e-11 dB)을 확인. v0.1 초안은 공개하지 않기로 함(2026-11-04).
 
 %% =====================================================================
 \section{가정·한계·근거 미확인}
@@ -346,7 +356,7 @@ Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{req
 %% =====================================================================
 \section{변경 이력}
 \begin{longtable}{P{22mm}P{24mm}P{106mm}}
-\caption{계산에 영향을 준 주요 변경(앱 개발 기간)}\label{tab:hist}\\
+\caption{앱 개발 기간 주요 변경(계산에 영향이 없는 것은 ``계산 불변''·``그림 불변''으로 표시)}\label{tab:hist}\\
 \toprule 날짜 & 커밋 & 내용 \\ \midrule\endfirsthead
 \toprule 날짜 & 커밋 & 내용 \\ \midrule\endhead
 2026-10-29 & \f{93e8329} & 공통 기하와 ISO 감쇠 분리, RLS-19 전파, \f{propagation\_method}(ISO 결과 바이트 동일) \\
@@ -357,6 +367,10 @@ Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{req
 2026-10-30 & \f{8e102af} & 앱에서 캐시 정리 건너뜀, 캐시 폴더 소스 해시별 \\
 2026-11-01 & \f{46d5b62} & 단면 계산 \f{sori/section.py}, \f{plots.draw\_facade\_3d} 분리(그림 불변) \\
 2026-11-01 & \f{6ccc855} & \f{maps\_hq.draw\_grid}·\f{layout} 분리(그림 불변) \\
+2026-11-02 & \f{b5f0e2d} & 앱에서 전파 방법 선택(계산 경로는 설정 값과 같음) \\
+2026-11-04 & \f{01cb864} & 태그 빌드 뒤 Release 초안 생성(배포만, 계산 불변) \\
+2026-11-04 & \f{44e65c1} & 전농사거리 예제 번들·불러오기(계산 불변) \\
+2026-11-04 & \f{ea2af63} & 앱 아이콘(계산 불변) \\
 \bottomrule
 \end{longtable}
 그 이전 변경(원래 코드 대비 수정 1–27, 도로 음원 모델링 S1–S10)은 \f{TECHNICAL\_NOTES.md} 4절에 있다.
