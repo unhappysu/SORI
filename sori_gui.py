@@ -68,7 +68,7 @@ def save_settings(**kv):
 def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True, period="LrT", progress=None,
             method=None):
     """설정 파일로 build → run → (그림) 실행. 결과·사용 설정·계산 조건은 out_dir 에 저장.
-    method(iso9613_2 | rls19)를 주면 설정 파일의 propagation_method 대신 씀(설정 파일은 그대로, 사본에 기록)"""
+    method(iso9613_2 | rls19 | rls90)를 주면 설정 파일의 propagation_method 대신 씀(설정 파일은 그대로, 사본에 기록)"""
     from sori import config as C, build, run
     cfg_path = Path(cfg_path).resolve()
     out = Path(out_dir).resolve()
@@ -433,7 +433,7 @@ def main(argv=None):
         ap.add_argument("config")
         ap.add_argument("--out", required=True)
         ap.add_argument("--no-plots", action="store_true")
-        ap.add_argument("--method", choices=["iso9613_2", "rls19"], help="설정 파일 대신 이 전파 방법으로")
+        ap.add_argument("--method", choices=["iso9613_2", "rls19", "rls90"], help="설정 파일 대신 이 전파 방법으로")
         a = ap.parse_args(argv[1:])
         out = Path(a.out)
         out.mkdir(parents=True, exist_ok=True)

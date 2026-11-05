@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-전파 계산 방법 선택 — 설정 `propagation_method: "iso9613_2" | "rls19"`.
-음원 모델(L_W′, 음원선, 구간 분할, 0.5 m 점음원, D_K, D_refl)은 두 방법이 공통으로 씀(build 단계).
+전파 계산 방법 선택 — 설정 `propagation_method: "iso9613_2" | "rls19" | "rls90"`.
+음원 모델(L_W′, 음원선, 구간 분할, 0.5 m 점음원, D_K, D_refl)은 iso9613_2·rls19 가 공통으로 씀(build 단계).
+rls90 은 음원도 RLS-90(rls90.py: L_m,E → 등가 L_W′, 바깥 차로 중앙 음원선, K 는 수음점 할증)으로 바꿈.
 기하(geometry.path_geometry)도 공통이고, 감쇠식과 반사 채택 조건·손실만 방법별로 다름.
 numba 커널 안에서는 Python 클래스를 쓸 수 없으므로 이 모듈은 커널 인자(정수 방법 코드·계수) 준비와
 메타데이터·범례 문구를 맡고, 계산은 solver.compute 가 방법 코드로 분기함.
@@ -14,6 +15,10 @@ import numpy as np
 from .iso9613 import alpha_iso9613_1, C_SOUND
 
 DEFAULT_METHOD = "iso9613_2"
+
+# build_info.json·run_info.json 의 음원 표기. run.py 가 계산 방법과 맞는지 확인함(다른 음원 모델 결과에 계산하지 않게)
+EMISSION_LABEL = {"rls19": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
+                  "rls90": "RLS-90 (Ausgabe 1990) L_m,E 식 (6)~(9) → 등가 L_W′ = L_m,E + 11,2 + 10 lg 2π"}
 
 # 이번 판에서 계산하지 않는 항목(두 방법 공통)
 _COMMON_NOT_IMPLEMENTED = ["section(단면) 소음지도", "4차 이상 반사"]
@@ -170,7 +175,65 @@ class RLS19Propagation(PropagationModel):
                                 "h_m = F/s_gr(그림 11)"]}
 
 
-METHODS = {m.name: m for m in (ISO9613Propagation(), RLS19Propagation())}
+class RLS90Propagation(PropagationModel):
+    """RLS-90 4.4.2 Teilstück-Verfahren(식 19~27)·4.6 Einfachreflexion(표 7 D_E)·표 2 K. 음원도 RLS-90(rls90.py)"""
+    name = "rls90"
+    code = 2
+
+    def kernel_bands(self, cfg):
+        one = np.array([500.0])                     # A 가중 단일값(대역 인자는 형식상 1칸)
+        return one, C_SOUND / one, np.zeros(1), np.ones(1)
+
+    def _DE(self, cfg):
+        return float(cfg["propagation"]["reflection"].get("D_E", -1.0))
+
+    def reflection_gain(self, cfg):
+        return 10 ** (0.1 * self._DE(cfg))                                   # 표 7 D_E (음수)
+
+    def equations(self, cfg):
+        return ["RLS-90 식 (1)(2) L_r = L_m + K·표 2", "식 (3) 두 바깥 차로", "식 (6) L_m,E", "식 (7) L_m^(25)",
+                "식 (8) D_v", "표 4 D_StrO", "식 (9) D_Stg", "식 (19)(20) Teilstück, D_l = 10 lg l",
+                "식 (21) D_s", "식 (22) D_BM", "식 (23)(24a) D_B = D_refl − D_z", "식 (25)~(27) D_z·z·K_w",
+                "4.6 반사 조건 h_R ≥ 0,3·√a_R", "표 7 D_E"]
+
+    def not_implemented(self, cfg):
+        return ["4.4.1 '긴 직선 도로' 방법·4.4.3 표준 단면 도표(Teilstück-Verfahren 만 사용)", "4.5 주차장",
+                "중간값 0,1 dB 반올림(4.0, 연속값으로 계산)", "흡음 벽면 D_refl 식 (24b)", "section(단면) 소음지도"]
+
+    def lateral(self, cfg):
+        return "고려 안 함(RLS-90 에 규정 없음)"
+
+    def label(self, cfg):
+        return f"RLS-90 4.4.2·4.6 (반사 D_E {self._DE(cfg):g} dB)"
+
+    def combo_label(self, cfg):
+        return "RLS-90 음원 + RLS-90 전파(Teilstück-Verfahren)"
+
+    def metadata(self, cfg):
+        rf = cfg["propagation"]["reflection"]
+        orders = {int(rf["max_order_grid"]), int(rf["max_order_facade"]), int(rf["max_order_point"])}
+        return {"representative_frequency_hz": None,
+                "representative_frequency_basis": "A 가중 단일값(RLS-90), 대역 설정 미사용",
+                "meteorology": "RLS-90 4.0: 약 3 m/s 순풍·기온 역전 조건 값",
+                "reflection_loss": f"D_E = {self._DE(cfg):g} dB/회 (표 7)",
+                "reflection_rule": "h_R ≥ 0,3·√a_R (4.6). a_R = 음원–반사체 수평 거리, h_R = 벽면 높이(해석)",
+                "reflection_order_note": ("RLS-90 4.6 은 1차 반사(Einfachreflexion)만 규정 — 2차 이상은 원문 밖 설정"
+                                          if max(orders) > 1 else "1차 반사(RLS-90 4.6)"),
+                "junction_K": "표 2: 수음점 ~ 가장 가까운 신호(signal) 교차점 거리로 3/2/1/0 dB, 결과 전체에 더함",
+                "rls90_notes": ["D_z 상한 없음(식 25)", "차폐 시 D_BM 없음(4.4.2.1.2)",
+                                "다중 회절: C 를 A·B 중 작은 쪽에 더함(A = B 이면 A, 해석)",
+                                "h_m = F/s_gr(평탄 지형에서 0,5(h_GE + h_GI)와 같음)",
+                                "p = 교통량 표 p_day·p_night, 없으면 p1 + p2(RLS-19 3,5 t 기준 — 근사)",
+                                "노면: SORI 코드 → 표 4 행 대응(rls90.SURFACE_ROW, 해석)"]}
+
+    def info(self, cfg):
+        d = super().info(cfg)
+        d["D_refl_in_source"] = True
+        d["D_refl_note"] = "D_refl(식 24a, 4·h_Beb/w ≤ 3,2)을 1차 반사(D_E)와 함께 씀 — RLS-90 4.6 규정 그대로"
+        return d
+
+
+METHODS = {m.name: m for m in (ISO9613Propagation(), RLS19Propagation(), RLS90Propagation())}
 
 
 def method_name(cfg):
@@ -183,7 +246,7 @@ def get_model(cfg):
         raise ValueError(f"propagation_method 는 {' 또는 '.join(METHODS)} (입력: {name!r})")
     return METHODS[name]
 
-SHORT = {"iso9613_2": "RLS-19 + ISO 9613-2", "rls19": "RLS-19"}
+SHORT = {"iso9613_2": "RLS-19 + ISO 9613-2", "rls19": "RLS-19", "rls90": "RLS-90"}
 
 
 def result_model(cfg, out=None):

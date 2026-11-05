@@ -12,6 +12,7 @@ DEFAULTS = {
                 "file_naming": True},              # 규칙 이름 사본을 만듦(고정 이름 파일은 그대로)
     "crs": 5186,                                   # 계산 좌표계(EPSG). 수치지도 1:1,000 = 5186(중부원점 GRS80)
     "propagation_method": "iso9613_2",             # 전파 계산 방법: iso9613_2(ISO 9613-2, 현행) | rls19(RLS-19 3.5·3.6)
+                                                   #   | rls90(RLS-90 — 음원·전파 모두 RLS-90, 1990)
     "input": {
         "map": {                                   # 국토지리정보원 수치지형도 v2.0 (SHP)
             "folders": ["data/map"],               # 압축 해제 폴더(하위 폴더까지 재귀 탐색)
@@ -111,6 +112,7 @@ DEFAULTS = {
         "barrier": {"C2": 20.0, "dz_max_single": 20.0, "dz_max_double": 25.0},
         "reflection": {"rho": 0.8,                 # iso9613_2: 반사계수 ρ (ISO 식 20)
                        "D_RV": 0.5,                # rls19: 반사 손실 dB/회 (RLS-19 표 8, 건물 외벽·반사성 방음벽)
+                       "D_E": -1.0,                # rls90: 반사 보정 dB/회 (RLS-90 표 7: 매끈한 외벽 −1, 요철 외벽 −2)
                        # 반사 차수: 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(RLS-19 3.6 은 1·2차)
                        "max_order_grid": 3, "max_order_facade": 3, "max_order_point": 3,
                        # 수음점이 놓인 외벽의 반사 제외: last = 마지막 반사만(RLS-19 1장 Immissionsort 주석, 기본)
@@ -192,8 +194,10 @@ def _validate(c):
     meth = c.get("propagation_method") or "iso9613_2"
     if meth not in METHODS:
         raise ValueError(f"propagation_method 는 {' 또는 '.join(METHODS)}")
-    if meth == "rls19" and len(p["bands_hz"]) != 1:
-        raise ValueError("propagation_method: rls19 는 A 가중 단일값 계산 — bands_hz 를 여러 개 지정할 수 없음")
+    if meth in ("rls19", "rls90") and len(p["bands_hz"]) != 1:
+        raise ValueError(f"propagation_method: {meth} 는 A 가중 단일값 계산 — bands_hz 를 여러 개 지정할 수 없음")
+    if float(p["reflection"].get("D_E", -1.0)) > 0.0:
+        raise ValueError("RLS-90 표 7: reflection.D_E 는 0 이하(dB, 예: −1)")
     if p["reflection"].get("own_facade", "last") not in ("last", "all"):
         raise ValueError("propagation.reflection.own_facade 는 last 또는 all")
     if float(p["reflection"]["D_RV"]) < 0.0:

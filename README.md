@@ -157,13 +157,14 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 | 항목 | 기본값 | 의미 |
 |---|---|---|
-| `propagation_method` | iso9613_2 | 전파 계산 방법. `iso9613_2` = ISO 9613-2(현행), `rls19` = RLS-19 3.5·3.6. 음원(L_W′, 음원선, D_K, D_refl)과 기하는 공통. 한 출력 폴더에는 한 방법의 결과만 둠(다른 방법 결과가 있으면 실행 중단 — `project.output_dir` 를 바꿀 것). 방법·식 번호·미구현 항목은 `run_info.json`. 앱에서는 계산 실행 탭 **전파 방법** 칸으로 설정 파일을 고치지 않고 바꿀 수 있음(0.1절) |
+| `propagation_method` | iso9613_2 | 전파 계산 방법. `iso9613_2` = ISO 9613-2(현행), `rls19` = RLS-19 3.5·3.6, `rls90` = RLS-90(1990, 음원·전파 모두 — 음원이 바뀌므로 build 부터 다시, TECHNICAL_NOTES 4d절). iso9613_2·rls19 는 음원(L_W′, 음원선, D_K, D_refl)과 기하가 공통. 한 출력 폴더에는 한 방법의 결과만 둠(다른 방법 결과가 있으면 실행 중단 — `project.output_dir` 를 바꿀 것). 방법·식 번호·미구현 항목은 `run_info.json`. 앱에서는 계산 실행 탭 **전파 방법** 칸으로 설정 파일을 고치지 않고 바꿀 수 있음(0.1절) |
 | `propagation.reflection.own_facade` | last | 수음점이 놓인 외벽의 반사 제외 범위. `last` = 마지막 반사만(RLS-19 1장 Immissionsort 주석, TEST-20 K2), `all` = 모든 반사 순서(2026-10-29 이전 동작) |
 | `propagation.terms_csv` | false | 점 수음점의 감쇠항별 중간값 `path_terms.csv` 출력(직접음·1차 반사) |
 | `propagation.bands_hz` / `spectrum_dBA` | [500] / [0] | (iso9613_2) 500 Hz 단일대역(ISO 9613-2 1절 비고 1). 옥타브 스펙트럼을 넣으면 8대역 계산. rls19 는 A 가중 단일값이라 여러 대역 지정 불가 |
 | `input.ground.method` | general | (iso9613_2) ISO 7.3.1 일반법. `alternative`는 7.3.2(식 10, 다공성 지면 전제). rls19 는 식 (14) 고정 |
 | `propagation.reflection.rho` | 0.8 | (iso9613_2) ISO 표 4 '창이 있는 건물 벽', 식 (20) |
 | `propagation.reflection.D_RV` | 0.5 | (rls19) 반사 손실 dB/회, RLS-19 표 8 '건물 외벽 및 반사성 방음벽'. 반사 조건은 h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R(3.6) |
+| `propagation.reflection.D_E` | −1 | (rls90) 허상음원 보정 dB/회, RLS-90 표 7(매끈한 외벽 −1, 요철 외벽 −2, 흡음 −4, 고흡음 −8). 반사 조건 h_R ≥ 0,3·√a_R(4.6). RLS-90 은 1차 반사만 규정 |
 | `max_order_grid` / `max_order_facade` / `max_order_point` | 3 / 3 / 3 | 반사 차수 0~3. 국내 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(주변 환경을 고려해 변경 가능). RLS-19 3.6 은 1·2차라 rls19 에서도 3차는 국내 조건 적용. 3차는 2차보다 계산 시간이 약 6배(전농사거리 표본) — 2026-10-29 이전 기본값은 1 / 2 / 2. 웹 화면 계산 수준은 따로 지정(빠른 미리보기·표준 1차, 정밀 3차) |
 | `input.traffic.oneway_name_traffic` | apply | 도로명 교통량(양방향 합)을 같은 이름의 일방통행 객체에도 배정(`apply`) 또는 차로수 가정값 사용(`fallback`, `traffic_src = fallback_oneway`). UFID 지정 교통량은 항상 우선 |
 | `input.junctions.dk_rule` | nearest | 교차로 보정 D_K(RLS-19 3.3.7)의 기준 교차점. `nearest` = 그 음원선이 속한 교차점 중 가장 가까운 것(현행). `nearest_signal` = 위 값과, 도로 소속과 무관하게 가장 가까운 signal·roundabout 교차점 기준 값 중 큰 쪽 — 가까운 이면도로 접속부(other)가 100 m 안 신호교차로 보정을 가리는 경우용. 켜면 `sources.csv` 에 `D_K_nearest`·`x_signal`·`kt_signal` 열 추가(TECHNICAL_NOTES 5a절 13) |
@@ -188,7 +189,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `*.png` | 확인용 간이 그림(격자, 파사드 평면, 파사드 3D) |
 | `sources.csv` | 음원 점별 LW′, D_K, D_refl, 경사, 교차로 거리 등 |
 | `source_lines.csv` | 도로 객체별 음원선 배치 근거: 사용한 방향별 차로 수, 근거(`lane_rule`: override·map_half·ceil·major_fwd·oneway_map·single_centre), 차로폭, 중심선 기준 오프셋 |
-| `path_terms.csv` | (설정 `propagation.terms_csv: true`) 점 수음점의 직접음·1차 반사 경로별 감쇠항. rls19: D_div·D_atm·D_gr·D_z·D_RV·D_A, iso9613_2: A_div·A_atm·A_gr·D_Omega·D_z·A_bar·refl_dB·A_net, 경로별 L_day. 같은 점·차수의 L_day 에너지 합 = `LrT_direct`/`LrT_refl1` |
+| `path_terms.csv` | (설정 `propagation.terms_csv: true`) 점 수음점의 직접음·1차 반사 경로별 감쇠항. rls19: D_div·D_atm·D_gr·D_z·D_RV·D_A, rls90: D_s·D_BM·D_z·D_E·D_A·K, iso9613_2: A_div·A_atm·A_gr·D_Omega·D_z·A_bar·refl_dB·A_net, 경로별 L_day. 같은 점·차수의 L_day 에너지 합 = `LrT_direct`/`LrT_refl1` |
 | `segment_check.csv` | 구간 길이 진단: RLS-19 3.2 주석(경험칙) l ≤ s/2 를 어기는 음원이 있는 수음점만(위반 음원 수, 최소 s/l). 결과값에는 영향 없음. 요약은 `run_info.json` 의 `segment_check` |
 | `traffic_used.csv`, `junctions_used.csv` | 실제 사용된 교통량·교차로 판정 (보고서 근거자료) |
 | `build_info.json`, `run_info.json` | 모델 규모, 가정값 사용 수, 계산 조건 기록 |

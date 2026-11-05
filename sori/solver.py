@@ -5,9 +5,11 @@
     별표 2 제8호(반사차수 3차 이상 원칙) — RLS-19 3.6(1·2차)을 넘는 조건
   - 2·3차 탐색 제한(계산량, 프로젝트 설정): 마지막 반사면이 수음점 R2 이내, 앞 반사면은 다음 반사면과
     중심 거리 R2 이내이고 서로 마주보는 면. 3차는 Python 에서 만든 이웃 목록(nb_ptr, nb_idx, facade_neighbors) 사용
-  - 전파 방법 meth: METH_RLS19(RLS-19 3.5 식 11~17) | METH_ISO(ISO 9613-2 7장). 기하는 geometry.path_geometry 공통
+  - 전파 방법 meth: METH_RLS19(RLS-19 3.5 식 11~17) | METH_ISO(ISO 9613-2 7장) | METH_RLS90(RLS-90 4.4.2 식 19~27).
+    기하는 geometry.path_geometry 공통
   - 반사 조건 — ISO: 거울반사 작도 가능, ρ > 0.2, 크기 조건 식 (19) (대역별)
                RLS-19: 거울반사 작도 가능, h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R (3.6)
+               RLS-90: 거울반사 작도 가능, h_R ≥ 0.3·√a_R (4.6), a_R = 음원–반사체 거리
   - 허상음원 이득 gain(인자 rho): ISO 식 (20) ρ (DIr = 0, 무지향) / RLS-19 10^(−0.1·D_RV) (표 8). 2차 gain², 3차 gain³
   - 수음점이 놓인 파사드: RLS-19 1장 'Immissionsort' 주석 "마지막 반사가 수음점이 속한 외벽에서 일어나는 경로는
     고려하지 않음" → 마지막 반사면에서만 제외(own_all = False, 기본). own_all = True 는 2026-10-29 이전 동작
@@ -22,10 +24,12 @@ from . import njit, prange
 from .geometry import NGEOM, G_D, G_SGR, G_HM, G_SHIELD, G_Z, path_geometry
 from .iso9613 import atten_iso, terms_iso
 from .rls19_propagation import accept_reflection, atten_rls19, terms_rls19
+from . import rls90_propagation as R90
 
 HULL_N = 8192
 METH_RLS19 = 0
 METH_ISO = 1
+METH_RLS90 = 2
 
 
 @njit(cache=True)
@@ -36,6 +40,8 @@ def _path(meth, vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx
                   rbid, refl_bid, skip_r, hd, hh, geom)
     if meth == METH_RLS19:
         atten_rls19(geom, out)
+    elif meth == METH_RLS90:
+        R90.atten_rls90(geom, out)
     else:
         atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out)
 
@@ -65,8 +71,8 @@ def _crit(lams, lmin, cosb, dso, dor, inc):
 @njit(cache=True)
 def _accept(meth, lams, lmin, cosb, dso, dor, inc, hR):
     """반사 채택 여부(대역별 inc 갱신). ISO: 식 (19) / RLS-19: 3.6 높이 조건(대역 무관)"""
-    if meth == METH_RLS19:
-        ok = accept_reflection(hR, min(dso, dor))
+    if meth == METH_RLS19 or meth == METH_RLS90:
+        ok = accept_reflection(hR, min(dso, dor)) if meth == METH_RLS19 else R90.accept_reflection(hR, dso)
         for b in range(inc.shape[0]):
             inc[b] = inc[b] and ok
         return ok
@@ -435,6 +441,8 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
                 break
             if meth == METH_RLS19:
                 terms_rls19(geom, t)
+            elif meth == METH_RLS90:
+                R90.terms_rls90(geom, t)
             else:
                 terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t)
             info[n, P_J] = j; info[n, P_ORDER] = 0; info[n, P_FACE] = -1
@@ -495,6 +503,8 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
                         continue
                     if meth == METH_RLS19:
                         terms_rls19(geom, t)
+                    elif meth == METH_RLS90:
+                        R90.terms_rls90(geom, t)
                     else:
                         terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t)
                     info[n, P_J] = j; info[n, P_ORDER] = 1; info[n, P_FACE] = f

@@ -13,7 +13,7 @@ import os
 import re
 import shutil
 
-METHOD_TAG = {"iso9613_2": "ISO", "rls19": "RLS"}
+METHOD_TAG = {"iso9613_2": "ISO", "rls19": "RLS", "rls90": "RLS90"}
 PERIOD = {"LrT": "주간", "LrN": "야간", None: "주야"}
 KINDS = ("grid", "facade", "section")
 

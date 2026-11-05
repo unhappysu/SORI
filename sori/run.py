@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 
 from . import AI_NOTICE, __version__, HAVE_NUMBA
-from . import naming, rls19
-from .propagation import get_model
+from . import naming, rls19, rls90
+from .propagation import get_model, EMISSION_LABEL
 from .solver import compute, facade_neighbors, to_db
 
 log = logging.getLogger("sori")
@@ -73,6 +73,32 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
     if order >= 3:                                      # 3차 성분 열은 3차를 계산할 때만(2차 이하 결과 파일 형식 유지)
         r["LrT_refl3"] = to_db(E3)
     return r
+
+
+def junction_K(out, x, y):
+    """RLS-90 표 2 할증 K: 수음점 ~ 가장 가까운 신호(signal) 교차점(도로축 교차점, junctions_used.csv) 수평 거리.
+    회전교차로·기타 교차로는 대상 아님(원문 'lichtzeichengeregelte Kreuzungen und Einmündungen')"""
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    K = np.zeros(len(x))
+    p = os.path.join(out, "junctions_used.csv")
+    if not os.path.exists(p) or os.path.getsize(p) < 5:
+        return K
+    J = pd.read_csv(p)
+    J = J[J["type"] == "signal"] if len(J) and "type" in J else J.iloc[0:0]
+    if not len(J) or not len(x):
+        return K
+    from scipy.spatial import cKDTree
+    d, _ = cKDTree(J[["x", "y"]].values).query(np.c_[x, y])
+    return np.array([rls90.K_signal(v) for v in d])
+
+
+def _emission_key(out):
+    """build_info.json 의 음원 표기 → 'rls90' | 'rls19'. 기록이 없으면(이전 판 결과) rls19"""
+    p = os.path.join(out, "build_info.json")
+    if not os.path.exists(p):
+        return None
+    e = json.load(open(p, encoding="utf-8")).get("emission", "")
+    return "rls90" if str(e).startswith("RLS-90") else "rls19"
 
 
 def segment_check(S, rx, ry, rz):
@@ -193,7 +219,21 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
     """progress(label, done, total, eta_s): 진행률 콜백(웹앱용, 선택)"""
     out = cfg["project"]["output_dir"]
     model = get_model(cfg)                              # 이번 실행의 모든 결과 종류가 같은 전파 방법을 씀
+    is90 = model.name == "rls90"
+    ek = _emission_key(out)
+    if ek is not None and (ek == "rls90") != is90:      # 음원 모델은 build 단계에서 정해짐 → 방법을 바꾸면 build 다시
+        raise ValueError(f"{out} 의 모델(sources.csv)은 {'RLS-90' if ek == 'rls90' else 'RLS-19'} 음원으로 만들어짐 — "
+                         f"이번 전파 방법 {model.name} 와 맞지 않음. build 부터 다시 실행")
     outputs = previous_outputs(out, model.name)
+
+    def _addK(r, x, y):
+        """RLS-90 식 (2) L_r = L_m + K (표 2). 성분 열에도 같은 K 를 더해 성분 합 = 전체가 유지되게 함"""
+        if not is90:
+            return r
+        K = junction_K(out, x, y)
+        r = {k: v + K for k, v in r.items()}
+        r["K"] = K
+        return r
     named = []                                          # 파일명 규칙 사본(naming.py)
     d, S, F, FR = load_model(out)
     summary = {}
@@ -217,6 +257,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             nr = len(rx)
             r = _run(cfg, d, S, F, rx, ry, rz, rg, np.full(nr, -1, np.int64), np.full(nr, -1, np.int64),
                      int(cfg["propagation"]["reflection"]["max_order_grid"]), f"격자 h={h:g} m", progress=progress)
+            r = _addK(r, rx, ry)
             G = pd.DataFrame(dict(x=rx, y=ry, z=rz, h=float(h), **r))
             frames.append(G)
             if do_seg:
@@ -235,9 +276,10 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         r = _run(cfg, d, S, F, FR.x.values, FR.y.values, FR.z.values, FR.zg.values,
                  FR.bid.values.astype(np.int64), FR.fid.values.astype(np.int64),
                  int(cfg["propagation"]["reflection"]["max_order_facade"]), "건물 벽면", progress=progress)
+        r = _addK(r, FR.x.values, FR.y.values)
         for k, v in r.items():
             FR[k] = v
-        FR["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrT]   # RLS-19 3.1 올림
+        FR["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrT]   # RLS-19 3.1·RLS-90 4.0 올림
         FR["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in FR.LrN]
         FR.to_csv(os.path.join(out, "facade_result.csv"), index=False, encoding="utf-8-sig")
         named.append(naming.copy_as(cfg, os.path.join(out, "facade_result.csv"), "facade"))
@@ -254,7 +296,8 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         P["note"] = np.where(outside, "모델 범위 밖", np.where(inside, "건물 안", ""))
         ok = (P.note == "").values
         keys = ("LrT", "LrN", "LrT_direct", "LrT_refl1", "LrT_refl2") \
-            + (("LrT_refl3",) if int(cfg["propagation"]["reflection"]["max_order_point"]) >= 3 else ())
+            + (("LrT_refl3",) if int(cfg["propagation"]["reflection"]["max_order_point"]) >= 3 else ()) \
+            + (("K",) if is90 else ())
         for k in keys:
             P[k] = np.nan
         if ok.any():
@@ -262,9 +305,10 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             r = _run(cfg, d, S, F, P.x.values[ok], P.y.values[ok], P.z.values[ok], P.zg.values[ok],
                      np.full(n, -1, np.int64), np.full(n, -1, np.int64),
                      int(cfg["propagation"]["reflection"]["max_order_point"]), "점 수음점", progress=progress)
+            r = _addK(r, P.x.values[ok], P.y.values[ok])
             for k in keys:
                 P.loc[ok, k] = r[k]
-        P["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrT]   # RLS-19 3.1 올림
+        P["LrT_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrT]   # RLS-19 3.1·RLS-90 4.0 올림
         P["LrN_cmp"] = [rls19.round_up(v) if np.isfinite(v) else np.nan for v in P.LrN]
         P = P[["point_id", "x", "y", "zg", "h", "h_basis", "z", *keys, "LrT_cmp", "LrN_cmp", "note"]]
         P.to_csv(os.path.join(out, "point_result.csv"), index=False, encoding="utf-8-sig")
@@ -276,7 +320,8 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         outputs["points"] = model.name
         # field_survey/scripts/process_measurements.py --model 입력 형식(point_id, period, Leq_calc)
         cmp = pd.concat([pd.DataFrame(dict(point_id=P.point_id, period=per, Leq_calc=P[k].round(1),
-                                           quantity=f"{k} (RLS-19 평가레벨, 교차로·반사 보정 포함)", note=P.note))
+                                           quantity=f"{k} ({'RLS-90' if is90 else 'RLS-19'} 평가레벨, 교차로·반사 보정 포함)",
+                                           note=P.note))
                          for per, k in (("day", "LrT"), ("night", "LrN"))])
         cmp.to_csv(os.path.join(out, "point_levels_for_comparison.csv"), index=False, encoding="utf-8-sig")
         if ok.any():
@@ -289,7 +334,7 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         log.info("구간 길이 진단(l ≤ s/2, 결과값 불변): %s", seg_sum)
     bands, lams, alphas, wts = model.kernel_bands(cfg)
     info = {"software": f"SORI v{__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
-            "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)", "propagation": model.label(cfg),
+            "emission": EMISSION_LABEL["rls90" if is90 else "rls19"], "propagation": model.label(cfg),
             **model.info(cfg), "outputs": outputs,
             "file_naming": ({"rule": "{프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}[부가]",
                              "files": [os.path.basename(f) for f in named if f]} if naming.enabled(cfg) else None),

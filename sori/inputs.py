@@ -307,6 +307,9 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
         raise RuntimeError(f"surface '{sf}' 는 {rls19.SURFACES} 중 하나여야 함")
     out["surface"] = sf
     out["grade"] = _f(rec, "grade")                    # 사용자 지정 종단경사 % (디지타이즈 방향 기준). 없으면 지형에서 산정
+    if (cfg.get("propagation_method") or "") == "rls90":   # RLS-90 p(> 2,8 t). 없으면 build 가 p1 + p2 사용
+        for per in ("day", "night"):
+            out[f"p_{per}"] = _f(rec, f"p_{per}")
     out["road_type"] = rtype
     out["traffic_src"] = src
     # 출처 기록(결과값에는 영향 없음): 실측/가정 구분, M 산정 방식, 메모

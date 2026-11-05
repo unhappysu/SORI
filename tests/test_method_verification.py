@@ -85,7 +85,7 @@ def test_no_shielding_when_wall_below_line_of_sight():
         assert L == pytest.approx(L0, abs=1e-12)
 
 
-@pytest.fixture(scope="module", params=["iso9613_2", "rls19"])
+@pytest.fixture(scope="module", params=["iso9613_2", "rls19", "rls90"])
 def point_case(request, tmp_path_factory):
     import pandas as pd
     import reference_case as RC
@@ -116,10 +116,16 @@ def test_terms_csv_closure(point_case):
             assert e(t[t.order == 1].L_day) == pytest.approx(r.LrT_refl1, abs=1e-6)
             n_refl += 1
     assert n_refl > 0                                                    # 반사 경로도 실제로 확인됨
-    cols = ["D_div", "D_atm", "D_gr", "D_z", "D_RV", "D_A"] if meth == "rls19" else \
-        ["A_div", "A_atm", "A_gr", "D_Omega", "D_z", "A_bar", "refl_dB", "A_net"]
+    cols = {"rls19": ["D_div", "D_atm", "D_gr", "D_z", "D_RV", "D_A"],
+            "rls90": ["D_s", "D_BM", "D_z", "D_E", "D_A", "K"]}.get(
+        meth, ["A_div", "A_atm", "A_gr", "D_Omega", "D_z", "A_bar", "refl_dB", "A_net"])
     assert all(c in T.columns for c in cols)
-    if meth == "rls19":                                                  # 식 (11) 항 합 확인
+    if meth == "rls90":                                                  # 식 (20)~(22)(25) ↔ 계산기 형식
+        lg2pi = 10 * np.log10(2 * np.pi)
+        assert np.allclose(-T.D_A, T.D_s + T.D_BM - T.D_z - 11.2 - lg2pi, atol=1e-9)
+        assert np.allclose(T[T.order == 1].D_E, -1.0, atol=1e-12)
+        assert ((T.D_BM == 0) | (T.D_z == 0)).all()                       # 차폐 시 D_BM 없음
+    elif meth == "rls19":                                                  # 식 (11) 항 합 확인
         assert np.allclose(T.D_div + T.D_atm + np.maximum(T.D_gr, T.D_z), T.D_A, atol=1e-9)
         assert np.allclose(T[T.order == 1].D_RV, 0.5, atol=1e-12)
     else:                                                                # A − D_c 항 합 확인

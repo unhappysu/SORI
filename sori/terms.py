@@ -4,6 +4,7 @@
   설정 propagation.terms_csv: true 일 때 run.main 의 점 수음점 계산 뒤에 만듦.
   경로: 직접음 + 1차 반사(solver.point_paths). 2·3차 반사 경로는 넣지 않음(행 수가 너무 많아짐).
   열 — rls19: D_div 식(12), D_atm 식(13), D_gr 식(14), D_z 식(15), D_RV(표 8, 반사 경로만), D_A 식(11)
+       rls90: D_s 식(21), D_BM 식(22), D_z 식(25), D_E(표 7, 반사 경로만), D_A(계산기 형식), K(표 2, 수음점)
        iso9613_2: A_div 식(7), A_atm 식(8), A_gr 식(9)/(10), D_Omega 식(11), D_z 식(14), A_bar 식(12),
                   refl_dB = 10 lg ρ (식 20, 반사 경로만), A_net = A − D_c
   L_day = L_W(주간) + 10 lg(대역 가중) + 10 lg(반사 이득) − (D_A 또는 A_net). 같은 수음점·같은 차수의 L_day 를
@@ -13,7 +14,7 @@
 import numpy as np
 import pandas as pd
 
-from . import iso9613, rls19_propagation
+from . import iso9613, rls19_propagation, rls90_propagation
 from .propagation import get_model
 from .solver import (P_J, P_ORDER, P_FACE, P_PX, P_PY, P_D, P_SGR, P_HM, P_Z, P_GAIN, point_paths)
 
@@ -33,7 +34,11 @@ def path_terms(cfg, d, S, F, P):
         fa = tuple(np.zeros(0) for _ in range(9)) + (np.zeros(0, np.int64),)
         fids = np.zeros(0, np.int64)
     ny, nx = d["gnd"].shape
-    names = rls19_propagation.TERM_NAMES if model.name == "rls19" else iso9613.TERM_NAMES
+    names = {"rls19": rls19_propagation.TERM_NAMES, "rls90": rls90_propagation.TERM_NAMES}.get(model.name,
+                                                                                              iso9613.TERM_NAMES)
+    if model.name == "rls90":
+        from .run import junction_K
+        Kp = dict(zip(P.point_id, junction_K(cfg["project"]["output_dir"], P.x.values, P.y.values)))
     frames = []
     for r in P.itertuples():
         info, terms, band = point_paths(
@@ -62,6 +67,13 @@ def path_terms(cfg, d, S, F, P):
             D["D_RV"] = np.where(D.order > 0, -10 * np.log10(g), 0.0)
             D["D_A"] = terms[:, len(names) - 1]
             net = D["D_A"].values
+        elif model.name == "rls90":
+            for k, nm in enumerate(names[:-1]):
+                D[nm] = terms[:, k]
+            D["D_E"] = np.where(D.order > 0, 10 * np.log10(g), 0.0)
+            D["D_A"] = terms[:, len(names) - 1]
+            D["K"] = Kp[r.point_id]
+            net = D["D_A"].values - D["K"].values
         else:
             for k, nm in enumerate(names[:-1]):
                 D[nm] = terms[:, k]

@@ -78,7 +78,8 @@ def has_building_layer(folder):
     return any(Path(folder).rglob("N1A_B0010000*.shp"))
 TARGETS = {"grid": "격자(소음지도)", "facade": "건물 벽면", "points": "점 수음점"}
 METHODS = {"iso9613_2": "ISO 9613-2 전파 (RLS-19 음원 + ISO 9613-2, 프로젝트 구성 방법)",
-           "rls19": "RLS-19 전파 (RLS-19 3.5·3.6 원문)"}
+           "rls19": "RLS-19 전파 (RLS-19 3.5·3.6 원문)",
+           "rls90": "RLS-90 (음원·전파 모두 RLS-90, 1990 — SoundPLAN RLS-90 비교용)"}
 
 
 # ================================================================ 표 모델(pandas DataFrame → QTableView)

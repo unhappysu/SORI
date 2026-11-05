@@ -3,6 +3,8 @@
 계산 모델 구축
   1) 레이어 로드  2) 지형(DTM)·건물(DSM/ID)·지면계수(G) 래스터
   3) 도로 위상(교차로) → 음원선(RLS-19 3.3.1, Bild 6) → 분할(3.2) → LW'(식 4~9)
+     propagation_method: rls90 이면 RLS-90 음원: 음원선 = 바깥 차로 중앙(4.3, Bild 10), L_m,E(식 6~9)를
+     등가 L_W′ 로 환산(rls90.py), D_refl 식 (24a), 교차로 할증 K 는 수음점 쪽(표 2, run.py)
   4) 반사면(파사드), 격자 수음점(다중 높이), 파사드 수음점(층별)
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
@@ -23,7 +25,8 @@ from shapely import STRtree
 from shapely.geometry import box, Point, LineString
 from shapely.geometry.polygon import orient
 
-from . import rls19, inputs as I
+from . import rls19, rls90, inputs as I
+from .propagation import method_name, EMISSION_LABEL
 from .config import grid_bbox, center
 
 log = logging.getLogger("sori")
@@ -300,17 +303,24 @@ def lane_layout(cfg, n_lanes, width, oneway, lanes_fwd=None, lanes_bwd=None):
     return nd, nb, wl, rule
 
 
-def source_offsets(nd_fwd, nd_bwd, wl, oneway, single=False, oneway_dir=1):
+def _d_edge_rls90(nd):
+    """RLS-90 4.3 / Bild 10: 음원 = 바깥 차로(äußerer Fahrstreifen) 중앙 → 차로 수와 무관하게 0.5"""
+    return 0.5
+
+
+def source_offsets(nd_fwd, nd_bwd, wl, oneway, single=False, oneway_dir=1, edge=None):
     """RLS-19 3.3.1 / Bild 6. 반환: [(횡오프셋 m, 디지타이즈 방향과 같은가)] (+ = 디지타이즈 진행방향 좌측)
     양방향: 도로중심선을 방향 경계로 간주(미확인 가정 — TECHNICAL_NOTES). 일방통행: 중심선 = 차도 중앙.
-    oneway_dir = −1: 일방통행 진행방향이 디지타이즈 반대 → 진행방향 우측(바깥)이 디지타이즈 좌측"""
+    oneway_dir = −1: 일방통행 진행방향이 디지타이즈 반대 → 진행방향 우측(바깥)이 디지타이즈 좌측
+    edge: 바깥 가장자리 → 음원선 거리(차로폭 배수) 함수. None = RLS-19 Bild 6(_d_edge), RLS-90 은 _d_edge_rls90"""
+    edge = edge or _d_edge
     if single:
         return [(0.0, None)]                       # 1차로 양방향: 중앙 1개선, 방향 미상
     if oneway:
-        off = -(nd_fwd * wl / 2 - _d_edge(nd_fwd) * wl)                  # 우측통행 → 바깥 = 우측
+        off = -(nd_fwd * wl / 2 - edge(nd_fwd) * wl)                     # 우측통행 → 바깥 = 우측
         return [(-off, False)] if oneway_dir == -1 else [(off, True)]
-    off_f = nd_fwd * wl - _d_edge(nd_fwd) * wl
-    off_b = nd_bwd * wl - _d_edge(nd_bwd) * wl
+    off_f = nd_fwd * wl - edge(nd_fwd) * wl
+    off_b = nd_bwd * wl - edge(nd_bwd) * wl
     return [(-off_f, True), (+off_b, False)]       # 우측선 = 디지타이즈 방향, 좌측선 = 반대방향
 
 
@@ -351,6 +361,7 @@ def detect_canyon(cfg, x, y, tx, ty, ftree, fgeoms, F, zroad):
 
 def build_sources(cfg, road, gnd, rast, F, J, reach):
     mc = cfg["model"]
+    is90 = method_name(cfg) == "rls90"             # RLS-90 음원(rls90.py)
     by_ufid, by_name = I.load_traffic(cfg)
     fgeoms = [LineString([(a, b), (c, d)]) for a, b, c, d in zip(F.x1, F.y1, F.x2, F.y2)]
     ftree = STRtree(fgeoms) if len(fgeoms) else None
@@ -368,7 +379,8 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
         nd, nb, wl, rule = lane_layout(cfg, rd["lanes"], rd["width"], rd["oneway"],
                                        rd.get("lanes_fwd"), rd.get("lanes_bwd"))
         odir = -1 if (rd["oneway"] and _finite(rd.get("oneway_dir")) and int(rd.get("oneway_dir")) == -1) else 1
-        offs = source_offsets(nd, nb, wl, rd["oneway"], single=(rule == "single_centre"), oneway_dir=odir)
+        offs = source_offsets(nd, nb, wl, rd["oneway"], single=(rule == "single_centre"), oneway_dir=odir,
+                              edge=_d_edge_rls90 if is90 else None)
         lines.append({"fid": rd["fid"], "ufid": rd["ufid"], "name": rd["rname"], "lanes": rd["lanes"],
                       "width": rd["width"], "oneway": rd["oneway"], "lanes_fwd_used": nd, "lanes_bwd_used": nb,
                       "lane_rule": rule, "lane_width": wl, "offset_fwd": offs[0][0],
@@ -440,7 +452,9 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
             h, w = None, None
         hb.append(h); ww.append(w)
     S["h_beb"] = hb; S["w"] = ww
-    S["D_refl"] = [rls19.D_refl(h, w) for h, w in zip(hb, ww)]
+    S["D_refl"] = [(rls90 if is90 else rls19).D_refl(h, w) for h, w in zip(hb, ww)]
+    if is90:
+        return _rls90_emission(S, T, lines)
     S["D_K"] = [rls19.D_K(x, kt) for x, kt in zip(S.x_knot, S.kt)]
     if cfg["input"]["junctions"].get("dk_rule", "nearest") == "nearest_signal":
         # 가까운 소도로 접속부(other)가 신호교차로 보정을 가리지 않도록: 신호·회전교차로 기준 값과 큰 쪽
@@ -465,6 +479,41 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
         S[f"LWp_{per}"] = lw
         S[f"LW_{per}"] = S[f"LWp_{per}"] + 10 * np.log10(S.l)        # 점음원 LW = LW' + 10 lg l
     return S, T.reset_index(), pd.DataFrame(lines)
+
+
+def _p90(t, per):
+    """RLS-90 maßgebender Lkw-Anteil p(> 2,8 t): 교통량 표 p_day·p_night 가 있으면 그 값, 없으면 p1 + p2
+    (RLS-19 Lkw1·Lkw2 = 3,5 t 초과 — 2,8 ~ 3,5 t 차량이 빠지는 근사, TECHNICAL_NOTES)"""
+    v = t.get(f"p_{per}")
+    if v is not None and v == v:
+        return float(v)
+    return float(t[f"p1_{per}"]) + float(t[f"p2_{per}"])
+
+
+def _rls90_emission(S, T, Ln):
+    """RLS-90 음원: 음원선별 L_m,E(식 6~9) → 등가 L_W′(rls90.LW_prime). 교차로 할증은 음원에 넣지 않음(K, 표 2 →
+    run.py 가 수음점에 더함). M 은 두 바깥 차로에 나눔(식 7 설명, 방향별 실측 배분이 있으면 그 비율)"""
+    S["D_K"] = 0.0
+    for per in ("day", "night"):
+        lw, lme = [], []
+        for r in S.itertuples():
+            t = T.loc[r.fid]
+            M = t[f"M_{per}"] * r.frac
+            p = _p90(t, per)
+            args = (p, t["v_pkw"], t["v_lkw"], t["surface"])
+            if r.along is None:                       # 1차로 양방향 중앙선: 전량(디지타이즈 p, 반대 1−p 합)
+                pf = float(t["dir_split_fwd"])
+                a = rls90.LW_prime(M * pf, *args, r.g, r.D_refl)
+                b = rls90.LW_prime(M * (1.0 - pf), *args, -r.g, r.D_refl)
+                v = 10 * math.log10(10 ** (0.1 * a) + 10 ** (0.1 * b))
+            else:
+                v = rls90.LW_prime(M, *args, r.g if r.along else -r.g, r.D_refl)   # D_Stg 는 |g| 라 부호 무관
+            lw.append(v)
+            lme.append(v - r.D_refl - rls90.LW_OFFSET)
+        S[f"Lm_E_{per}"] = lme                        # 기록용: 음원선 L_m,E (식 6, D_refl 제외)
+        S[f"LWp_{per}"] = lw
+        S[f"LW_{per}"] = S[f"LWp_{per}"] + 10 * np.log10(S.l)
+    return S, T.reset_index(), pd.DataFrame(Ln)
 
 
 # ====================================================================== 파사드 / 수음점
@@ -572,11 +621,12 @@ def main(cfg):
             "grid_receivers_per_height": int((~inside).sum()), "facade_receivers": len(FR),
             "roads_with_fallback_traffic": nfb,
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
-            "canyon_segments": int((S.D_refl > 0).sum())}
+            "canyon_segments": int((S.D_refl > 0).sum()),
+            "emission": EMISSION_LABEL["rls90" if method_name(cfg) == "rls90" else "rls19"]}
     if cfg["input"]["traffic"].get("missing_m", "error") != "error":             # 옵션을 켠 경우에만 기록
         est = T.M_day_from.str.startswith("est_") | T.M_night_from.str.startswith("est_")
         info["traffic_m_estimated"] = {"roads": int(est.sum()), "keys": sorted(set(T._key[est]))}
-    if cfg["input"]["junctions"].get("dk_rule", "nearest") != "nearest":         # 옵션을 켠 경우에만 기록
+    if cfg["input"]["junctions"].get("dk_rule", "nearest") != "nearest" and "D_K_nearest" in S:   # 옵션을 켠 경우에만 기록
         up = S.D_K > S.D_K_nearest
         info["dk_rule"] = {"rule": cfg["input"]["junctions"]["dk_rule"], "sources_raised": int(up.sum()),
                            "dD_K_max": round(float((S.D_K - S.D_K_nearest).max()), 3) if len(S) else 0.0}
