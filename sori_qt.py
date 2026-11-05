@@ -378,6 +378,7 @@ INPUT_FIELDS = [
         ("input.dem.path", "지형 DEM", "file?", "비우면 등고선·표고점만 사용"),
         ("input.junctions.path", "교차로 CSV", "file?", "비우면 자동 판정"),
         ("input.ground.soft_polygons", "녹지 다각형", "file?", "SHP/GPKG, 비우면 없음"),
+        ("input.road_override.path", "도로 확인값 CSV", "file?", "방향별 차로 수 등(‘차로 수’ 탭에서 만듦), 비우면 없음"),
     ]),
     ("계산 범위·수음점", [
         ("receivers.center", "격자 중심 X, Y (m)", "xy", "‘지도에서 중심 찍기’로도 넣을 수 있음"),
@@ -638,6 +639,633 @@ class InputEditor(QtWidgets.QWidget):
         return True
 
 
+# ================================================================ 교통량 표 편집(traffic.csv)
+# (열, 머리글, 설명, 선택지) — 선택지가 있으면 칸을 고를 때 목록이 나옴
+TRAFFIC_VIEW = [
+    ("key", "도로명 / UFID", "도로명(수치지도 도로명) 또는 도로 객체 UFID", None),
+    ("key_type", "구분", "name = 도로명, ufid = 도로 객체 하나", ["name", "ufid"]),
+    ("road_type", "도로 유형", "RLS-19 표 2 (빈칸 = 설정의 기본 도로 유형)", [""] + ROAD_TYPES),
+    ("DTV", "DTV 대/일", "일교통량(양방향). M 을 비우면 DTV × 표 2 계수", None),
+    ("M_day", "M 주간 대/h", "주간 06–22시 시간당 교통량(양방향)", None),
+    ("M_night", "M 야간 대/h", "야간 22–06시 시간당 교통량(양방향)", None),
+    ("p1_day", "p1 주간 %", "중형 화물차(Lkw1) 비율. 빈칸 = 표 2", None),
+    ("p2_day", "p2 주간 %", "대형 화물차·이륜차(Lkw2) 비율. 빈칸 = 표 2", None),
+    ("p1_night", "p1 야간 %", None, None),
+    ("p2_night", "p2 야간 %", None, None),
+    ("v_pkw", "속도 승용 km/h", "빈칸 = 설정 기본 속도(간선 50)", None),
+    ("v_lkw", "속도 화물 km/h", "빈칸 = 승용 속도", None),
+    ("surface", "노면", "RLS-19 표 4a·4b (빈칸 = 수치지도 포장 속성)", None),   # 선택지는 rls19.SURFACES
+    ("grade", "종단경사 %", "빈칸 = 지형에서 산정", None),
+    ("basis", "근거", "measured = 실측, assumed = 가정", ["", "measured", "assumed"]),
+    ("dir_split_fwd", "정방향 비율", "UFID 행만: 디지타이즈 방향 교통량 비율 0~1", None),
+    ("dir_basis", "방향 근거", None, ["", "measured", "assumed"]),
+    ("note", "메모", "출처·가정 등", None),
+]
+NUM_COLS = {"DTV", "M_day", "M_night", "p1_day", "p2_day", "p1_night", "p2_night", "v_pkw", "v_lkw", "grade",
+            "dir_split_fwd"}
+LW_COLS = ["LW′ 주간", "LW′ 야간"]
+
+
+def lw_prime_row(rec, tcfg):
+    """교통량 한 행 → (LW′ 주간, LW′ 야간) dB/m. 양방향 합, 종단경사(입력값 또는 0)만 반영, 교차로·다중반사 보정 전.
+    sori.inputs.traffic_for_road 와 같은 규칙(표 2 계수·기본 속도)으로 M·p·v 를 채움. 계산할 수 없으면 ValueError"""
+    from sori import rls19
+
+    def f(k):
+        v = str(rec.get(k, "") or "").strip()
+        return None if v == "" else float(v)
+    rtype = (rec.get("road_type") or "").strip() or tcfg.get("default_road_type", "gemeinde")
+    if rtype not in rls19.TAB2:
+        raise ValueError(f"도로 유형 '{rtype}'")
+    t2, dtv = rls19.TAB2[rtype], f("DTV")
+    m = {p: f(f"M_{p}") for p in ("day", "night")}
+    if dtv is None and m["day"] is None and m["night"] is None:
+        raise ValueError("DTV 또는 M 필요")
+    v_pkw = f("v_pkw") or float(tcfg.get("default_speed_main", 50.0))
+    v_lkw = f("v_lkw") or v_pkw
+    sf = (rec.get("surface") or "").strip() or "ref"
+    if sf not in rls19.SURFACES:
+        raise ValueError(f"노면 '{sf}'")
+    g = f("grade") or 0.0
+    out = []
+    for per in ("day", "night"):
+        Mf, p1s, p2s = t2[per]
+        M = m[per]
+        if M is None:
+            if dtv is not None:
+                M = Mf * dtv
+            else:
+                o = "night" if per == "day" else "day"
+                M = m[o] * Mf / t2[o][0]
+        p1, p2 = f(f"p1_{per}"), f(f"p2_{per}")
+        out.append(rls19.LW_prime(M, p1s if p1 is None else p1, p2s if p2 is None else p2, v_pkw, v_lkw, sf, g))
+    return tuple(out)
+
+
+class ChoiceDelegate(QtWidgets.QStyledItemDelegate):
+    """열마다 정해진 값 중에서 고르는 칸(도로 유형, 노면, 근거 등)"""
+
+    def __init__(self, choices, parent=None):
+        super().__init__(parent)
+        self.choices = choices
+
+    def createEditor(self, parent, option, index):
+        cb = QtWidgets.QComboBox(parent)
+        cb.addItems(self.choices)
+        return cb
+
+    def setEditorData(self, ed, index):
+        ed.setCurrentText(index.data() or "")
+
+    def setModelData(self, ed, model, index):
+        model.setData(index, ed.currentText())
+
+
+class TrafficEditor(QtWidgets.QWidget):
+    """교통량 CSV 를 표로 고쳐 저장. 칸을 고치면 그 도로의 LW′(RLS-19 식 4)를 바로 다시 계산해 오른쪽 끝에 보여 줌.
+    파일에 있는 다른 열은 그대로 보존. 처음 저장할 때 원본을 traffic.csv.bak 로 남김"""
+    saved = QtCore.Signal(str)
+    need_file = QtCore.Signal(str)                  # 교통량 파일이 없어 새로 만들었음 → 설정 파일에 경로 넣기
+
+    def __init__(self):
+        super().__init__()
+        from sori import rls19
+        self.path, self.cfg, self.df = None, None, None
+        self._busy = False
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        self.lbl = QtWidgets.QLabel("설정 파일을 열면 교통량 표를 고칠 수 있습니다.")
+        self.lbl.setWordWrap(True)
+        lay.addWidget(self.lbl)
+        self.tbl = QtWidgets.QTableWidget(0, len(TRAFFIC_VIEW) + len(LW_COLS))
+        heads = [h for _, h, _, _ in TRAFFIC_VIEW] + LW_COLS
+        self.tbl.setHorizontalHeaderLabels(heads)
+        for j, (_c, _h, tip, _ch) in enumerate(TRAFFIC_VIEW):
+            if tip:
+                self.tbl.horizontalHeaderItem(j).setToolTip(tip)
+        for j in range(len(LW_COLS)):
+            self.tbl.horizontalHeaderItem(len(TRAFFIC_VIEW) + j).setToolTip(
+                "RLS-19 식 (4) 음원선 1 m 당 음향파워레벨 dB/m — 양방향 합, 입력한 종단경사만 반영, "
+                "교차로·다중반사 보정 전(계산 때는 도로 객체마다 더해짐). 노면이 빈칸이면 여기서는 기준 노면(ref)으로 "
+                "보여 주지만, 계산 때는 수치지도 포장 속성을 씀")
+        surf = [""] + list(rls19.SURFACES)
+        for j, (c, _h, _t, ch) in enumerate(TRAFFIC_VIEW):
+            ch = surf if c == "surface" else ch
+            if ch:
+                self.tbl.setItemDelegateForColumn(j, ChoiceDelegate(ch, self.tbl))
+        self.tbl.setAlternatingRowColors(True)
+        hh = self.tbl.horizontalHeader()
+        hh.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+        for j in range(len(LW_COLS)):                     # 계산 결과 LW′ 는 도로 유형 바로 뒤에 보이게(데이터 열 순서는 그대로)
+            hh.moveSection(hh.visualIndex(len(TRAFFIC_VIEW) + j), 3 + j)
+        self.tbl.itemChanged.connect(self._changed)
+        lay.addWidget(self.tbl, 1)
+        row = QtWidgets.QHBoxLayout()
+        for text, fn in (("행 추가", self.add_row), ("선택 행 복제", self.dup_rows), ("선택 행 삭제", self.del_rows)):
+            b = QtWidgets.QPushButton(text)
+            b.clicked.connect(fn)
+            row.addWidget(b)
+        self.lbl_sum = QtWidgets.QLabel("")
+        row.addWidget(self.lbl_sum, 1)
+        self.btn_reset = QtWidgets.QPushButton("되돌리기")
+        self.btn_reset.clicked.connect(lambda: self.cfg is not None and self.load(self.cfg))
+        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)")
+        self.btn_save.setToolTip("값을 검사한 뒤 교통량 CSV 에 씀(다른 열은 그대로)")
+        self.btn_save.clicked.connect(self.save)
+        for x in (self.btn_reset, self.btn_save):
+            x.setMinimumWidth(110)
+            row.addWidget(x)
+        lay.addLayout(row)
+        self.setEnabled(False)
+
+    def load(self, cfg):
+        """cfg(sori.config.load 결과)의 교통량 파일을 표에 채움. 파일이 없으면 빈 표(저장하면 새 파일)"""
+        from sori.inputs import TRAFFIC_COLS, read_csv_any
+        self.cfg = cfg
+        p = cfg["input"]["traffic"].get("path")
+        base = Path(cfg["_config_path"]).parent
+        self.path = Path(p) if p else base / "traffic.csv"
+        if self.path.exists():
+            df = read_csv_any(self.path)
+            msg = f"교통량 파일: {self.path}"
+        else:
+            df = pd.DataFrame(columns=TRAFFIC_COLS)
+            msg = (f"교통량 파일이 없습니다 — 저장하면 {self.path} 를 새로 만들고 설정 파일에 넣음 "
+                   "(지금은 모든 도로에 차로 수 기준 가정 교통량)")
+        for c, *_ in TRAFFIC_VIEW:
+            if c not in df.columns:
+                df[c] = ""
+        self.df = df.fillna("").astype(str)
+        self.lbl.setText(msg + "\n도로명 행은 같은 이름의 2차로 이상 구간 전체, UFID 행은 그 도로 객체 하나에 적용 "
+                               "(UFID 가 우선). 빈칸은 RLS-19 표 2·설정 기본값. 머리글에 마우스를 올리면 설명")
+        self._busy = True
+        self.tbl.setRowCount(0)
+        for _, r in self.df.iterrows():
+            self._append([r.get(c, "") for c, *_ in TRAFFIC_VIEW])
+        self._busy = False
+        self._recalc_all()
+        self.tbl.resizeColumnsToContents()
+        self.tbl.setColumnWidth(0, min(self.tbl.columnWidth(0), 260))
+        self.tbl.setColumnWidth(len(TRAFFIC_VIEW) - 1, min(self.tbl.columnWidth(len(TRAFFIC_VIEW) - 1), 240))
+        for j in range(len(LW_COLS)):
+            self.tbl.setColumnWidth(len(TRAFFIC_VIEW) + j, 80)
+        self.setEnabled(True)
+
+    def _append(self, vals):
+        i = self.tbl.rowCount()
+        self.tbl.insertRow(i)
+        for j, v in enumerate(vals):
+            self.tbl.setItem(i, j, QtWidgets.QTableWidgetItem(str(v)))
+        for j in range(len(LW_COLS)):
+            it = QtWidgets.QTableWidgetItem("")
+            it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            it.setBackground(QtGui.QColor("#eef3fa"))
+            self.tbl.setItem(i, len(TRAFFIC_VIEW) + j, it)
+        return i
+
+    def _rec(self, i):
+        return {c: (self.tbl.item(i, j).text().strip() if self.tbl.item(i, j) else "")
+                for j, (c, *_) in enumerate(TRAFFIC_VIEW)}
+
+    def _row_errors(self, rec):
+        """한 행의 형식 오류 [(열, 이유)]"""
+        from sori import rls19
+        err = []
+        for c in NUM_COLS:
+            if rec[c]:
+                try:
+                    float(rec[c])
+                except ValueError:
+                    err.append((c, "숫자가 아님"))
+        if rec["key_type"] not in ("", "name", "ufid"):
+            err.append(("key_type", "name 또는 ufid"))
+        if rec["road_type"] and rec["road_type"] not in rls19.TAB2:
+            err.append(("road_type", "RLS-19 표 2 유형"))
+        if rec["surface"] and rec["surface"] not in rls19.SURFACES:
+            err.append(("surface", "RLS-19 표 4 노면"))
+        for c in ("basis", "dir_basis"):
+            if rec[c] not in ("", "measured", "assumed"):
+                err.append((c, "measured 또는 assumed"))
+        if rec["key"] and not (rec["DTV"] or rec["M_day"] or rec["M_night"]):
+            err.append(("DTV", "DTV 또는 M 필요"))
+        return err
+
+    def _recalc(self, i):
+        rec = self._rec(i)
+        bad = dict(self._row_errors(rec)) if rec["key"] else {}
+        self._busy = True
+        for j, (c, *_) in enumerate(TRAFFIC_VIEW):
+            it = self.tbl.item(i, j)
+            if it is not None:
+                it.setBackground(QtGui.QColor("#ffd6d6") if c in bad else QtGui.QBrush())
+                it.setToolTip(bad.get(c, ""))
+        lw = (None, None)
+        if rec["key"] and not bad:
+            try:
+                lw = lw_prime_row(rec, self.cfg["input"]["traffic"])
+            except (ValueError, ZeroDivisionError):
+                pass
+        for j, v in enumerate(lw):
+            self.tbl.item(i, len(TRAFFIC_VIEW) + j).setText("" if v is None else f"{v:.1f}")
+        self._busy = False
+
+    def _recalc_all(self):
+        for i in range(self.tbl.rowCount()):
+            self._recalc(i)
+        self.lbl_sum.setText(f"  {self.tbl.rowCount()}행")
+
+    def _changed(self, item):
+        if not self._busy and item.column() < len(TRAFFIC_VIEW):
+            self._recalc(item.row())
+
+    def add_row(self):
+        i = self._append(["", "name"] + [""] * (len(TRAFFIC_VIEW) - 2))
+        self._recalc(i)
+        self.tbl.setCurrentCell(i, 0)
+        self.tbl.editItem(self.tbl.item(i, 0))
+        self.lbl_sum.setText(f"  {self.tbl.rowCount()}행")
+
+    def _sel_rows(self):
+        return sorted({ix.row() for ix in self.tbl.selectedIndexes()})
+
+    def dup_rows(self):
+        for i in self._sel_rows():
+            self._recalc(self._append([self.tbl.item(i, j).text() for j in range(len(TRAFFIC_VIEW))]))
+        self.lbl_sum.setText(f"  {self.tbl.rowCount()}행")
+
+    def del_rows(self):
+        for i in reversed(self._sel_rows()):
+            self.tbl.removeRow(i)
+        self.lbl_sum.setText(f"  {self.tbl.rowCount()}행")
+
+    def table(self):
+        """표 → DataFrame(파일에 있던 다른 열은 빈칸으로 보존 — 행을 더하거나 지우면 행 단위로 함께 움직이지 않음)"""
+        rows = [self._rec(i) for i in range(self.tbl.rowCount())]
+        df = pd.DataFrame(rows, columns=[c for c, *_ in TRAFFIC_VIEW])
+        extra = [c for c in self.df.columns if c not in df.columns]
+        if extra and len(self.df) == len(df):           # 행 수가 같을 때만 다른 열을 행 순서대로 붙임
+            for c in extra:
+                df[c] = self.df[c].values
+        return df
+
+    def save(self):
+        """검사(형식·LW′ 계산·sori.inputs.load_traffic) 뒤 저장. 성공하면 True"""
+        import copy
+        from sori.inputs import load_traffic
+        bad = []
+        for i in range(self.tbl.rowCount()):
+            rec = self._rec(i)
+            if rec["key"]:
+                bad += [f"{i + 1}행 ‘{rec['key']}’ {c}: {why}" for c, why in self._row_errors(rec)]
+        if bad:
+            QtWidgets.QMessageBox.warning(self, "SORI — 교통량", "저장하지 않았습니다. 빨간 칸을 고치세요.\n\n"
+                                          + "\n".join(bad[:15]) + ("\n…" if len(bad) > 15 else ""))
+            return False
+        df = self.table()
+        tmp = self.path.with_name(".sori_check_traffic.csv")
+        try:
+            df.to_csv(tmp, index=False, encoding="utf-8-sig")
+            cfg = copy.deepcopy(self.cfg)
+            cfg["input"]["traffic"]["path"] = str(tmp)
+            load_traffic(cfg)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "SORI — 교통량", f"저장하지 않았습니다. 교통량 검사 오류:\n{e}")
+            return False
+        finally:
+            tmp.unlink(missing_ok=True)
+        new = not self.path.exists()
+        if not new:
+            bak = self.path.with_name(self.path.name + ".bak")
+            if not bak.exists():
+                bak.write_bytes(self.path.read_bytes())
+        df.to_csv(self.path, index=False, encoding="utf-8-sig")
+        self.df = df
+        log.info("교통량 저장: %s (%d행)", self.path, len(df))
+        if new:
+            self.need_file.emit(str(self.path))
+        self.saved.emit(str(self.path))
+        return True
+
+
+# ================================================================ 차로 수 편집(roads_override.csv) — 음원선 위치(RLS-19 3.3.1)
+# (열, 머리글, 편집 가능, 선택지, 설명)
+LANE_VIEW = [
+    ("ufid", "UFID", False, None, "수치지도 도로 객체 번호"),
+    ("rname", "도로명", False, None, None),
+    ("oneway", "일방", False, None, "수치지도 일방통행 여부"),
+    ("lanes", "지도 차로", False, None, "수치지도 전체 차로 수(양방향 합)"),
+    ("width", "도로폭 m", False, None, "수치지도 도로폭"),
+    ("lanes_fwd", "정방향 차로", True, None, "디지타이즈 방향(지도에서 화살표 방향) 차로 수. 일방통행은 전체 차로 수"),
+    ("lanes_bwd", "역방향 차로", True, None, "반대 방향 차로 수. 일방통행은 비움"),
+    ("lanes_basis", "차로 근거", True, ["", "checked", "assumed"], "checked = 지도·현장 확인, assumed = 가정"),
+    ("oneway_dir", "일방 진행", True, ["", "1", "-1"], "일방통행만: 1 = 디지타이즈 방향으로 진행, -1 = 반대"),
+    ("oneway_dir_basis", "진행 근거", True, ["", "checked", "assumed"], None),
+    ("note", "메모", True, None, None),
+    ("_rule", "적용", False, None, "override = 확인값, map_half·ceil = 지도 차로 수를 반으로, oneway_map = 일방"),
+    ("_wl", "차로폭 m", False, None, "설정 lane_width (auto = 도로폭/차로 수, 2.75~3.5 m)"),
+    ("_off", "음원선 위치 m", False, None, "중심선에서 음원선까지 거리(+ = 디지타이즈 방향 왼쪽). RLS-19 3.3.1 그림 6"),
+]
+LANE_EDIT = [c for c, _h, e, *_ in LANE_VIEW if e]
+
+
+class LanesEditor(QtWidgets.QWidget):
+    """도로 객체별 방향별 차로 수(확인값)를 고쳐 roads_override.csv 로 저장. 고치면 음원선 위치를 바로 다시 계산해 보여 줌
+    (계산 엔진 sori.build.lane_layout·source_offsets 그대로). 행을 고르고 ‘지도에서 보기’ → 그 도로와 음원선을 지도에 표시"""
+    saved = QtCore.Signal(str)
+    need_file = QtCore.Signal(str)
+    show_on_map = QtCore.Signal(object)            # (도로 도형, [(오프셋, 정방향?)], 제목)
+
+    def __init__(self):
+        super().__init__()
+        self.cfg, self.roads, self.path, self.extra = None, None, None, None
+        self._busy = False
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(4, 4, 4, 4)
+        self.lbl = QtWidgets.QLabel("설정 파일을 열고 한 번 계산하면(도로 객체 roads.gpkg 생김) 차로 수를 고칠 수 있습니다.")
+        self.lbl.setWordWrap(True)
+        lay.addWidget(self.lbl)
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(QtWidgets.QLabel("도로명 찾기"))
+        self.ed_find = QtWidgets.QLineEdit(placeholderText="예: 사가정로")
+        self.ed_find.textChanged.connect(self._filter)
+        top.addWidget(self.ed_find, 1)
+        self.chk_minor = QtWidgets.QCheckBox("1차로 도로도 보기")
+        self.chk_minor.toggled.connect(self._filter)
+        top.addWidget(self.chk_minor)
+        self.chk_inside = QtWidgets.QCheckBox("격자 계산 범위 안만")
+        self.chk_inside.setChecked(True)
+        self.chk_inside.setToolTip("도로 객체는 반사·전파 탐색 때문에 계산 범위보다 넓게 만들어짐 — 끄면 전부")
+        self.chk_inside.toggled.connect(self._filter)
+        top.addWidget(self.chk_inside)
+        self.chk_edited = QtWidgets.QCheckBox("확인값 넣은 도로만")
+        self.chk_edited.toggled.connect(self._filter)
+        top.addWidget(self.chk_edited)
+        lay.addLayout(top)
+        self.tbl = QtWidgets.QTableWidget(0, len(LANE_VIEW))
+        self.tbl.setHorizontalHeaderLabels([h for _, h, *_ in LANE_VIEW])
+        for j, (_c, _h, _e, ch, tip) in enumerate(LANE_VIEW):
+            if tip:
+                self.tbl.horizontalHeaderItem(j).setToolTip(tip)
+            if ch:
+                self.tbl.setItemDelegateForColumn(j, ChoiceDelegate(ch, self.tbl))
+        self.tbl.setAlternatingRowColors(True)
+        self.tbl.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.tbl.itemChanged.connect(self._changed)
+        self.tbl.cellDoubleClicked.connect(lambda i, j: LANE_VIEW[j][2] or self.map_selected())
+        lay.addWidget(self.tbl, 1)
+        row = QtWidgets.QHBoxLayout()
+        b = QtWidgets.QPushButton("지도에서 보기")
+        b.setToolTip("고른 도로와 방향별 음원선(지금 표의 차로 수 기준)을 지도에 표시. 읽기 전용 칸을 두 번 클릭해도 됨")
+        b.clicked.connect(self.map_selected)
+        row.addWidget(b)
+        b = QtWidgets.QPushButton("확인값 지우기")
+        b.setToolTip("고른 행의 확인값 칸을 비움 → 수치지도 차로 수로 돌아감")
+        b.clicked.connect(self.clear_selected)
+        row.addWidget(b)
+        self.lbl_sum = QtWidgets.QLabel("")
+        row.addWidget(self.lbl_sum, 1)
+        self.btn_reset = QtWidgets.QPushButton("되돌리기")
+        self.btn_reset.clicked.connect(lambda: self.cfg is not None and self.load(self.cfg, self.roads))
+        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)")
+        self.btn_save.setToolTip("확인값이 있는 행만 도로 확인값 CSV(roads_override.csv)에 씀")
+        self.btn_save.clicked.connect(self.save)
+        for x in (self.btn_reset, self.btn_save):
+            x.setMinimumWidth(110)
+            row.addWidget(x)
+        lay.addLayout(row)
+        self.setEnabled(False)
+
+    def load(self, cfg, roads):
+        """roads: 결과 폴더 roads.gpkg(GeoDataFrame). 확인값 파일이 있으면 그 값을 칸에 채움"""
+        from sori.inputs import read_csv_any
+        self.cfg, self.roads = cfg, roads
+        if roads is None or not len(roads):
+            self.tbl.setRowCount(0)
+            self.lbl.setText("도로 객체가 아직 없습니다 — 홈 ▸ ‘계산 실행’을 한 번 하면(결과 폴더에 roads.gpkg) "
+                             "도로별 차로 수를 고칠 수 있습니다.")
+            self.setEnabled(False)
+            return
+        p = (cfg["input"].get("road_override") or {}).get("path")
+        base = Path(cfg["_config_path"]).parent
+        self.path = Path(p) if p else base / "roads_override.csv"
+        ov = {}
+        self.extra = pd.DataFrame()
+        if self.path.exists():
+            df = read_csv_any(self.path)
+            df.columns = [str(c).strip().lower() if str(c).strip().lower() in LANE_EDIT + ["ufid"] else c
+                          for c in df.columns]
+            ov = {r["ufid"].strip(): r for _, r in df.iterrows() if str(r.get("ufid", "")).strip()}
+            known = set(roads.ufid)
+            self.extra = df[~df["ufid"].str.strip().isin(known)]        # 계산 영역 밖 UFID 행은 그대로 보존
+            msg = f"도로 확인값 파일: {self.path} ({len(ov)}행)"
+        else:
+            msg = f"도로 확인값 파일이 없습니다 — 저장하면 {self.path} 를 새로 만들고 설정 파일에 넣음"
+        self.lbl.setText(msg + "\n수치지도는 전체 차로 수만 있어 지금은 반씩 나눔(홀수는 설정 odd_lane_rule). 실제 방향별 "
+                               "차로 수를 넣으면 음원선이 그 위치로 옮겨짐(RLS-19 3.3.1). 정·역방향은 도로를 그린 방향 기준 — "
+                               "‘지도에서 보기’로 화살표 확인. 저장 뒤 ‘계산 실행’을 다시 해야 결과에 반영")
+        from shapely.geometry import box
+        from sori.config import grid_bbox
+        try:
+            inside = set(roads[roads.intersects(box(*grid_bbox(cfg)))].ufid)
+        except Exception:
+            inside = set(roads.ufid)
+        self._inside = inside
+        self._busy = True
+        self.tbl.setRowCount(0)
+        R = roads.sort_values(["rname", "ufid"])
+        for _, r in R.iterrows():
+            o = ov.get(r.ufid, {})
+            i = self.tbl.rowCount()
+            self.tbl.insertRow(i)
+            vals = {"ufid": r.ufid, "rname": r.rname or r.axis or "", "oneway": "일방" if bool(r.oneway) else "",
+                    "lanes": str(int(r.lanes)), "width": "" if pd.isna(r.width) else f"{float(r.width):g}"}
+            for c in LANE_EDIT:
+                v = o.get(c, "") if len(o) else ""
+                vals[c] = "" if pd.isna(v) else str(v).strip()
+            for j, (c, _h, ed, *_rest) in enumerate(LANE_VIEW):
+                it = QtWidgets.QTableWidgetItem(vals.get(c, ""))
+                if not ed:
+                    it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+                    if c.startswith("_"):
+                        it.setBackground(QtGui.QColor("#eef3fa"))
+                self.tbl.setItem(i, j, it)
+        self._busy = False
+        for i in range(self.tbl.rowCount()):
+            self._recalc(i)
+        self.tbl.resizeColumnsToContents()
+        self.tbl.setColumnWidth(0, min(self.tbl.columnWidth(0), 200))
+        self._filter()
+        self.setEnabled(True)
+
+    def _col(self, c):
+        return next(j for j, (k, *_) in enumerate(LANE_VIEW) if k == c)
+
+    def _get(self, i, c):
+        it = self.tbl.item(i, self._col(c))
+        return it.text().strip() if it else ""
+
+    def _road(self, i):
+        return self.roads[self.roads.ufid == self._get(i, "ufid")].iloc[0]
+
+    def _errors(self, i):
+        """[(열, 이유)] — 저장을 막는 오류(빨강)와 경고(노랑, 저장은 됨) 구분: (열, 이유, 막음?)"""
+        out = []
+        ow = bool(self._get(i, "oneway"))
+        vals = {}
+        for c in ("lanes_fwd", "lanes_bwd", "oneway_dir"):
+            s = self._get(i, c)
+            if s:
+                try:
+                    f = float(s)
+                    if f != int(f):
+                        raise ValueError
+                    vals[c] = int(f)
+                except ValueError:
+                    out.append((c, "정수", True))
+        lf, lb = vals.get("lanes_fwd"), vals.get("lanes_bwd")
+        if lf is not None and lf < 1:
+            out.append(("lanes_fwd", "1 이상", True))
+        if lb is not None and lb < 0:
+            out.append(("lanes_bwd", "0 이상", True))
+        if "oneway_dir" in vals and vals["oneway_dir"] not in (1, -1):
+            out.append(("oneway_dir", "1 또는 -1", True))
+        for c in ("lanes_basis", "oneway_dir_basis"):
+            if self._get(i, c) not in ("", "checked", "assumed"):
+                out.append((c, "checked 또는 assumed", True))
+        lanes = int(self._get(i, "lanes") or 0)
+        if not ow and (lf is None) != (lb is None):
+            out.append(("lanes_bwd" if lb is None else "lanes_fwd", "양방향은 두 방향 모두 넣어야 반영됨", False))
+        if not ow and lf is not None and lb is not None and lf + lb != lanes:
+            out.append(("lanes_fwd", f"합 {lf + lb} ≠ 지도 차로 {lanes}(반영은 됨)", False))
+        if ow and lb:
+            out.append(("lanes_bwd", "일방통행은 비움", False))
+        if not ow and "oneway_dir" in vals:
+            out.append(("oneway_dir", "양방향 도로에는 쓰지 않음", False))
+        return out, vals
+
+    def _layout(self, i, vals=None):
+        """지금 칸 값으로 (nd_fwd, nd_bwd, 차로폭, 규칙, 오프셋 목록)"""
+        from sori.build import lane_layout, source_offsets
+        if vals is None:
+            vals = self._errors(i)[1]
+        r = self._road(i)
+        ow = bool(r.oneway)
+        w = None if pd.isna(r.width) else float(r.width)
+        nd, nb, wl, rule = lane_layout(self.cfg, int(r.lanes), w, ow, vals.get("lanes_fwd"), vals.get("lanes_bwd"))
+        single = (not ow) and nb == 0
+        offs = source_offsets(nd, nb, wl, ow, single=single, oneway_dir=vals.get("oneway_dir") or 1)
+        return nd, nb, wl, rule, offs
+
+    def _recalc(self, i):
+        errs, vals = self._errors(i)
+        bad = {c: (why, block) for c, why, block in errs}
+        self._busy = True
+        for c in LANE_EDIT:
+            it = self.tbl.item(i, self._col(c))
+            if c in bad:
+                it.setBackground(QtGui.QColor("#ffd6d6" if bad[c][1] else "#fff2c2"))
+                it.setToolTip(bad[c][0])
+            else:
+                it.setBackground(QtGui.QBrush())
+                it.setToolTip("")
+        try:
+            if any(b for _, b in bad.values()):
+                raise ValueError
+            nd, nb, wl, rule, offs = self._layout(i, vals)
+            self.tbl.item(i, self._col("_rule")).setText(f"{rule} ({nd}+{nb})" if nb else f"{rule} ({nd})")
+            self.tbl.item(i, self._col("_wl")).setText(f"{wl:.2f}")
+            self.tbl.item(i, self._col("_off")).setText(" / ".join(f"{o:+.2f}" for o, _ in offs))
+        except (ValueError, IndexError):
+            for c in ("_rule", "_wl", "_off"):
+                self.tbl.item(i, self._col(c)).setText("")
+        self._busy = False
+
+    def _changed(self, item):
+        if not self._busy and LANE_VIEW[item.column()][2]:
+            self._recalc(item.row())
+            self._count()
+
+    def _edited(self, i):
+        return any(self._get(i, c) for c in LANE_EDIT)
+
+    def _count(self):
+        n = sum(self._edited(i) for i in range(self.tbl.rowCount()))
+        vis = sum(not self.tbl.isRowHidden(i) for i in range(self.tbl.rowCount()))
+        self.lbl_sum.setText(f"  보이는 도로 {vis} / 전체 {self.tbl.rowCount()} · 확인값 {n}개")
+
+    def _filter(self, *_):
+        q = self.ed_find.text().strip()
+        mn = int(self.cfg["model"].get("main_min_lanes", 2)) if self.cfg else 2
+        for i in range(self.tbl.rowCount()):
+            hide = bool(q) and q not in self._get(i, "rname") and q not in self._get(i, "ufid")
+            hide |= not self.chk_minor.isChecked() and int(self._get(i, "lanes") or 0) < mn and not self._edited(i)
+            hide |= self.chk_edited.isChecked() and not self._edited(i)
+            hide |= (self.chk_inside.isChecked() and self._get(i, "ufid") not in getattr(self, "_inside", set())
+                     and not self._edited(i))
+            self.tbl.setRowHidden(i, hide)
+        self._count()
+
+    def _sel(self):
+        return sorted({ix.row() for ix in self.tbl.selectedIndexes()})
+
+    def clear_selected(self):
+        for i in self._sel():
+            for c in LANE_EDIT:
+                self.tbl.item(i, self._col(c)).setText("")
+
+    def map_selected(self):
+        rows = self._sel()
+        if not rows:
+            return
+        i = rows[0]
+        try:
+            nd, nb, wl, rule, offs = self._layout(i)
+        except (ValueError, IndexError):
+            return
+        r = self._road(i)
+        self.show_on_map.emit((r.geometry, offs,
+                               f"{self._get(i, 'rname')} {r.ufid[-6:]} · {rule} {nd}+{nb}차로 · 차로폭 {wl:.2f} m"))
+
+    def save(self):
+        import copy
+        from sori.inputs import load_road_override
+        bad = []
+        for i in range(self.tbl.rowCount()):
+            for c, why, block in self._errors(i)[0]:
+                if block:
+                    bad.append(f"{self._get(i, 'rname')} {self._get(i, 'ufid')[-6:]} {c}: {why}")
+        if bad:
+            QtWidgets.QMessageBox.warning(self, "SORI — 차로 수", "저장하지 않았습니다. 빨간 칸을 고치세요.\n\n"
+                                          + "\n".join(bad[:15]) + ("\n…" if len(bad) > 15 else ""))
+            return False
+        rows = [{c: self._get(i, c) for c in ["ufid"] + LANE_EDIT} for i in range(self.tbl.rowCount()) if self._edited(i)]
+        df = pd.DataFrame(rows, columns=["ufid"] + LANE_EDIT)
+        if self.extra is not None and len(self.extra):
+            df = pd.concat([df, self.extra.reindex(columns=df.columns).fillna("")], ignore_index=True)
+        tmp = self.path.with_name(".sori_check_override.csv")
+        try:
+            df.to_csv(tmp, index=False, encoding="utf-8-sig")
+            cfg = copy.deepcopy(self.cfg)
+            cfg["input"].setdefault("road_override", {})["path"] = str(tmp)
+            load_road_override(cfg)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "SORI — 차로 수", f"저장하지 않았습니다. 확인값 검사 오류:\n{e}")
+            return False
+        finally:
+            tmp.unlink(missing_ok=True)
+        new = not self.path.exists()
+        if not new:
+            bak = self.path.with_name(self.path.name + ".bak")
+            if not bak.exists():
+                bak.write_bytes(self.path.read_bytes())
+        df.to_csv(self.path, index=False, encoding="utf-8-sig")
+        log.info("도로 확인값 저장: %s (%d행)", self.path, len(df))
+        if new or not (self.cfg["input"].get("road_override") or {}).get("path"):
+            self.need_file.emit(str(self.path))
+        self.saved.emit(str(self.path))
+        return True
+
+
 # ================================================================ 홈 화면(프로젝트 고르기 → 작업 고르기)
 def recent_projects():
     """최근에 연 설정 파일 [(경로, 프로젝트 이름)], 새것부터. 없어진 파일은 뺌"""
@@ -871,7 +1499,20 @@ class MainWindow(QtWidgets.QMainWindow):
         bm.clicked.connect(lambda: self.enter_task("map"))
         hd.addWidget(bm)
         ip.addLayout(hd)
-        ip.addWidget(self.editor, 1)
+        self.traffic = TrafficEditor()
+        self.traffic.saved.connect(lambda p: self.lbl_status.setText(
+            f"교통량 저장함: {p} — 결과는 홈 ▸ ‘계산 실행’으로 다시 계산해야 바뀜"))
+        self.traffic.need_file.connect(self._traffic_new_file)
+        self.input_tabs = QtWidgets.QTabWidget()
+        self.input_tabs.addTab(self.editor, "설정값")
+        self.input_tabs.addTab(self.traffic, "교통량")
+        self.lanes = LanesEditor()
+        self.lanes.saved.connect(lambda p: self.lbl_status.setText(
+            f"차로 수 저장함: {p} — 음원선 위치는 홈 ▸ ‘계산 실행’으로 다시 계산해야 결과에 반영"))
+        self.lanes.need_file.connect(self._lanes_new_file)
+        self.lanes.show_on_map.connect(self._show_lane_focus)
+        self.input_tabs.addTab(self.lanes, "차로 수")
+        ip.addWidget(self.input_tabs, 1)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.addTab(self._run_panel(), "계산 실행")
@@ -950,7 +1591,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resizeDocks([self.findChild(QtWidgets.QDockWidget, "계산·결과 표")], [230], Qt.Vertical)
 
         self.home = HomePage(self)
-        self.home.task.connect(self.enter_task)
+        self.home.task.connect(self._home_task)
         self.stack.addWidget(self.home)
         self.stack.addWidget(self.split)
         self.stack.addWidget(self.input_page)            # 2 = 입력값 설정
@@ -972,9 +1613,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def save_current(self):
         """Cmd/Ctrl+S: 입력값 화면이면 입력값을 설정 파일에, 지도 화면이면 지도 그림을 저장"""
         if self.stack.currentIndex() == 2:
-            return self.editor.save() if self.editor.isEnabled() else None
+            ed = self.input_tabs.currentWidget()                  # 설정값 또는 교통량 탭
+            return ed.save() if ed.isEnabled() else None
         if self.stack.currentIndex() == 1:
             return self.save_map()
+
+    def _home_task(self, key):
+        self._lane_focus = None                       # 홈에서 들어가면 차로 수 강조 표시는 지움
+        self.enter_task(key)
 
     def show_input(self):
         self._work_chrome(False)
@@ -1135,9 +1781,18 @@ class MainWindow(QtWidgets.QMainWindow):
         G.save_settings(last_config=path, last_out=out.resolve())   # 설정과 결과 폴더를 짝으로 기억
         add_recent(path, cfg["project"].get("name") or path.parent.name)
         self.editor.load(path, cfg)
+        try:
+            self.traffic.load(cfg)
+        except Exception as e:
+            log.error("교통량 표를 읽지 못함: %s", e)
         self._prev_box = None
+        self._lane_focus = None
         log.info("설정 파일: %s", path)
         self.open_results(out, quiet=True)
+        try:
+            self.lanes.load(cfg, self.R.get("roads"))
+        except Exception as e:
+            log.error("차로 수 표를 읽지 못함: %s", e)
 
     def open_results(self, out, quiet=False):
         """결과 폴더의 CSV·래스터·도형을 읽어 트리·지도·표를 채움(없으면 계산 범위만 표시)"""
@@ -1335,6 +1990,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._redraw_grid()
         self._mark_building()
         self._draw_preview()
+        self._draw_lane_focus()
 
     def _mark_building(self):
         """나란히 보기에서 오른쪽에 보이는 건물을 왼쪽 격자 지도에 빨간 테두리로 표시"""
@@ -1363,7 +2019,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if C is not None:                                       # 보고서 수준 지도(maps_hq 와 같은 그리기)
                 try:
                     return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
-                                                 lambda: (self._redraw_grid(), self._mark_building(), self._draw_preview()))
+                                                 lambda: (self._redraw_grid(), self._mark_building(), self._draw_preview(),
+                                                         self._draw_lane_focus()))
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key)
@@ -1582,6 +2239,59 @@ class MainWindow(QtWidgets.QMainWindow):
         self.open_config(path, self.out)
         self.show_input()
         self.lbl_status.setText("입력값 저장함 — 결과는 예전 값으로 계산된 것. 새 값으로 보려면 ‘계산 실행’")
+
+    def _traffic_new_file(self, path):
+        """교통량 파일을 새로 만들었으면 설정 파일의 교통량 경로에 넣고 설정도 저장"""
+        e = self.editor.w["input.traffic.path"][0].edit
+        e.setText(self.editor._rel(path))
+        if self.editor.save():
+            self.input_tabs.setCurrentWidget(self.traffic)
+
+    def _lanes_new_file(self, path):
+        """도로 확인값 파일을 새로 만들었으면 설정 파일에 경로를 넣고 설정도 저장(차로 수 탭은 그대로)"""
+        self.editor.w["input.road_override.path"][0].edit.setText(self.editor._rel(path))
+        if self.editor.save():
+            self.input_tabs.setCurrentWidget(self.lanes)
+
+    def _show_lane_focus(self, v):
+        """차로 수 탭 ‘지도에서 보기’: 지도 화면에서 그 도로(굵은 회색)·디지타이즈 방향 화살표·음원선(빨강 = 정방향,
+        파랑 = 역방향, 보라 = 방향 미상 중앙선)을 그리고 그 도로로 확대"""
+        self._lane_focus = v
+        self.enter_task("map")
+        self.lbl_status.setText(f"{v[2]} — 빨강 = 정방향(그린 방향) 음원선, 파랑 = 역방향, 화살표 = 그린 방향. "
+                                "‘✎ 입력값’으로 돌아가 고침")
+
+    def _draw_lane_focus(self):
+        v, ax = getattr(self, "_lane_focus", None), self.map.ax
+        if v is None or ax is None or self.view != "grid":
+            return
+        g, offs, title = v
+        x0, y0, x1, y1 = g.bounds
+        m = max(x1 - x0, y1 - y0) * 0.6 + 25
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        from shapely.geometry import box
+        win = box(cx - m, cy - m, cx + m, cy + m)
+        for k, kw in (("buildings", dict(fc="#ececec", ec="#999", lw=0.4, zorder=0.5)),
+                      ("roads", dict(color="#bbb", lw=1.0, zorder=0.6))):    # 격자 범위 밖이어도 주변이 보이게(맨 아래)
+            G = self.R.get(k)
+            if G is not None and len(G):
+                G[G.intersects(win)].plot(ax=ax, **kw)
+        xs, ys = g.xy if g.geom_type == "LineString" else list(g.geoms)[0].xy
+        ax.plot(xs, ys, "-", color="#555", lw=6, alpha=0.35, zorder=41, solid_capstyle="round")
+        line = g if g.geom_type == "LineString" else list(g.geoms)[0]
+        p0, p1 = line.interpolate(0.45, normalized=True), line.interpolate(0.55, normalized=True)
+        ax.annotate("", xy=(p1.x, p1.y), xytext=(p0.x, p0.y), zorder=43,
+                    arrowprops=dict(arrowstyle="-|>", color="#222", lw=1.5, mutation_scale=16))
+        for off, fwd in offs:
+            o = line if off == 0 else line.offset_curve(off)
+            if o.is_empty:
+                continue
+            ox, oy = o.xy if o.geom_type == "LineString" else list(o.geoms)[0].xy
+            col = "#7a3fb0" if fwd is None else ("#d62020" if fwd else "#1f5fbf")
+            ax.plot(ox, oy, "-", color=col, lw=2.8, zorder=42)
+        ax.set_xlim(cx - m, cx + m)
+        ax.set_ylim(cy - m, cy + m)
+        self.map.canvas.draw_idle()
 
     def _start_pick_center(self):
         self.enter_task("map")

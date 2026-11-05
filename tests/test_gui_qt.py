@@ -286,3 +286,96 @@ def test_load_jeonnong_without_and_with_map(tmp_path):
     assert w.cfg_path == (dst / "config.yaml").resolve()
     w.close()
     app.processEvents()
+
+
+def test_traffic_editor_edit_and_save(tmp_path, monkeypatch):
+    """교통량 탭: CSV 가 표로 채워지고 LW′ 가 rls19.LW_prime 과 같음 → 고쳐 저장(원본 .bak, 다른 열 보존),
+    틀린 값은 빨간 칸·저장 거부"""
+    import shutil
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    from sori import rls19
+    from sori.inputs import read_csv_any
+    work = tmp_path / "case"
+    shutil.copytree(RC.INPUT, work)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_config(work / "config.yaml")
+    T = w.traffic
+    path = Path(w.cfg["input"]["traffic"]["path"])
+    before = read_csv_any(path)
+    assert T.isEnabled() and T.tbl.rowCount() == len(before)
+    col = {c: j for j, (c, *_) in enumerate(Q.TRAFFIC_VIEW)}
+    lw_d = len(Q.TRAFFIC_VIEW)
+    T.tbl.item(0, col["M_day"]).setText("1200")                          # 주간 M 을 고치면 LW′ 즉시 다시 계산
+    T.tbl.item(0, col["v_pkw"]).setText("40")
+    rec = T._rec(0)
+    exp = Q.lw_prime_row(rec, w.cfg["input"]["traffic"])[0]
+    assert T.tbl.item(0, lw_d).text() == f"{exp:.1f}"
+    t2 = rls19.TAB2[rec["road_type"] or w.cfg["input"]["traffic"]["default_road_type"]]["day"]
+    p1 = float(rec["p1_day"]) if rec["p1_day"] else t2[1]
+    p2 = float(rec["p2_day"]) if rec["p2_day"] else t2[2]
+    vl = float(rec["v_lkw"]) if rec["v_lkw"] else 40.0
+    assert abs(exp - rls19.LW_prime(1200, p1, p2, 40, vl, rec["surface"] or "ref", float(rec["grade"] or 0))) < 1e-9
+    w.home.tiles["input"].click()
+    w.input_tabs.setCurrentWidget(T)
+    assert w.save_current()                                              # Cmd/Ctrl+S = 교통량 저장
+    after = read_csv_any(path)
+    assert after.loc[0, "M_day"] == "1200" and len(after) == len(before)
+    assert (path.parent / (path.name + ".bak")).exists()
+    assert set(before.columns) <= set(after.columns)                     # 원래 열 보존
+    T.tbl.item(0, col["DTV"]).setText("많음")                             # 숫자가 아닌 값 → 빨간 칸, 저장 거부
+    assert T.tbl.item(0, col["DTV"]).background().color().name() == "#ffd6d6"
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *a, **k: None)
+    assert not T.save()
+    assert read_csv_any(path).loc[0, "M_day"] == "1200"
+    w.close()
+    app.processEvents()
+
+
+def test_lanes_editor_override_and_map(tmp_path):
+    """차로 수 탭: 계산한 도로 객체가 표로 → 방향별 차로 수를 넣으면 음원선 위치가 sori.build 와 같게 다시 계산 →
+    저장하면 roads_override.csv 생성·설정 파일에 경로, 다시 계산하면 source_lines.csv 에 반영. 지도에서 보기"""
+    import yaml
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    from sori import config as C, build
+    from sori.build import lane_layout, source_offsets
+    out = RC.run_case(tmp_path / "case")
+    cfgp = tmp_path / "case" / "config.yaml"
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_config(cfgp, out)
+    L = w.lanes
+    assert L.isEnabled() and L.tbl.rowCount() == len(w.R["roads"])
+    two = [i for i in range(L.tbl.rowCount()) if not L._get(i, "oneway") and int(L._get(i, "lanes")) >= 2]
+    assert two, "기준 사례에 양방향 다차로 도로가 있어야 함"
+    i = two[0]
+    n = int(L._get(i, "lanes"))
+    r = L._road(i)
+    L.tbl.item(i, L._col("lanes_fwd")).setText(str(n))                   # 정방향에 차로를 몰아 줌(합 ≠ 지도 → 노랑, 저장은 됨)
+    L.tbl.item(i, L._col("lanes_bwd")).setText("1")
+    L.tbl.item(i, L._col("lanes_basis")).setText("checked")
+    nd, nb, wl, rule = lane_layout(w.cfg, n, float(r.width), False, n, 1)
+    exp = " / ".join(f"{o:+.2f}" for o, _ in source_offsets(nd, nb, wl, False))
+    assert rule == "override" and L._get(i, "_off") == exp
+    assert L.tbl.item(i, L._col("lanes_fwd")).background().color().name() == "#fff2c2"
+    L.tbl.selectRow(i)
+    L.map_selected()                                                     # 지도 화면에 도로·음원선
+    assert w.stack.currentIndex() == 1 and w._lane_focus is not None and len(w.map.ax.lines) >= 3
+    w.show_input()
+    w.input_tabs.setCurrentWidget(L)
+    assert w.save_current()                                              # Cmd/Ctrl+S
+    ovp = tmp_path / "case" / "roads_override.csv"
+    raw = yaml.safe_load(cfgp.read_text(encoding="utf-8"))
+    assert ovp.exists() and raw["input"]["road_override"]["path"] == "roads_override.csv"
+    cfg = C.load(cfgp)                                                   # 다시 계산(build)하면 음원선에 반영
+    build.main(cfg)
+    import pandas as pd
+    sl = pd.read_csv(Path(cfg["project"]["output_dir"]) / "source_lines.csv")
+    row = sl[sl.ufid == r.ufid].iloc[0]
+    assert row.lanes_fwd_used == n and row.lanes_bwd_used == 1 and row.lane_rule == "override"
+    w.close()
+    app.processEvents()
