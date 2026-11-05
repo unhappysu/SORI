@@ -469,7 +469,8 @@ class InputEditor(QtWidgets.QWidget):
         self.btn_prev.clicked.connect(self._preview)
         self.btn_reset = QtWidgets.QPushButton("되돌리기")
         self.btn_reset.clicked.connect(lambda: self.path and self.load(self.path))
-        self.btn_save = QtWidgets.QPushButton("저장")
+        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)")
+        self.btn_save.setToolTip("고친 값을 검사한 뒤 설정 파일(config.yaml)에 씀")
         self.btn_save.setDefault(True)
         self.btn_save.clicked.connect(self.save)
         row.addWidget(self.btn_prev)
@@ -921,7 +922,8 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction("예제 불러오기(가상 교차로)", self.load_example)
         m.addAction("전농사거리 불러오기(수치지도는 따로 받음)…", self.load_jeonnong)
         m.addSeparator()
-        m.addAction("지도 저장(PNG·PDF)…", self.save_map, QtGui.QKeySequence.Save)
+        m.addAction("저장 (입력값 화면: 설정 파일 / 지도 화면: 지도 그림)", self.save_current, QtGui.QKeySequence.Save)
+        m.addAction("지도 저장(PNG·PDF)…", self.save_map)
         m.addAction("오른쪽 3D 파사드 저장(PNG·PDF)…", lambda: self.save_map(side=True))
         self.act_last_sec = m.addAction("마지막 단면 보기", self.show_section)
         self.act_last_sec.setEnabled(False)
@@ -966,6 +968,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._work_chrome(False)
         self.stack.setCurrentIndex(0)
         self.lbl_status.setText("홈 — 프로젝트를 열고 작업을 고르세요")
+
+    def save_current(self):
+        """Cmd/Ctrl+S: 입력값 화면이면 입력값을 설정 파일에, 지도 화면이면 지도 그림을 저장"""
+        if self.stack.currentIndex() == 2:
+            return self.editor.save() if self.editor.isEnabled() else None
+        if self.stack.currentIndex() == 1:
+            return self.save_map()
 
     def show_input(self):
         self._work_chrome(False)

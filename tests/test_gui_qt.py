@@ -123,7 +123,7 @@ def test_input_editor_edit_and_save(tmp_path, monkeypatch):
     E._preview()                                                           # 범위 보기 → 지도 화면
     assert w.stack.currentIndex() == 1 and w._prev_box[:2] == (1234.5, 6789.0)
     w.show_input()
-    assert E.save()
+    assert w.save_current()                                                # Cmd/Ctrl+S = 입력값 저장
     raw = yaml.safe_load((work / "config.yaml").read_text(encoding="utf-8"))
     assert raw["receivers"]["grid"]["step"] == 7.5 and raw["receivers"]["grid"]["heights"] == [1.5, 4.0]
     assert raw["receivers"]["center"] == [1234.5, 6789.0]
