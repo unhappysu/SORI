@@ -366,6 +366,9 @@ class MapView(QtWidgets.QWidget):
 # (설정 키 경로, 이름, 종류, 선택지·설명) — 종류: text, int, float, float?(비우면 null), floats(쉼표 목록), xy(두 값),
 #   choice, bool, file?(파일, 비우면 null), file, dirs(폴더 목록)
 ROAD_TYPES = ["gemeinde", "landesstrasse", "bundesstrasse", "autobahn"]
+CHOICE_LABELS = {**METHODS,
+                 "flatten": "flatten — 도로폭 안 지형을 도로중심선 높이로 평평하게(권장)",
+                 "dtm": "dtm — 등고선 지형 그대로(2026-11-05 이전 계산과 같음)"}
 INPUT_FIELDS = [
     ("프로젝트", [
         ("project.name", "프로젝트 이름", "text", None),
@@ -389,6 +392,7 @@ INPUT_FIELDS = [
         ("receivers.facade.enabled", "건물 벽면 계산", "bool", None),
         ("receivers.facade.radius", "벽면 계산 반경 (m)", "float", "격자 중심에서"),
         ("model.floor_height", "층 높이 (m)", "float", "수치지도 층수 × 층 높이 = 건물 높이"),
+        ("model.road_surface", "차도 면 지형", "choice", ["flatten", "dtm"]),
         ("receivers.points.path", "점 수음점 CSV", "file?", "point_id, x, y, h"),
         ("receivers.points.default_height", "점 수음점 기본 높이 (m)", "float?", "h 가 빈 행에 씀"),
     ]),
@@ -488,7 +492,7 @@ class InputEditor(QtWidgets.QWidget):
         if kind == "choice":
             w = QtWidgets.QComboBox()
             for v in extra:
-                w.addItem(METHODS.get(v, v), v)
+                w.addItem(CHOICE_LABELS.get(v, v), v)
         elif kind == "bool":
             w = QtWidgets.QCheckBox()
         elif kind in ("file?", "file", "dirs"):

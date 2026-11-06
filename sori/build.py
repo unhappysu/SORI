@@ -111,6 +111,57 @@ def build_terrain(cfg, cont, spot, rast):
     return Z.astype(np.float32), info
 
 
+def flatten_road_surface(cfg, road, gnd, rast):
+    """차도 면 지형 보정(model.road_surface: flatten). 등고선 DTM 은 노면을 모르므로 도로가 골짜기 바닥·경사면에 놓이면
+    차도 안 지형이 음원보다 높아져 차폐로 잡힘(TECHNICAL_NOTES 5a절 8). 수치지도 도로폭 안(도로중심선 ± 도로폭/2) 칸의
+    지형을 가장 가까운 도로중심선 점의 종단 고도(중심선 DTM 을 road_surface_smooth_m 이동평균)로 바꿈.
+    교차로처럼 띠가 겹치면 가장 가까운 중심선을 따름. 건물 칸은 바꾸지 않음(DSM 은 이 지형으로 다시 만듦).
+    반환: (보정 지형, 기록 dict)"""
+    mc = cfg["model"]
+    win = float(mc.get("road_surface_smooth_m", 20.0) or 0.0)
+    step = max(rast.res, 1.0)
+    pts, zs, polys = [], [], []
+    for _, rd in road.iterrows():
+        g = rd.geometry
+        w = rd["width"]
+        w = float(w) if w is not None and np.isfinite(w) and w > 0 else 3.25 * max(int(rd["lanes"]), 1)
+        for line in getattr(g, "geoms", [g]):
+            L = line.length
+            if L < 0.5:
+                continue
+            n = max(2, int(math.ceil(L / step)) + 1)
+            ss = np.linspace(0.0, L, n)
+            P = [line.interpolate(s) for s in ss]
+            x = np.array([p.x for p in P]); y = np.array([p.y for p in P])
+            z = rast.sample(gnd, x, y)
+            k = int(round(win / (L / (n - 1)))) if win > 0 else 0
+            if k >= 2:                              # 중심선 종단 이동평균(끝은 창을 줄여서)
+                k = min(k, n)
+                c = np.cumsum(np.r_[0.0, z])
+                h = k // 2
+                lo = np.clip(np.arange(n) - h, 0, n); hi = np.clip(np.arange(n) + h + 1, 0, n)
+                z = (c[hi] - c[lo]) / (hi - lo)
+            pts.append(np.c_[x, y]); zs.append(z)
+            polys.append(line.buffer(w / 2.0, cap_style="flat"))
+    if not polys:
+        return gnd, {"mode": "flatten", "cells": 0}
+    band = features.rasterize(((p, 1) for p in polys), out_shape=(rast.ny, rast.nx), transform=rast.transform,
+                              fill=0, dtype="uint8", all_touched=False).astype(bool)
+    X, Y = rast.centers()
+    xy = np.c_[X[band], Y[band]]
+    _, idx = cKDTree(np.vstack(pts)).query(xy)
+    znew = np.concatenate(zs)[idx].astype(np.float32)
+    out = gnd.copy()
+    dz = znew - out[band]
+    out[band] = znew
+    info = {"mode": "flatten", "smooth_m": win, "cells": int(band.sum()),
+            "dz_mean": round(float(np.mean(dz)), 3), "dz_abs_p90": round(float(np.percentile(np.abs(dz), 90)), 3),
+            "dz_min": round(float(dz.min()), 3), "dz_max": round(float(dz.max()), 3),
+            "cells_lowered_over_1m": int((dz < -1.0).sum()), "cells_raised_over_1m": int((dz > 1.0).sum())}
+    log.info("차도 면 지형 보정(flatten): %s", info)
+    return out, info
+
+
 def build_dsm(bld, gnd, rast):
     bidr = features.rasterize(((g, int(b)) for g, b in zip(bld.geometry, bld.bid)),
                               out_shape=(rast.ny, rast.nx), transform=rast.transform,
@@ -593,6 +644,9 @@ def main(cfg):
     rast = Raster(region.buffer(10).bounds, pc["dsm_res"])
     log.info("래스터 %d x %d (%.1f m)", rast.nx, rast.ny, rast.res)
     gnd, tinfo = build_terrain(cfg, cont, spot, rast)
+    rsinfo = None
+    if cfg["model"].get("road_surface", "dtm") == "flatten":
+        gnd, rsinfo = flatten_road_surface(cfg, road, gnd, rast)
     dsm, bidr = build_dsm(bld, gnd, rast)
     Gm = build_G(cfg, rast)
     refl_region = box(*gb).buffer(pc["reflection"]["r_facade"] + pc["reflection"]["r_source_main"])
@@ -632,6 +686,8 @@ def main(cfg):
                            "dD_K_max": round(float((S.D_K - S.D_K_nearest).max()), 3) if len(S) else 0.0}
     if cfg["input"]["traffic"].get("oneway_name_traffic", "apply") != "apply":   # 옵션을 켠 경우에만 기록
         info["roads_oneway_name_fallback"] = int((T.traffic_src == "fallback_oneway").sum())
+    if rsinfo is not None:                         # 옵션을 켠 경우에만 기록
+        info["road_surface"] = rsinfo
     if ov is not None:                             # 확인값 파일을 지정한 경우에만 기록(기본 출력은 그대로)
         cols = ["fid", "ufid", "rname", "lanes", "oneway", "lanes_fwd", "lanes_bwd", "lanes_src", "lanes_basis",
                 "oneway_dir", "oneway_dir_src", "oneway_dir_basis", "override_note"]

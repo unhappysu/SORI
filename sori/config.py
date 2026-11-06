@@ -85,6 +85,8 @@ DEFAULTS = {
         "floor_height": 3.0,
         "source_height": 0.5,                      # RLS-19 3.2
         "source_ground": "dtm_at_source",          # 음원 높이 기준 지면: dtm_at_source(현행, 음원점 위치 DTM) | road_profile(도로중심선 종단 고도)
+        "road_surface": "flatten",                 # 차도 면 지형: flatten(기본, 도로폭 안 DTM 을 도로중심선 종단 고도로 — 노면 평탄) | dtm(등고선 DTM 그대로, 2026-11-05 이전 동작)
+        "road_surface_smooth_m": 20.0,             # flatten: 중심선 종단 고도 이동평균 길이(m, 등고선 계단 완화)
         "terrain_smooth_m": 5.0,                   # 등고선 삼각망 계단 현상 완화(가우스 σ, m). 0 = 사용 안 함
         "grade_base": 30.0,                        # 종단경사 산정 구간 길이(m, 도로선을 따라)
         "segment_main": 3.0,
@@ -211,6 +213,8 @@ def _validate(c):
     if c["input"]["junctions"]["dk_rule"] not in ("nearest", "nearest_signal"):
         raise ValueError("input.junctions.dk_rule 는 nearest 또는 nearest_signal")
     m = c["model"]
+    if m["road_surface"] not in ("dtm", "flatten"):
+        raise ValueError("model.road_surface 는 dtm 또는 flatten")
     if m["source_ground"] not in ("dtm_at_source", "road_profile"):
         raise ValueError("model.source_ground 는 dtm_at_source 또는 road_profile")
     if m["odd_lane_rule"] not in ("ceil", "major_fwd"):
