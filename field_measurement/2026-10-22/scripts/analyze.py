@@ -428,38 +428,43 @@ def main():
     for r in (1, 2, 3):
         a, b = S[(1, r)], S[(2, r)]
         ta1, la1 = to_1s(a)
-        fig, ax = plt.subplots(figsize=(11, 4.2))
+        fig, ax = plt.subplots(figsize=(9, 3.6))
         half = np.timedelta64(500, "ms")
-        ax.plot(ta1 - half, la1, color=COLOR[1], lw=1.0, label=f"{POINTS[1]} · 100 ms 자료를 1초 LAeq로 묶음")
-        ax.plot(b.t_end - half, b.leq, color=COLOR[2], lw=1.0, label=f"{POINTS[2]} · 1초 LAeq")
-        k = 0
+        ax.plot(ta1 - half, la1, color=COLOR[1], lw=0.9, label=f"{POINTS[1]} · 100 ms 자료를 1초 LAeq로 묶음")
+        ax.plot(b.t_end - half, b.leq, color=COLOR[2], lw=0.9, label=f"{POINTS[2]} · 1초 LAeq")
+        # 이름표는 결과보고서 표 1의 이상 소음 구간(제외·참고값)에만 붙인다. 두 지점 사이렌은 이름표 하나로 묶는다.
+        # 자동 탐지 후보(미제외, 확정 아님)는 이름표 없이 옅은 빗금으로만 표시한다.
+        labels = []
         for e in event_rows:
             if e["회차"] != r:
                 continue
             lo, hi = T(e["시작"]), T(e["끝"])
-            if e["지점"] == 1 and e["구분"].startswith("제외"):
-                ax.axvspan(lo, hi, color=COLOR[1], alpha=0.25, lw=0)
-                ax.annotate(f"지점1 오토바이(피크 대조 {e['시작'][:8]})", (lo, 88), fontsize=7.5, color="#333", ha="center")
-            elif e["지점"] == 1:
-                ax.axvspan(lo, hi, facecolor="none", edgecolor=COLOR[1], hatch="///", lw=0.6)
-                ax.annotate("지점1 참고 피크", (lo, 86), fontsize=7.5, color="#333", ha="center")
-            elif e["구분"].startswith("제외"):
-                ax.axvspan(lo, hi, color=COLOR[2], alpha=0.18, lw=0)
-                ax.annotate("지점2 사이렌(녹음 확인)", (lo, 88), fontsize=7.5, color="#333", ha="left")
-            else:
-                k += 1
-                ax.axvspan(lo, hi, facecolor="none", edgecolor=COLOR[2], hatch="\\\\\\", lw=0.6)
-                ax.annotate(f"후보{k}", (lo, 86 - 1.8 * (k % 2)), fontsize=7.5, color="#333", ha="center")
+            p, kind = e["지점"], e["구분"]
+            if "사이렌" in kind:
+                ax.axvspan(lo, hi, color="#888", alpha=0.18, lw=0)
+                if p == 2:
+                    labels.append((lo, "사이렌(두 지점)"))
+            elif p == 1 and kind.startswith("제외"):
+                ax.axvspan(lo, hi, color=COLOR[1], alpha=0.30, lw=0)
+                labels.append((lo, "지점1 오토바이"))
+            elif p == 2 and kind.startswith("후보·제외"):
+                ax.axvspan(lo, hi, color=COLOR[2], alpha=0.30, lw=0)
+                labels.append((lo, "지점2 경적"))
+            elif p == 2:
+                ax.axvspan(lo, hi, facecolor="none", edgecolor=COLOR[2], hatch="\\\\\\", lw=0.3, alpha=0.45)
+        for lo, text in labels:
+            ax.annotate(text, (lo, 88.5), fontsize=8.5, color="#333", ha="center", va="top",
+                        bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.85))
         la_dev = next(m for m in metric_rows if m["지점"] == 1 and m["회차"] == r)["LAeq_재계산"]
         lb_dev = next(m for m in metric_rows if m["지점"] == 2 and m["회차"] == r)["LAeq_재계산"]
-        ax.set_title(f"{r}회 ({ROUNDS[r][0]}–{ROUNDS[r][1]}) 1초 LAeq 시계열 — LAeq,10min 지점1 {la_dev} dB, 지점2 {lb_dev} dB",
+        ax.set_title(f"{r}회 ({ROUNDS[r][0]}–{ROUNDS[r][1]}) — LAeq,10min 지점1 {la_dev} dB, 지점2 {lb_dev} dB",
                      loc="left", fontsize=10)
         ax.set_ylabel("LAeq,1s (dB)")
         ax.set_ylim(50, 90)
         ax.xaxis.set_major_formatter(hm)
         ax.legend(loc="lower left", fontsize=8, frameon=True, facecolor="white", edgecolor="none", framealpha=0.9, ncol=2)
-        fig.text(0.99, 0.01, f"{AI_NOTE} · 각 기기 내부 시계 그대로(시계 보정 미적용, 지점2가 약 1.6 s 늦음) · "
-                 "주황 빗금: 지점2 자동 탐지 후보(확정 아님, 번호는 특이사항_구간.csv 순서)",
+        fig.text(0.99, 0.01, f"{AI_NOTE} · 기기 내부 시계 그대로(지점2가 약 1.6 s 늦음) · "
+                 "옅은 빗금: 지점2 자동 탐지 후보(확정 아님, 제외하지 않음)",
                  ha="right", fontsize=7, color="#666")
         fig.tight_layout(rect=(0, 0.03, 1, 1))
         fig.savefig(FIG / f"시계열_{r}회_두지점.png", dpi=150)
