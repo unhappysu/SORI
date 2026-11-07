@@ -252,14 +252,14 @@ def test_case_run_info_and_outputs(r90_case):
 
 
 def test_case_Lm_E_from_traffic(r90_case):
-    """sources.csv 의 L_m,E 를 traffic_used.csv 로 다시 계산(식 6~9, p = p1 + p2)"""
+    """sources.csv 의 L_m,E 를 traffic_used.csv 로 다시 계산(식 6~9, p = traffic_used 의 p_day)"""
     import pandas as pd
     from sori import rls90
     S = pd.read_csv(r90_case / "sources.csv", encoding="utf-8-sig")
     T = pd.read_csv(r90_case / "traffic_used.csv", encoding="utf-8-sig").set_index("fid")
     for r in S[S.along.notna()].head(20).itertuples():
         t = T.loc[r.fid]
-        p = t.p1_day + t.p2_day
+        p = t.p_day
         ref = rls90.Lm_E(t.M_day * r.frac, p, t.v_pkw, t.v_lkw, t.surface, r.g)
         assert r.Lm_E_day == pytest.approx(ref, abs=1e-9)
 
@@ -271,3 +271,77 @@ def test_case_blocks_emission_mismatch(r90_case):
     cfg["propagation_method"] = "rls19"
     with pytest.raises(ValueError, match="build 부터"):
         run.main(cfg, ("grid",))
+
+
+# ------------------------------------------------------------------ 교통량 빈칸 = RLS-90 표 3 (2026-11-06)
+def test_tab3_values_from_original():
+    """원문 12쪽 표 3: (M 계수 × DTV, p %)"""
+    from sori import rls90
+    assert rls90.TAB3["autobahn"] == {"day": (0.06, 25.0), "night": (0.014, 45.0)}
+    assert rls90.TAB3["bundesstrasse"] == {"day": (0.06, 20.0), "night": (0.011, 20.0)}
+    assert rls90.TAB3["landesstrasse"] == {"day": (0.06, 20.0), "night": (0.008, 10.0)}
+    assert rls90.TAB3["gemeinde"] == {"day": (0.06, 10.0), "night": (0.011, 3.0)}
+
+
+def _road(lanes=4):
+    return {"ufid": "U1", "rname": "가로", "axis": "가로", "lanes": lanes, "oneway": False, "surface_attr": ""}
+
+
+def _tcfg(method):
+    from sori import config as C
+    cfg = __import__("copy").deepcopy(C.DEFAULTS)
+    cfg["propagation_method"] = method
+    return cfg
+
+
+@pytest.mark.parametrize("rtype", ["autobahn", "bundesstrasse", "landesstrasse", "gemeinde"])
+def test_fallback_uses_tab3_for_rls90(rtype):
+    """자료 없는 도로(가정 DTV): RLS-90 은 M = 표 3 계수 × DTV, p = 표 3. std_filled 에 채운 항목 기록"""
+    from sori import inputs as I, rls90
+    cfg = _tcfg("rls90")
+    cfg["input"]["traffic"]["default_road_type"] = rtype
+    t = I.traffic_for_road(cfg, _road(), {}, {}, True)
+    dtv = cfg["input"]["traffic"]["fallback_dtv_by_lanes"][4]
+    for per in ("day", "night"):
+        Mf, p = rls90.TAB3[rtype][per]
+        assert t[f"M_{per}"] == pytest.approx(Mf * dtv)
+        assert t[f"p_{per}"] == p
+    assert t["M_day_from"] == "DTV_x_tab3"
+    assert t["traffic_std"] == "RLS-90 표 3"
+    assert set(t["std_filled"].split(";")) == {"M_day", "M_night", "p_day", "p_night"}
+
+
+def test_fallback_rls19_unchanged():
+    """ISO 9613-2·RLS-19 계산은 이전처럼 RLS-19 표 2(값 불변), 표기만 추가"""
+    from sori import inputs as I, rls19
+    for meth in ("iso9613_2", "rls19"):
+        cfg = _tcfg(meth)
+        t = I.traffic_for_road(cfg, _road(), {}, {}, True)
+        dtv = cfg["input"]["traffic"]["fallback_dtv_by_lanes"][4]
+        Mf, p1, p2 = rls19.TAB2["gemeinde"]["day"]
+        assert t["M_day"] == pytest.approx(Mf * dtv) and t["p1_day"] == p1 and t["p2_day"] == p2
+        assert t["M_day_from"] == "DTV_x_tab2" and t["traffic_std"] == "RLS-19 표 2"
+        assert "p_day" not in t
+
+
+def test_rls90_input_p_and_p1p2_priority():
+    """RLS-90 p: 입력 p → 입력 p1 + p2 → 표 3. 모두 입력하면 std_filled 빈칸"""
+    from sori import inputs as I
+    cfg = _tcfg("rls90")
+    rec = {c: "" for c in I.TRAFFIC_COLS}
+    rec.update(key="가로", key_type="name", M_day="1000", M_night="200", p_day="12", p1_night="5", p2_night="1")
+    t = I.traffic_for_road(cfg, _road(), {}, {"가로": rec}, True)
+    assert t["p_day"] == 12.0 and t["p_night"] == 6.0
+    assert t["std_filled"] == "" and t["traffic_std"] == ""
+
+
+def test_p_columns_read_from_file(tmp_path):
+    """교통량 파일의 p_day·p_night 열을 읽음(이전에는 TRAFFIC_COLS 에 없어 무시됐음)"""
+    from sori import inputs as I
+    f = tmp_path / "traffic.csv"
+    f.write_text("key,key_type,M_day,M_night,p_day,p_night\n가로,name,1000,200,15,4\n", encoding="utf-8")
+    cfg = _tcfg("rls90")
+    cfg["input"]["traffic"]["path"] = str(f)
+    by_u, by_n = I.load_traffic(cfg)
+    t = I.traffic_for_road(cfg, _road(), by_u, by_n, True)
+    assert (t["p_day"], t["p_night"]) == (15.0, 4.0)

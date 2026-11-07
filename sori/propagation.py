@@ -223,7 +223,8 @@ class RLS90Propagation(PropagationModel):
                 "rls90_notes": ["D_z 상한 없음(식 25)", "차폐 시 D_BM 없음(4.4.2.1.2)",
                                 "다중 회절: C 를 A·B 중 작은 쪽에 더함(A = B 이면 A, 해석)",
                                 "h_m = F/s_gr(평탄 지형에서 0,5(h_GE + h_GI)와 같음)",
-                                "p = 교통량 표 p_day·p_night, 없으면 p1 + p2(RLS-19 3,5 t 기준 — 근사)",
+                                "p = 교통량 표 p_day·p_night → 입력 p1 + p2(RLS-19 3,5 t 기준 — 근사) → 둘 다 없으면 표 3(독일 기준)",
+                                "M·p 빈칸 = 표 3(DTV × 계수, 독일 기준 — 국내와 다를 수 있음)",
                                 "노면: SORI 코드 → 표 4 행 대응(rls90.SURFACE_ROW, 해석)"]}
 
     def info(self, cfg):

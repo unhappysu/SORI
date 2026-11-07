@@ -100,7 +100,7 @@ def test_export_on_reference_case(tmp_path):
     R = gpd.read_file(dst / "roads.shp")
     T = pd.read_csv(out / "traffic_used.csv", encoding="utf-8-sig")
     assert len(R) == len(T)
-    assert np.allclose(R.M_D, T.M_day) and np.allclose(R.p_D, T.p1_day + T.p2_day, atol=1e-3)
+    assert np.allclose(R.M_D, T.M_day) and np.allclose(R.p_D, T.p_day, atol=1e-3)
     E = gpd.read_file(dst / "emission_lines.shp")
     assert len(E) >= len(R)
     for f in ("buildings.shp", "signals.shp", "calc_area.shp", "terrain_points.csv", "계산조건.md"):

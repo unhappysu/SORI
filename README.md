@@ -108,18 +108,21 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 |---|---|---|
 | key | ● | 도로명(예: 사가정로) 또는 수치지도 UFID |
 | key_type | | `name`(기본) 또는 `ufid` — UFID 행이 도로명 행보다 우선 |
-| road_type | | RLS-19 표 2: `autobahn`, `bundesstrasse`, `landesstrasse`, `gemeinde` (빈칸 값 보충용) |
+| road_type | | 도로유형(빈칸 값 보충용): `autobahn`, `bundesstrasse`, `landesstrasse`, `gemeinde` — RLS-19 표 2 / RLS-90 표 3 의 독일 도로 분류 |
 | DTV | △ | 일평균 교통량(대/일, 양방향 합) — DTV 또는 M_day·M_night 중 하나 필수 |
-| M_day, M_night | △ | 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표 2 계수. **DTV 없이 한쪽만 입력하면** 기본은 오류(문제 행을 모두 나열) — 설정 `input.traffic.missing_m: estimate` 이면 표 2 의 주·야 계수 비율로 보충(가정값, `M_*_from = est_from_…`, 서울 간선에서는 야간을 과소 추정할 수 있음) |
-| p1_day … p2_night | | Lkw1·Lkw2 비율 %. 비우면 표 2 표준값. RLS-19 2장: Lkw1 = 허용 총중량 3.5 t 초과 트레일러 없는 화물차와 버스, Lkw2 = 트레일러 부착 화물차·세미트레일러 연결차, 이륜자동차는 방출 측면에서 Lkw2(속도는 Pkw) |
+| M_day, M_night | △ | 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표준표 계수(아래 ※). **DTV 없이 한쪽만 입력하면** 기본은 오류(문제 행을 모두 나열) — 설정 `input.traffic.missing_m: estimate` 이면 표준표의 주·야 계수 비율로 보충(가정값, `M_*_from = est_from_…`, 서울 간선에서는 야간을 과소 추정할 수 있음) |
+| p1_day … p2_night | | Lkw1·Lkw2 비율 %. 비우면 RLS-19 표 2 표준값. RLS-19 2장: Lkw1 = 허용 총중량 3.5 t 초과 트레일러 없는 화물차와 버스, Lkw2 = 트레일러 부착 화물차·세미트레일러 연결차, 이륜자동차는 방출 측면에서 Lkw2(속도는 Pkw) |
 | v_pkw, v_lkw | | 차종별 속도 km/h (30 미만은 30 적용, RLS-19 2장) |
 | surface | | 노면: `ref`, `AC11`, `SMA5_8`, `SMA8_11`, `PA11`, `PA8`, `Waschbeton`, `LGA`, `LOA`, `SMA_LA8`, `DSH_V5`, `pflaster_even`, `pflaster_other` |
 | note | | 출처 메모(보고서용) |
 | basis | | 교통량 근거: `measured`(실측) 또는 `assumed`(가정). 빈칸이면 unspecified. `traffic_used.csv`의 `traffic_basis`로 기록 |
 | dir_split_fwd | | 디지타이즈 방향 교통량 비율(0~1). **UFID 행이고 dir_basis = measured 일 때만 적용**, 그 밖은 0.5(RLS-19 3.3.1 기본). 일방통행은 무시 |
 | dir_basis | | 방향별 비율의 근거: `measured` 또는 `assumed`. 적용 여부는 `traffic_used.csv`의 `dir_split_src` |
+| p_day, p_night | | RLS-90 계산(`propagation_method: rls90`)만: 화물차 비율 % (허용 총중량 2.8 t 초과). 비우면 p1 + p2, 그것도 비우면 RLS-90 표 3 |
 
 교통량 파일에 없는 도로는 `fallback_dtv_by_lanes`(차로수별 가정값)를 쓰고, `output/traffic_used.csv`의 `traffic_src=fallback`으로 표시됩니다.
+
+※ **교통량 자료가 없는 항목(M·p)은 독일 기준표로 채웁니다.** ISO 9613-2·RLS-19 계산은 RLS-19 표 2, RLS-90 계산은 RLS-90 표 3 의 도로유형별 표준값(DTV 에 곱하는 주·야 계수와 화물차 비율)입니다. 독일 도로의 표준값이므로 **국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있습니다** — 예: 서울 28지점 주·야 계수 0.0518/0.0215, RLS-19 지자체 도로 0.0575/0.0100. 표로 채운 항목은 `traffic_used.csv`의 `std_filled`·`traffic_std`, `build_info.json`의 `traffic_defaults`에 남고 지도 정보란에도 표기됩니다. 차로수별 DTV(`fallback_dtv_by_lanes`)는 두 기준 어디에도 없는 SORI 가정값입니다.
 
 ### 4.2 교차로 `junctions.csv` (선택)
 `x, y, type` — type은 `signal`(KKT 3), `roundabout`(2), `other`(0). 반경 30 m 안의 자동 교차점 군집에 적용됩니다.

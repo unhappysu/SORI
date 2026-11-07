@@ -50,13 +50,13 @@ DEFAULTS = {
         },
         "traffic": {
             "path": "traffic.csv",                 # 사용자 교통량 파일(템플릿: sori template)
-            "default_road_type": "gemeinde",       # RLS-19 표 2 도로유형(빈칸 보충용)
-            "fallback_dtv_by_lanes": {1: 1000, 2: 6000, 3: 12000, 4: 20000, 5: 30000, 6: 40000},
+            "default_road_type": "gemeinde",       # 도로유형(빈칸 보충용): RLS-19 표 2 / RLS-90 표 3(독일 기준)
+            "fallback_dtv_by_lanes": {1: 1000, 2: 6000, 3: 12000, 4: 20000, 5: 30000, 6: 40000},  # SORI 가정값(표준에 없음)
             "default_speed_main": 50.0,            # 교통량 파일에 속도가 없을 때
             "default_speed_minor": 30.0,
             "name_min_lanes": 2,                   # 도로명 교통량은 이 차로수 이상 구간에만 적용(같은 이름의 좁은 접속로 제외)
             "oneway_name_traffic": "apply",        # 도로명 교통량을 같은 이름의 일방통행 객체에: apply(현행) | fallback(차로수 가정값)
-            "missing_m": "error",                  # DTV 없이 M_day·M_night 중 하나만 있을 때: error(기본) | estimate(표 2 계수 비율로 보충)
+            "missing_m": "error",                  # DTV 없이 M_day·M_night 중 하나만 있을 때: error(기본) | estimate(표준표 계수 비율로 보충)
         },
         "road_override": {
             "path": None,                          # 도로별 확인값 CSV: ufid, lanes_fwd, lanes_bwd, oneway_dir(+1/−1) …

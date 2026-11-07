@@ -11,7 +11,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from . import rls19
+from . import rls19, rls90
 
 log = logging.getLogger("sori")
 
@@ -129,9 +129,34 @@ def sample_dem(path, xs, ys, crs):
 # ------------------------------------------------------------------ 교통량
 TRAFFIC_COLS = ["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "p2_day",
                 "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note", "basis",
-                "dir_split_fwd", "dir_basis"]
+                "dir_split_fwd", "dir_basis", "p_day", "p_night"]
 TRAFFIC_BASIS = ("measured", "assumed")     # basis·dir_basis 열: 실측 / 가정. 빈칸 → unspecified
 _dir_warned = set()
+
+# 교통량 자료가 없는 항목(M·p)을 채우는 표준값 — 계산 방법에 맞는 독일 기준표를 씀.
+#   iso9613_2·rls19: 음원이 RLS-19 → RLS-19 표 2 / rls90: RLS-90 표 3
+# 두 표 모두 독일 도로유형별 표준값이라 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음.
+TRAFFIC_STD_LABEL = {"rls19": "RLS-19 표 2", "rls90": "RLS-90 표 3"}
+TRAFFIC_STD_NOTE = "독일 기준(도로유형별 표준값)으로, 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음"
+
+
+def traffic_std(cfg):
+    """교통량 빈칸을 채울 표준: 'rls90'(RLS-90 표 3) 또는 'rls19'(RLS-19 표 2)"""
+    return "rls90" if (cfg.get("propagation_method") or "") == "rls90" else "rls19"
+
+
+def std_factors(std, rtype):
+    """표준표 → {per: (M 계수, p1 %, p2 %, p %)}. RLS-90 은 p 하나(> 2,8 t)라 p1·p2 는 RLS-19 표 2 값을 둠(쓰지 않음)"""
+    t2 = rls19.TAB2[rtype]
+    out = {}
+    for per in ("day", "night"):
+        Mf, p1, p2 = t2[per]
+        if std == "rls90":
+            Mf, p = rls90.TAB3[rtype][per]
+        else:
+            p = p1 + p2
+        out[per] = (Mf, p1, p2, p)
+    return out
 
 
 def _dir_warn(key, msg):
@@ -187,7 +212,7 @@ def _missing_m_message(items):
     lines = [f"교통량 파일: DTV 없이 M_day·M_night 중 하나만 입력된 행 {len(items)}개"]
     lines += [f"  - '{k}': {miss} 없음 ({given} 만 입력)" for k, miss, given in items]
     lines.append("해결: 빠진 M 을 입력하거나, DTV 를 입력하거나, 설정 input.traffic.missing_m: estimate "
-                 "(RLS-19 표 2 의 그 도로유형 주·야 계수 비율로 보충)")
+                 "(그 도로유형의 주·야 계수 비율로 보충 — RLS-19 표 2, RLS-90 계산은 RLS-90 표 3)")
     return "\n".join(lines)
 
 
@@ -233,8 +258,8 @@ def load_traffic(cfg):
     if partial:
         if cfg["input"]["traffic"].get("missing_m", "error") == "estimate":
             for k, miss, given in partial:
-                log.warning("교통량 '%s': DTV 없음 → %s 를 %s × (RLS-19 표 2 계수 비율)로 추정(missing_m: estimate)",
-                            k, miss, given)
+                log.warning("교통량 '%s': DTV 없음 → %s 를 %s × (%s 계수 비율, 독일 기준)로 추정(missing_m: estimate)",
+                            k, miss, given, TRAFFIC_STD_LABEL[traffic_std(cfg)])
         else:
             raise RuntimeError(_missing_m_message(partial))
     log.info("교통량 파일: 도로명 %d건, UFID %d건", len(by_name), len(by_ufid))
@@ -269,7 +294,8 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     rtype = (rec.get("road_type") if rec else "") or tcfg["default_road_type"]
     if rtype not in rls19.TAB2:
         raise RuntimeError(f"road_type '{rtype}' 은 {list(rls19.TAB2)} 중 하나여야 함")
-    t2 = rls19.TAB2[rtype]
+    std = traffic_std(cfg)
+    tf = std_factors(std, rtype)
     dtv = _f(rec, "DTV")
     dtv_in = dtv if rec is not None else None      # 입력 DTV(가정값 도로·DTV 빈칸은 None) → traffic_used.csv DTV_in
     m_in = {per: _f(rec, f"M_{per}") for per in ("day", "night")}
@@ -285,20 +311,33 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     if rec is not None and basis and basis not in TRAFFIC_BASIS:
         raise RuntimeError(f"교통량 '{rec['key']}': basis '{basis}' 는 {TRAFFIC_BASIS} 중 하나(또는 빈칸)여야 함")
     out, m_from = {}, {}
+    tab = "tab3" if std == "rls90" else "tab2"
+    filled = []                                                      # 표준표로 채운 항목
     for per in ("day", "night"):
-        Mf, p1s, p2s = t2[per]
+        Mf, p1s, p2s, ps = tf[per]
         M = m_in[per]
         if M is not None:
             m_from[per] = "direct"                                  # 직접 입력
         elif dtv is not None:
-            M = Mf * dtv; m_from[per] = "DTV_x_tab2"                 # DTV × 표 2 계수
-        else:                                                        # missing_m: estimate — 반대 시간대 M × 표 2 계수 비
+            M = Mf * dtv; m_from[per] = f"DTV_x_{tab}"               # DTV × 표준표 계수
+            filled.append(f"M_{per}")
+        else:                                                        # missing_m: estimate — 반대 시간대 M × 계수 비
             other = "night" if per == "day" else "day"
-            M = m_in[other] * Mf / t2[other][0]; m_from[per] = f"est_from_M_{other}_tab2"
+            M = m_in[other] * Mf / tf[other][0]; m_from[per] = f"est_from_M_{other}_{tab}"
+            filled.append(f"M_{per}")
         p1 = _f(rec, f"p1_{per}"); p2 = _f(rec, f"p2_{per}")
         out[f"M_{per}"] = M
         out[f"p1_{per}"] = p1s if p1 is None else p1
         out[f"p2_{per}"] = p2s if p2 is None else p2
+        if std == "rls90":                     # RLS-90 p(> 2,8 t): 입력 p → 입력 p1 + p2 → 표 3
+            p = _f(rec, f"p_{per}")
+            if p is None and (p1 is not None or p2 is not None):
+                p = out[f"p1_{per}"] + out[f"p2_{per}"]
+            if p is None:
+                p = ps; filled.append(f"p_{per}")
+            out[f"p_{per}"] = p
+        else:
+            filled += [f"{k}_{per}" for k, v in (("p1", p1), ("p2", p2)) if v is None]
     vdef = tcfg["default_speed_main"] if main else tcfg["default_speed_minor"]
     out["v_pkw"] = _f(rec, "v_pkw") or vdef
     out["v_lkw"] = _f(rec, "v_lkw") or out["v_pkw"]
@@ -307,10 +346,10 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
         raise RuntimeError(f"surface '{sf}' 는 {rls19.SURFACES} 중 하나여야 함")
     out["surface"] = sf
     out["grade"] = _f(rec, "grade")                    # 사용자 지정 종단경사 % (디지타이즈 방향 기준). 없으면 지형에서 산정
-    if (cfg.get("propagation_method") or "") == "rls90":   # RLS-90 p(> 2,8 t). 없으면 build 가 p1 + p2 사용
-        for per in ("day", "night"):
-            out[f"p_{per}"] = _f(rec, f"p_{per}")
     out["road_type"] = rtype
+    # 표준표로 채운 항목과 그 표(독일 기준). 채운 항목이 없으면 빈칸
+    out["std_filled"] = ";".join(filled)
+    out["traffic_std"] = TRAFFIC_STD_LABEL[std] if filled else ""
     out["traffic_src"] = src
     # 출처 기록(결과값에는 영향 없음): 실측/가정 구분, M 산정 방식, 메모
     out["traffic_basis"] = "fallback_lanes" if rec is None else (basis or "unspecified")

@@ -307,10 +307,11 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \toprule 열 & 필수 & 설명 \\ \midrule\endhead
 \f{key} & ● & 도로명(예: 사가정로) 또는 수치지도 UFID \\
 \f{key\_type} & & \f{name}(기본) 또는 \f{ufid}. UFID 행이 도로명 행보다 우선 \\
-\f{road\_type} & & RLS-19 표 2: \f{autobahn}, \f{bundesstrasse}, \f{landesstrasse}, \f{gemeinde}(빈칸 보충용) \\
+\f{road\_type} & & 도로유형(빈칸 보충용): \f{autobahn}, \f{bundesstrasse}, \f{landesstrasse}, \f{gemeinde} — RLS-19 표 2 / RLS-90 표 3 의 독일 도로 분류 \\
 \f{DTV} & △ & 일평균 교통량(대/일, 양방향 합) \\
-\f{M\_day}, \f{M\_night} & △ & 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표 2 계수. DTV 없이 한쪽만 넣으면 기본은 오류(문제 행을 모두 나열). \f{input.traffic.missing\_m: estimate} 이면 표 2 주·야 계수 비율로 보충(가정값, 서울 간선에서 야간 과소 추정 가능) \\
-\f{p1\_day} … \f{p2\_night} & & Lkw1·Lkw2 비율 \%. 비우면 표 2 표준값 \\
+\f{M\_day}, \f{M\_night} & △ & 시간당 교통량(대/h, 양방향 합). 비우면 DTV × 표준표 계수(아래 ※). DTV 없이 한쪽만 넣으면 기본은 오류(문제 행을 모두 나열). \f{input.traffic.missing\_m: estimate} 이면 표준표 주·야 계수 비율로 보충(가정값, 서울 간선에서 야간 과소 추정 가능) \\
+\f{p1\_day} … \f{p2\_night} & & Lkw1·Lkw2 비율 \%. 비우면 RLS-19 표 2 표준값 \\
+\f{p\_day}, \f{p\_night} & & RLS-90 계산만: 화물차(2.8 t 초과) 비율 \%. 비우면 $p_1 + p_2$, 그것도 비우면 RLS-90 표 3 \\
 \f{v\_pkw}, \f{v\_lkw} & & 차종별 속도 km/h(30 미만은 30 적용) \\
 \f{surface} & & 노면: \f{ref}, \f{AC11}, \f{SMA5\_8}, \f{SMA8\_11}, \f{PA11}, \f{PA8}, \f{Waschbeton}, \f{LGA}, \f{LOA}, \f{SMA\_LA8}, \f{DSH\_V5}, \f{pflaster\_even}, \f{pflaster\_other} \\
 \f{grade} & & 도로별 종단경사 \% 직접 지정(깎거나 쌓은 도로) \\
@@ -320,6 +321,8 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \bottomrule
 \end{longtable}
 교통량 파일에 없는 도로는 \f{fallback\_dtv\_by\_lanes}(차로수별 가정값, 기본 1차로 1,000 … 6차로 40,000 대/일)를 쓰고 \f{traffic\_used.csv} 에 \f{traffic\_src = fallback} 으로 표시된다.
+
+\textbf{※ 교통량 자료가 없는 항목($M$·$p$)은 독일 기준표로 채운다.} ISO 9613-2·RLS-19 계산은 RLS-19 표 2, RLS-90 계산은 RLS-90 표 3 의 도로유형별 표준값(DTV 에 곱하는 주·야 계수와 화물차 비율)이다. 독일 도로의 표준값이므로 \textbf{국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있다}(예: 서울 28지점 주·야 계수 0.0518/0.0215, RLS-19 지자체 도로 0.0575/0.0100). 표로 채운 항목은 \f{traffic\_used.csv} 의 \f{std\_filled}·\f{traffic\_std}, \f{build\_info.json} 의 \f{traffic\_defaults} 에 남고 지도 정보란에도 적힌다. 차로수별 DTV 는 두 기준 어디에도 없는 SORI 가정값이다.
 
 \subsection{그 밖의 입력(선택)}
 \begin{itemize}

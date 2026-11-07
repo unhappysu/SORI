@@ -134,7 +134,7 @@ Lkw2 & 105.4 & 50.0 & 4.88 \\
 \begin{itemize}
 \item 속도: 30 km/h 미만은 30 적용(2장 용어 정의). Pkw 와 Lkw 속도를 따로 받는다.
 \item 이륜자동차는 방출상 Lkw2(속도는 Pkw)로 다룬다는 원문 주석이 있으나, SORI 는 Krad 차량군을 따로 받지 않는다(TEST-20 E7 미지원, 9.4절).
-\item 표 2(도로유형별 주·야 $M$ 계수와 $p_1, p_2$): 예) \f{gemeinde} 주간 0.0575·3 \%·4 \%, 야간 0.0100·3 \%·4 \%. 입력이 빈 칸일 때만 쓴다.
+\item 표 2(도로유형별 주·야 $M$ 계수와 $p_1, p_2$): 예) \f{gemeinde} 주간 0.0575·3 \%·4 \%, 야간 0.0100·3 \%·4 \%. 입력이 빈 칸일 때만 쓴다. RLS-90 계산은 RLS-90 표 3(\f{rls90.TAB3}, 주간 $M = 0{,}06\cdot$DTV, \f{gemeinde} $p$ 주간 10 \%·야간 3 \%)을 쓴다. 두 표 모두 독일 기준이라 국내 교통 특성과 다를 수 있으며, 표로 채운 항목은 \f{traffic\_used.csv} 의 \f{std\_filled}·\f{traffic\_std} 에 기록한다(TECHNICAL\_NOTES 5a-15).
 \end{itemize}
 
 \subsection{보정}
@@ -344,7 +344,7 @@ Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{req
 %% =====================================================================
 \section{가정·한계·근거 미확인}
 \begin{itemize}
-\item 교통량: 입력이 없는 도로는 차로수별 가정 DTV. $M$ 한쪽 보충(\f{missing\_m: estimate})은 표 2 계수 비율이라 서울 간선에서 LrN 이 약 4.2 dB 과소 계산될 수 있다(TECHNICAL\_NOTES 5a-12).
+\item 교통량: 입력이 없는 도로는 차로수별 가정 DTV(SORI 가정값). 빈 $M$·$p$ 는 RLS-19 표 2 / RLS-90 표 3(독일 기준)이라 국내 주·야 비율·화물차 비율과 다를 수 있다. $M$ 한쪽 보충(\f{missing\_m: estimate})은 표 2 계수 비율이라 서울 간선에서 LrN 이 약 4.2 dB 과소 계산될 수 있다(TECHNICAL\_NOTES 5a-12).
 \item 단단한 지면의 장거리: ISO 일반법(G = 0)은 먼 지점에서 RLS-19 전파식보다 최대 약 3 dB 높다(기준 차이).
 \item 도로 종단경사는 자연지형 등고선 기준이라 깎거나 쌓은 도로와 다를 수 있다(\f{grade} 열로 지정).
 \item 미구현: 측면 회절(ISO 식 13), 음의 $z$, $A_\mathrm{misc}$, $C_\mathrm{met}$, 4차 이상 반사, Krad 차량군, 감쇠항 CSV 의 2·3차 경로.
@@ -385,6 +385,7 @@ RLS-19 식 (4) / (5)(6) 표 3 & \f{rls19.LW\_prime} / \f{LW\_vehicle}, \f{LW0} \
 RLS-19 표 4a·4b / 식 (7) & \f{rls19.D\_SD} / \f{D\_LN} \\
 RLS-19 식 (8) 표 5 / 식 (9) & \f{rls19.D\_K}(+ \f{build} 교차로) / \f{D\_refl}(+ \f{build.detect\_canyon}) \\
 RLS-19 표 2 / 3.1 & \f{rls19.TAB2} / \f{round\_up} \\
+RLS-90 표 3 & \f{rls90.TAB3}(교통량 빈칸, \f{inputs.std\_factors}) \\
 RLS-19 3.3.1, Bild 6 & \f{build.lane\_layout}, \f{source\_offsets} \\
 RLS-19 식 (11)–(17) & \f{rls19\_propagation.D\_A}, \f{D\_div}, \f{D\_atm}, \f{D\_gr}, \f{D\_z}, \f{K\_w} \\
 RLS-19 3.6, 표 8 & \f{rls19\_propagation.accept\_reflection}, \f{solver.\_accept}, \f{propagation.RLS19Propagation} \\

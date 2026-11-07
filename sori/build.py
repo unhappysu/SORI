@@ -533,8 +533,8 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
 
 
 def _p90(t, per):
-    """RLS-90 maßgebender Lkw-Anteil p(> 2,8 t): 교통량 표 p_day·p_night 가 있으면 그 값, 없으면 p1 + p2
-    (RLS-19 Lkw1·Lkw2 = 3,5 t 초과 — 2,8 ~ 3,5 t 차량이 빠지는 근사, TECHNICAL_NOTES)"""
+    """RLS-90 maßgebender Lkw-Anteil p(> 2,8 t). inputs.traffic_for_road 가 입력 p → 입력 p1 + p2 → 표 3 순서로 채워 둠.
+    p_day 가 없는 이전 traffic_used 만 p1 + p2(RLS-19 Lkw1·Lkw2 = 3,5 t 초과 — 근사, TECHNICAL_NOTES)"""
     v = t.get(f"p_{per}")
     if v is not None and v == v:
         return float(v)
@@ -677,6 +677,11 @@ def main(cfg):
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
             "canyon_segments": int((S.D_refl > 0).sum()),
             "emission": EMISSION_LABEL["rls90" if method_name(cfg) == "rls90" else "rls19"]}
+    nstd = int((T.std_filled != "").sum())
+    if nstd:                                       # 교통량 빈칸을 독일 기준표로 채운 도로가 있을 때만 기록
+        std = I.traffic_std(cfg)
+        info["traffic_defaults"] = {"standard": I.TRAFFIC_STD_LABEL[std], "roads": nstd,
+                                    "dtv_by_lanes_roads": nfb, "note": I.TRAFFIC_STD_NOTE}
     if cfg["input"]["traffic"].get("missing_m", "error") != "error":             # 옵션을 켠 경우에만 기록
         est = T.M_day_from.str.startswith("est_") | T.M_night_from.str.startswith("est_")
         info["traffic_m_estimated"] = {"roads": int(est.sum()), "keys": sorted(set(T._key[est]))}
@@ -698,6 +703,9 @@ def main(cfg):
     log.info("모델 구축 완료: %s", info)
     if nfb:
         log.warning("교통량 가정값(fallback) 사용 도로객체 %d개 — output/traffic_used.csv 의 traffic_src 확인", nfb)
+    if nstd:
+        log.warning("교통량 자료가 없는 항목(M·p)을 표준값(%s)으로 채운 도로객체 %d개 — %s. traffic_used.csv 의 std_filled 열 참고",
+                    I.TRAFFIC_STD_LABEL[I.traffic_std(cfg)], nstd, I.TRAFFIC_STD_NOTE)
     return info
 
 

@@ -18,6 +18,18 @@ import math
 LG_2PI = 10.0 * math.log10(2.0 * math.pi)
 LW_OFFSET = 11.2 + LG_2PI                     # L_W′eq − L_m,E  [dB]
 
+# ------------------------------------------------------------------ 표 3 (Straßengattung 별 maßgebende Verkehrsstärke·Lkw-Anteil)
+#   (M 계수 × DTV, p %)  tags 06–22시 / nachts 22–06시. 원문 4.4.1.1.1: 프로젝트 조사 결과가 있으면 표 3 을 쓰지 않음
+#   (원문 RLS90-opt in German.pdf 12쪽 대조, 2026-11-06). 키는 RLS-19 표 2 와 같은 도로유형 이름을 씀:
+#   autobahn = Bundesautobahnen, bundesstrasse = Bundesstraßen,
+#   landesstrasse = Landes-, Kreis- und Gemeindeverbindungsstraßen, gemeinde = Gemeindestraßen
+TAB3 = {
+    "autobahn":      {"day": (0.06, 25.0), "night": (0.014, 45.0)},
+    "bundesstrasse": {"day": (0.06, 20.0), "night": (0.011, 20.0)},
+    "landesstrasse": {"day": (0.06, 20.0), "night": (0.008, 10.0)},
+    "gemeinde":      {"day": (0.06, 10.0), "night": (0.011, 3.0)},
+}
+
 # ------------------------------------------------------------------ 표 4 D_StrO (zul. Höchstgeschwindigkeit 30 / 40 / ≥ 50 km/h)
 TAB4 = {
     "gussasphalt": (0.0, 0.0, 0.0),           # 1 nicht geriffelte Gußasphalte, Asphaltbetone oder Splittmastixasphalte

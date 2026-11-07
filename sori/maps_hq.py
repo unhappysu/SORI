@@ -101,6 +101,15 @@ def traffic_summary(T):
     return ", ".join(parts), fb
 
 
+def traffic_std_text(T):
+    """traffic_used.csv(T) → "빈칸 M·p 는 RLS-19 표 2(독일 기준, 국내와 다를 수 있음)" 같은 문구. 순수 함수.
+    std_filled 열이 없는 이전 결과나 채운 도로가 없으면 빈 문자열"""
+    if "traffic_std" not in T:
+        return ""
+    labs = [s for s in dict.fromkeys(T["traffic_std"].fillna("").astype(str)) if s]
+    return f"빈칸 M·p 는 {'·'.join(labs)}(독일 기준, 국내와 다를 수 있음)" if labs else ""
+
+
 # ------------------------------------------------------------------ 자료
 class Ctx:
     def __init__(self, cfg):
@@ -130,6 +139,10 @@ class Ctx:
     def traffic_text(self):
         txt, fb = traffic_summary(self.T)
         return ("입력: " + txt if txt else "입력 없음"), fb
+
+    def traffic_std_text(self):
+        """교통량 빈칸(M·p)을 독일 기준표로 채운 경우의 정보란 문구. 채운 도로가 없으면 빈 문자열"""
+        return traffic_std_text(self.T)
 
 
 # ------------------------------------------------------------------ 공통 지도 요소
@@ -246,6 +259,9 @@ def info_block(side, y_top, C, lines_extra):
             ("좌표계", f"EPSG:{cfg['crs']}"),
             ("교통량", tr),
             ("", f"그 밖의 도로 {fb}개 객체는 차로수 기준 가정값")]
+    st = C.traffic_std_text()
+    if st:
+        rows.append(("", st))
     rows = lines_extra + rows
     side.text(0.0, y_top, "계산 조건", fontsize=12, weight="bold", va="top", transform=side.transAxes)
     y = y_top - 0.045
