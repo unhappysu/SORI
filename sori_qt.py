@@ -1554,7 +1554,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_split.setCheckable(True)
         self.act_split.setChecked(True)
         self.act_split.setToolTip("켜면 왼쪽 격자 지도는 그대로 두고, 클릭한 건물의 3D 파사드를 오른쪽 창에 함께 표시")
-        self.act_sec = tb.addAction("단면 선 긋기", self._toggle_section)
+        self.act_fval = tb.addAction("벽면 값", self.redraw)
+        self.act_fval.setCheckable(True)
+        self.act_fval.setChecked(True)
+        self.act_fval.setToolTip("격자 지도 위 건물 외벽을 따라 벽면 결과(층별 최댓값)를 같은 색 등급의 띠로 함께 표시")
+        self.act_sec =tb.addAction("단면 선 긋기", self._toggle_section)
         self.act_sec.setCheckable(True)
         self.act_sec.setToolTip("격자 지도에서 두 점(A, B)을 차례로 클릭하면 그 선의 수직 단면 소음지도를 계산")
         self.act_save = tb.addAction("지도 저장…", self.save_map)
@@ -1642,12 +1646,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.act_sec.isChecked():
             self.act_sec.setChecked(False)
             self.sec_pts = []
-        split = key == "facade"
-        if self.act_split.isChecked() != split:
-            self.act_split.setChecked(split)
-            self._toggle_split(split)
-        if self.view != "grid":
-            self.show_grid()
+        if key == "facade" and not self.act_split.isChecked():     # 다른 작업은 사용자가 고른 보기 방식을 그대로 둠
+            self.act_split.setChecked(True)
+            self._toggle_split(True)
+        self.show_grid()                                  # 작업에 맞게(차로 강조 등) 지도를 항상 다시 그림
         if key == "map":
             self._show_props(self._config_props())
             self.lbl_status.setText("입력 지도 확인 — 왼쪽 트리 항목을 고르면 속성 표에 값. 값을 고치려면 ‘✎ 입력값’")
@@ -1655,7 +1657,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tabs.setCurrentIndex(0)
             self.lbl_status.setText("계산 실행 — 아래 '계산 실행' 탭에서 전파 방법·대상을 고르고 ▶ 계산 실행")
         elif key == "grid":
-            self.lbl_status.setText("격자 소음지도 — 격자점 클릭 → 값, 건물 클릭 → 3D 파사드(한 창)")
+            self.lbl_status.setText("격자 소음지도 — 격자점 클릭 → 값, 건물 클릭 → 3D 파사드"
+                                    + ("(오른쪽 창)" if self.act_split.isChecked() else "(한 창)"))
         elif key == "facade":
             self.lbl_status.setText("격자 + 3D 파사드 — 왼쪽 지도에서 건물을 클릭하세요")
         elif key == "section":
@@ -1829,6 +1832,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not R and not quiet:
             self._err(f"이 폴더에서 SORI 결과를 찾지 못했습니다.\n{out}")
         self.R = R
+        self.act_fval.setEnabled("facade" in R and "facades" in R)
         self.view, self.view_bid = "grid", None
         self.facade_bid = None
         self.map3d.message("격자 지도에서 건물을 클릭하면\n여기에 3D 파사드 소음지도가 나옵니다.")
@@ -1994,9 +1998,47 @@ class MainWindow(QtWidgets.QMainWindow):
             return self._draw_section()
         self.act_back.setEnabled(False)
         self._redraw_grid()
+        self._grid_extras()
+
+    def _grid_extras(self):
+        """격자 지도 위에 겹치는 것들(벽면 값 띠, 선택 건물 테두리, 범위 미리보기, 차로 수 강조)"""
+        self._facade_overlay()
         self._mark_building()
         self._draw_preview()
         self._draw_lane_focus()
+
+    def _facade_overlay(self):
+        """격자 지도 위 건물 외벽을 따라 벽면 결과(층별 최댓값)를 색 띠로 겹쳐 그림.
+        띠 위치·값은 보고서 그림 HQ_facade 와 같은 함수(maps_hq.facade_segments), 색은 지금 격자 지도와 같은 등급"""
+        R, ax = self.R, self.map.ax
+        if (not self.act_fval.isChecked() or self.view != "grid" or ax is None
+                or R.get("facade") is None or R.get("facades") is None):
+            return
+        from matplotlib.collections import LineCollection
+        from sori.maps_hq import facade_segments
+        key = self.cb_key.currentData()
+        try:
+            W = facade_segments(R["facade"], R["facades"], key).sort_values("L")
+        except Exception as e:
+            log.warning("벽면 값 띠를 그리지 못함: %s", e)
+            return
+        if self.map.hq is not None:                      # 보고서 수준 지도: DIN 색 등급
+            from sori.maps_hq import din_cmap
+            cmap, norm = din_cmap()
+        else:                                            # 간단한 지도: 30 dB부터 5 dB 등급
+            from sori.plots import classes
+            cmap, norm, _ = classes(30, 5)
+        segs = np.stack([W[["x1", "y1"]].values, W[["x2", "y2"]].values], axis=1)
+        # 굵기는 화면 점 기준(보고서 지도는 화면 dpi 를 낮춰 그리므로 pt 로 주면 1 점 남짓으로 가늘어짐)
+        dpi = getattr(self.map.fig, "_original_dpi", None) or self.map.fig.dpi
+        lw = 3.0 * 72.0 / dpi
+        xl, yl = ax.get_xlim(), ax.get_ylim()
+        ax.add_collection(LineCollection(segs, colors="#222", linewidths=lw * 1.6, capstyle="butt", zorder=19))
+        ax.add_collection(LineCollection(segs, colors=cmap(norm(W.L.values)), linewidths=lw, capstyle="butt",
+                                         zorder=20, gid="facade_overlay"))
+        ax.set_xlim(xl)
+        ax.set_ylim(yl)
+        self.map.canvas.draw_idle()
 
     def _mark_building(self):
         """나란히 보기에서 오른쪽에 보이는 건물을 왼쪽 격자 지도에 빨간 테두리로 표시"""
@@ -2025,8 +2067,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if C is not None:                                       # 보고서 수준 지도(maps_hq 와 같은 그리기)
                 try:
                     return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
-                                                 lambda: (self._redraw_grid(), self._mark_building(), self._draw_preview(),
-                                                         self._draw_lane_focus()))
+                                                 lambda: (self._redraw_grid(), self._grid_extras()))
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key)

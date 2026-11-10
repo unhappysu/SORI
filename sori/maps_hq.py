@@ -398,18 +398,23 @@ def exceed_map(cfg, key="LrT", h=None, limits=None):
 
 
 # ------------------------------------------------------------------ 3) 파사드 색 띠
-def _facade_pieces(C, key):
-    FR = pd.read_csv(os.path.join(C.out, "facade_result.csv"))
-    F = pd.read_csv(os.path.join(C.out, "facades.csv"), index_col="fid")
+def facade_segments(FR, F, key, off=1.1):
+    """벽면 결과(facade_result) → 벽면 구간별 선분(x1, y1, x2, y2)과 층별 최댓값 L.
+    off: 벽에서 바깥으로 띄우는 거리(m). 보고서 HQ_facade 와 데스크톱 화면(sori_qt)의 격자 위 겹쳐 보기가 같이 씀"""
     W = FR.groupby(["fid", "piece"]).agg(a=("a", "first"), b=("b", "first"), L=(key, "max"),
                                          bid=("bid", "first")).reset_index()
     f = F.loc[W.fid]
-    off = 1.1                                              # 벽에서 바깥으로 띄우는 거리(m)
     W["x1"] = f.x1.values + W.a * (f.x2.values - f.x1.values) + off * f.nx.values
     W["y1"] = f.y1.values + W.a * (f.y2.values - f.y1.values) + off * f.ny.values
     W["x2"] = f.x1.values + W.b * (f.x2.values - f.x1.values) + off * f.nx.values
     W["y2"] = f.y1.values + W.b * (f.y2.values - f.y1.values) + off * f.ny.values
-    return FR, W
+    return W
+
+
+def _facade_pieces(C, key):
+    FR = pd.read_csv(os.path.join(C.out, "facade_result.csv"))
+    F = pd.read_csv(os.path.join(C.out, "facades.csv"), index_col="fid")
+    return FR, facade_segments(FR, F, key)
 
 
 def facade_bands(cfg, key="LrT"):

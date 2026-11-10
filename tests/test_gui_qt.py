@@ -87,8 +87,16 @@ def test_home_screen_and_tasks(tmp_path):
     w.home.tiles["facade"].click()
     assert w.stack.currentIndex() == 1 and not w.tb_view.isHidden() and w.act_split.isChecked()
     w.show_home()
+    w.home.tiles["grid"].click()                      # 격자 작업도 나란히 보기를 끄지 않음
+    assert w.stack.currentIndex() == 1 and w.act_split.isChecked() and w.view == "grid"
+    w.act_split.setChecked(False)                     # 사용자가 끈 상태도 작업을 바꿔도 유지
+    w._toggle_split(False)
+    w.show_home()
     w.home.tiles["grid"].click()
-    assert w.stack.currentIndex() == 1 and not w.act_split.isChecked() and w.view == "grid"
+    assert not w.act_split.isChecked()
+    w.show_home()
+    w.home.tiles["facade"].click()                    # 격자 + 3D 파사드 작업은 다시 켬
+    assert w.act_split.isChecked()
     w.show_home()
     w.home.tiles["section"].click()
     assert w.act_sec.isChecked()
@@ -164,6 +172,43 @@ def test_grid_and_facade_side_by_side(tmp_path):
     w.act_split.setChecked(False)                                          # 끄면 오른쪽 숨김
     w._toggle_split(False)
     assert w.facade_bid is None and w.map3d.isHidden()
+    w.close()
+    app.processEvents()
+
+
+def test_facade_values_on_grid_map(tmp_path):
+    """격자 지도 위에 벽면 값 띠(층별 최댓값)가 겹쳐 그려지고, 끄면 사라지고, 시간대에 따라 값이 바뀜"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    from sori.maps_hq import facade_segments
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_results(out)
+    assert w.act_fval.isEnabled() and w.act_fval.isChecked()
+
+    def overlay():
+        return [c for c in w.map.ax.collections if c.get_gid() == "facade_overlay"]
+
+    lc = overlay()
+    assert len(lc) == 1
+    W = facade_segments(w.R["facade"], w.R["facades"], "LrT")
+    assert len(lc[0].get_segments()) == len(W) > 0
+    FR = w.R["facade"]                                                 # 띠 값 = 그 벽면 구간 층별 최댓값
+    g = FR.groupby(["fid", "piece"]).LrT.max()
+    r = W.iloc[0]
+    assert abs(r.L - g.loc[(r.fid, r.piece)]) < 1e-9
+    bid = int(FR.bid.value_counts().index[0])                         # 띠가 있어도 건물 클릭 → 3D
+    p = w.R["buildings"].set_index("bid").geometry.loc[bid].representative_point()
+    w._on_map_click(p.x, p.y)
+    assert w.facade_bid == bid and len(overlay()) == 1
+    w.act_fval.setChecked(False)
+    w.redraw()
+    assert not overlay()
+    w.act_fval.setChecked(True)
+    w.cb_key.setCurrentIndex(w.cb_key.findData("LrN"))
+    assert len(overlay()) == 1
     w.close()
     app.processEvents()
 
