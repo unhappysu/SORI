@@ -422,11 +422,18 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
     clx, cly = [], []                              # 음원점의 도로중심선 투영점(source_ground: road_profile 용)
     name_max = road.groupby("axis")["lanes"].max().to_dict()
     half = float(mc.get("grade_base", 30.0)) / 2.0
+    drop_minor = mc.get("minor_roads", "exclude") == "exclude"
     for _, rd in road.iterrows():
         main = rd["lanes"] >= mc["main_min_lanes"]
         tr = I.traffic_for_road(cfg, rd, by_ufid, by_name, main, name_max.get(rd["axis"], 99))
+        skip = drop_minor and not main and tr["traffic_src"] != "user"
+        if skip:                                   # 교통량 자료 없는 골목길: 음원에서 뺌(도로선은 교차로·노면 보정에 남음)
+            tr = {**tr, "traffic_src": "excluded_minor", "traffic_basis": "excluded_minor",
+                  "std_filled": "", "traffic_std": ""}
         troad.append({"fid": rd["fid"], "ufid": rd["ufid"], "name": rd["rname"], "axis": rd["axis"],
                       "lanes": rd["lanes"], **tr})
+        if skip:                                   # traffic_used.csv 에는 남겨 roads.gpkg 와 순서를 맞춤
+            continue
         nd, nb, wl, rule = lane_layout(cfg, rd["lanes"], rd["width"], rd["oneway"],
                                        rd.get("lanes_fwd"), rd.get("lanes_bwd"))
         odir = -1 if (rd["oneway"] and _finite(rd.get("oneway_dir")) and int(rd.get("oneway_dir")) == -1) else 1
@@ -669,6 +676,7 @@ def main(cfg):
     road[["geometry", "fid", "ufid", "rname", "axis", "lanes", "width", "oneway"]].to_file(
         os.path.join(out, "roads.gpkg"), driver="GPKG")
     nfb = int(T.traffic_src.str.startswith("fallback").sum())
+    n_minor_x = int((T.traffic_src == "excluded_minor").sum())
     info = {"terrain": tinfo, "buildings": len(bld), "roads": len(road), "sources": len(S),
             "sources_main": int(S.main.sum()), "facade_edges": len(F), "junctions": len(J),
             "signal_junction_points": int((J.type == "signal").sum()) if len(J) else 0,
@@ -676,6 +684,7 @@ def main(cfg):
             "roads_with_fallback_traffic": nfb,
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
             "canyon_segments": int((S.D_refl > 0).sum()),
+            "minor_roads": cfg["model"].get("minor_roads", "exclude"), "minor_roads_excluded": n_minor_x,
             "emission": EMISSION_LABEL["rls90" if method_name(cfg) == "rls90" else "rls19"]}
     nstd = int((T.std_filled != "").sum())
     if nstd:                                       # 교통량 빈칸을 독일 기준표로 채운 도로가 있을 때만 기록
@@ -703,6 +712,9 @@ def main(cfg):
     log.info("모델 구축 완료: %s", info)
     if nfb:
         log.warning("교통량 가정값(fallback) 사용 도로객체 %d개 — output/traffic_used.csv 의 traffic_src 확인", nfb)
+    if n_minor_x:
+        log.info("골목길(차로수 < %d) 중 교통량 자료가 없는 %d개 객체는 음원에서 뺌(model.minor_roads: exclude)",
+                 cfg["model"]["main_min_lanes"], n_minor_x)
     if nstd:
         log.warning("교통량 자료가 없는 항목(M·p)을 표준값(%s)으로 채운 도로객체 %d개 — %s. traffic_used.csv 의 std_filled 열 참고",
                     I.TRAFFIC_STD_LABEL[I.traffic_std(cfg)], nstd, I.TRAFFIC_STD_NOTE)

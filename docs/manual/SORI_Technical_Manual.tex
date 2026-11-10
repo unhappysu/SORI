@@ -344,7 +344,7 @@ Windows·macOS 러너, Python 3.14. 의존성(\f{requirements-lock.txt} + \f{req
 %% =====================================================================
 \section{가정·한계·근거 미확인}
 \begin{itemize}
-\item 교통량: 입력이 없는 도로는 차로수별 가정 DTV(SORI 가정값). 빈 $M$·$p$ 는 RLS-19 표 2 / RLS-90 표 3(독일 기준)이라 국내 주·야 비율·화물차 비율과 다를 수 있다. $M$ 한쪽 보충(\f{missing\_m: estimate})은 표 2 계수 비율이라 서울 간선에서 LrN 이 약 4.2 dB 과소 계산될 수 있다(TECHNICAL\_NOTES 5a-12).
+\item 교통량: 입력이 없는 도로는 차로수별 가정 DTV(SORI 가정값). 입력이 없는 골목길(1차로)은 기본으로 음원에서 뺀다(\f{model.minor\_roads: exclude}, TECHNICAL\_NOTES 5a-16) — 골목길 교통 소음이 빠지므로 간선에서 먼 이면 지역은 낮게 계산될 수 있다. 빈 $M$·$p$ 는 RLS-19 표 2 / RLS-90 표 3(독일 기준)이라 국내 주·야 비율·화물차 비율과 다를 수 있다. $M$ 한쪽 보충(\f{missing\_m: estimate})은 표 2 계수 비율이라 서울 간선에서 LrN 이 약 4.2 dB 과소 계산될 수 있다(TECHNICAL\_NOTES 5a-12).
 \item 단단한 지면의 장거리: ISO 일반법(G = 0)은 먼 지점에서 RLS-19 전파식보다 최대 약 3 dB 높다(기준 차이).
 \item 도로 종단경사는 자연지형 등고선 기준이라 깎거나 쌓은 도로와 다를 수 있다(\f{grade} 열로 지정).
 \item 미구현: 측면 회절(ISO 식 13), 음의 $z$, $A_\mathrm{misc}$, $C_\mathrm{met}$, 4차 이상 반사, Krad 차량군, 감쇠항 CSV 의 2·3차 경로.

@@ -51,9 +51,11 @@ def road_table(out, crs):
     if len(R) != len(T) or not (R.ufid.astype(str).values == T.ufid.astype(str).values).all():
         raise RuntimeError("roads.gpkg 와 traffic_used.csv 의 도로 순서가 다름 — 같은 build 결과인지 확인")
     rows = []
-    for (fid, r), t in zip(R.iterrows(), T.itertuples()):
+    for i, ((fid, r), t) in enumerate(zip(R.iterrows(), T.itertuples())):
+        if str(t.traffic_src) == "excluded_minor":     # SORI 가 음원에서 뺀 골목길(model.minor_roads: exclude)은 내보내지 않음
+            continue
         ln = L.loc[t.fid] if t.fid in L.index else None
-        pD, pN = _p90(T.iloc[len(rows)], "day"), _p90(T.iloc[len(rows)], "night")
+        pD, pN = _p90(T.iloc[i], "day"), _p90(T.iloc[i], "night")
         sp = float(t.dir_split_fwd)
         rows.append(dict(
             fid=int(t.fid), ufid=str(t.ufid), name=str(t.name), lanes=int(t.lanes),

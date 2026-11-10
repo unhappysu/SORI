@@ -393,6 +393,7 @@ INPUT_FIELDS = [
         ("receivers.facade.radius", "벽면 계산 반경 (m)", "float", "격자 중심에서"),
         ("model.floor_height", "층 높이 (m)", "float", "수치지도 층수 × 층 높이 = 건물 높이"),
         ("model.road_surface", "차도 면 지형", "choice", ["flatten", "dtm"]),
+        ("model.minor_roads", "골목길(1차로) 음원", "choice", ["exclude", "include"]),
         ("receivers.points.path", "점 수음점 CSV", "file?", "point_id, x, y, h"),
         ("receivers.points.default_height", "점 수음점 기본 높이 (m)", "float?", "h 가 빈 행에 씀"),
     ]),

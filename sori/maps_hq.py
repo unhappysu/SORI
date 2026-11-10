@@ -262,6 +262,9 @@ def info_block(side, y_top, C, lines_extra):
     st = C.traffic_std_text()
     if st:
         rows.append(("", st))
+    nx = int((C.T["traffic_src"].astype(str) == "excluded_minor").sum())
+    if nx:
+        rows.append(("", f"교통량 자료 없는 골목길(1차로) {nx}개 객체는 음원에서 제외"))
     rows = lines_extra + rows
     side.text(0.0, y_top, "계산 조건", fontsize=12, weight="bold", va="top", transform=side.transAxes)
     y = y_top - 0.045

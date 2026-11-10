@@ -99,6 +99,7 @@ def test_export_on_reference_case(tmp_path):
     dst = ES.main([str(tmp_path / "config.yaml"), "--out", str(tmp_path / "exp")])
     R = gpd.read_file(dst / "roads.shp")
     T = pd.read_csv(out / "traffic_used.csv", encoding="utf-8-sig")
+    T = T[T.traffic_src != "excluded_minor"].reset_index(drop=True)   # 음원에서 뺀 골목길은 내보내지 않음
     assert len(R) == len(T)
     assert np.allclose(R.M_D, T.M_day) and np.allclose(R.p_D, T.p_day, atol=1e-3)
     E = gpd.read_file(dst / "emission_lines.shp")

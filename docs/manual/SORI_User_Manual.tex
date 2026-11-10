@@ -64,7 +64,7 @@ SORI(Simulation of Outdoor Road-noise Impact) v0.1 은 도로교통소음을 예
 
 \subsection{사용상 주의}
 \begin{itemize}
-\item 교통량 파일에 없는 도로는 차로수별 가정 교통량을 쓴다. 결과를 인용할 때는 \f{traffic\_used.csv} 의 출처(\f{traffic\_src}, \f{traffic\_basis})를 함께 밝힌다.
+\item 교통량 파일에 없는 도로는 차로수별 가정 교통량을 쓴다. 다만 골목길(수치지도 1차로)은 기본으로 음원에서 뺀다(\f{model.minor\_roads: exclude}, 교통량 파일에 넣은 골목길은 계산). 결과를 인용할 때는 \f{traffic\_used.csv} 의 출처(\f{traffic\_src}, \f{traffic\_basis})를 함께 밝힌다.
 \item 국내 고시의 다른 원칙(영향 소음원 거리 2,000 m, 격자 높이 1.5 m, 지역 기상)은 기본값에 반영되어 있지 않다(기본 격자 높이 4 m, 음원 탐색 300/150 m).
 \item SORI 는 공인 프로그램이 아니다. 계산 결과의 검토·검증 책임은 사용자에게 있다.
 \end{itemize}
@@ -320,7 +320,7 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \f{note} & & 출처 메모 \\
 \bottomrule
 \end{longtable}
-교통량 파일에 없는 도로는 \f{fallback\_dtv\_by\_lanes}(차로수별 가정값, 기본 1차로 1,000 … 6차로 40,000 대/일)를 쓰고 \f{traffic\_used.csv} 에 \f{traffic\_src = fallback} 으로 표시된다.
+교통량 파일에 없는 도로는 \f{fallback\_dtv\_by\_lanes}(차로수별 가정값, 기본 1차로 1,000 … 6차로 40,000 대/일)를 쓰고 \f{traffic\_used.csv} 에 \f{traffic\_src = fallback} 으로 표시된다. 단, 교통량 파일에 없는 골목길(1차로)은 기본 설정 \f{model.minor\_roads: exclude} 에서 음원에서 빠지고 \f{traffic\_src = excluded\_minor} 로 표시된다(\f{include} 로 바꾸면 1,000 대/일 가정값으로 계산). 도로선은 교차로 판정과 차도 면 보정에는 그대로 쓴다.
 
 \textbf{※ 교통량 자료가 없는 항목($M$·$p$)은 독일 기준표로 채운다.} ISO 9613-2·RLS-19 계산은 RLS-19 표 2, RLS-90 계산은 RLS-90 표 3 의 도로유형별 표준값(DTV 에 곱하는 주·야 계수와 화물차 비율)이다. 독일 도로의 표준값이므로 \textbf{국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있다}(예: 서울 28지점 주·야 계수 0.0518/0.0215, RLS-19 지자체 도로 0.0575/0.0100). 표로 채운 항목은 \f{traffic\_used.csv} 의 \f{std\_filled}·\f{traffic\_std}, \f{build\_info.json} 의 \f{traffic\_defaults} 에 남고 지도 정보란에도 적힌다. 차로수별 DTV 는 두 기준 어디에도 없는 SORI 가정값이다.
 

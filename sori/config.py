@@ -92,6 +92,9 @@ DEFAULTS = {
         "segment_main": 3.0,
         "segment_minor": 5.0,
         "main_min_lanes": 2,                       # 차로수 ≥ 이 값 → 간선(반사 탐색거리 확대)
+        "minor_roads": "exclude",                  # 골목길(차로수 < main_min_lanes, 수치지도 1차로) 음원: exclude(기본, 2026-11-08) = 교통량 자료가
+                                                   # 없는 골목길은 음원에서 뺌(교통량 파일에 있으면 계산) | include = 차로수 가정 교통량으로 모두 계산(이전 동작)
+                                                   # 빼도 도로선은 교차로 판정·차도 면 보정(flatten)에 그대로 씀
         # 음원선 배치(RLS-19 3.3.1, Bild 6). 확인값(input.road_override)이 있으면 그 방향별 차로 수가 우선
         "odd_lane_rule": "ceil",                   # 홀수 차로 양방향: ceil = 양쪽 ⌈n/2⌉(현행) | major_fwd = 디지타이즈 방향 ⌈n/2⌉, 반대 ⌊n/2⌋
         "lane_width": "auto",                      # auto = 도로폭/차로수를 lane_width_clip 범위로(현행) | 숫자 = 고정 차로폭(m)
@@ -213,6 +216,8 @@ def _validate(c):
     if c["input"]["junctions"]["dk_rule"] not in ("nearest", "nearest_signal"):
         raise ValueError("input.junctions.dk_rule 는 nearest 또는 nearest_signal")
     m = c["model"]
+    if m["minor_roads"] not in ("exclude", "include"):
+        raise ValueError("model.minor_roads 는 exclude 또는 include")
     if m["road_surface"] not in ("dtm", "flatten"):
         raise ValueError("model.road_surface 는 dtm 또는 flatten")
     if m["source_ground"] not in ("dtm_at_source", "road_profile"):
