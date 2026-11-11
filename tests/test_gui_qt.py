@@ -213,6 +213,68 @@ def test_facade_values_on_grid_map(tmp_path):
     app.processEvents()
 
 
+def test_toolbar_buttons_toggle_split_and_section(tmp_path):
+    """도구 줄 단추를 실제로 누르는 경로(QAction.trigger — 인자 없이 부름)로 나란히 보기·단면 선 긋기가 켜지고 꺼짐.
+    2026-11-11: 함수가 인자를 꼭 받아 단추를 누르면 TypeError 로 오른쪽 3D 창이 켜지지 않던 오류"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.resize(1600, 1000)
+    w.show()
+    w.open_results(out)
+    w.enter_task("grid")                                            # 홈 → 격자 소음지도(작업 화면)
+    app.processEvents()
+    assert w.act_split.isChecked() and w.map3d.isVisible()
+    w.act_split.trigger()                                           # 끔
+    app.processEvents()
+    assert not w.act_split.isChecked() and not w.map3d.isVisible()
+    w.act_split.trigger()                                           # 다시 켬
+    app.processEvents()
+    assert w.act_split.isChecked() and w.map3d.isVisible() and w.map3d.width() > 100
+    FR, B = w.R["facade"], w.R["buildings"]
+    bid = int(FR.bid.value_counts().index[0])
+    g = B[B.bid == bid].iloc[0].geometry.representative_point()
+    w._on_map_click(g.x, g.y)
+    assert w.facade_bid == bid and w.map3d.ax3d is not None and w.view == "grid"
+    w.act_sec.trigger()
+    assert w.act_sec.isChecked()
+    w.act_sec.trigger()
+    assert not w.act_sec.isChecked()
+    w.close()
+    app.processEvents()
+
+
+def test_split_view_draws_map_only_and_save_keeps_report(tmp_path):
+    """나란히 보기: 왼쪽은 지도만 크게(정보란 없음, draw_grid_compact). 한 창 보기·지도 저장은 보고서 틀(draw_grid)"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.resize(1600, 1000)
+    w.show()
+    w.open_config(tmp_path / "case" / "config.yaml", out)
+    w.enter_task("grid")
+    app.processEvents()
+
+    def titles():
+        return " ".join(t.get_text() for t in w.map.fig.texts)
+    assert w.act_split.isChecked() and w.map.hq is not None
+    assert titles().startswith("격자 소음지도 ·") and "SORI Map" not in titles()      # 지도만
+    png = w.save_map_to(tmp_path / "saved.png")
+    assert png.exists()
+    assert titles().startswith("격자 소음지도 ·")                                    # 저장 뒤 화면은 다시 지도만
+    w.act_split.trigger()                                                           # 한 창 보기
+    app.processEvents()
+    assert "SORI Map" in titles()                                                   # 보고서 틀
+    w.close()
+    app.processEvents()
+
+
 def test_section_line_compute_and_show(tmp_path):
     """단면 선 긋기(두 점 클릭) → 단면 계산(Worker) → 단면 지도 표시·저장, 결과 파일과 다시 열기"""
     import time

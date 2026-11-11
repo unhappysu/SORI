@@ -57,11 +57,19 @@ def road_table(out, crs):
         ln = L.loc[t.fid] if t.fid in L.index else None
         pD, pN = _p90(T.iloc[i], "day"), _p90(T.iloc[i], "night")
         sp = float(t.dir_split_fwd)
+        tv = T.iloc[i]                                 # 방향별 속도(없는 이전 결과는 공통 속도)
+
+        def vdir(k, d):
+            v = tv.get(f"{k}_{d}")
+            return float(t.v_pkw if k == "v_pkw" else t.v_lkw) if v is None or v != v else float(v)
         rows.append(dict(
             fid=int(t.fid), ufid=str(t.ufid), name=str(t.name), lanes=int(t.lanes),
             width=float(r.width) if r.width == r.width else np.nan, oneway=int(bool(r.oneway)),
             M_D=float(t.M_day), M_N=float(t.M_night), p_D=round(pD, 3), p_N=round(pN, 3),
             v_pkw=float(t.v_pkw), v_lkw=float(t.v_lkw), surface=str(t.surface),
+            # 방향별 속도: fwd = 선(셰이프) 그린 방향 = 디지타이즈 방향, bwd = 반대 (SoundPLAN 방향별 속도 칸)
+            vP_fwd=vdir("v_pkw", "fwd"), vL_fwd=vdir("v_lkw", "fwd"),
+            vP_bwd=vdir("v_pkw", "bwd"), vL_bwd=vdir("v_lkw", "bwd"),
             DStrO=rls90.D_StrO(t.surface, t.v_pkw), split_fwd=sp,
             # 도로 전체 교통량 기준 L_m,E(경사 0) — SoundPLAN 도로 방출표의 값과 비교용
             LmE_D=round(_lme(t.M_day, pD, t), 2), LmE_N=round(_lme(t.M_night, pN, t), 2),
@@ -70,6 +78,8 @@ def road_table(out, crs):
             lane_w=float(ln.lane_width) if ln is not None else np.nan,
             off_fwd=float(ln.offset_fwd) if ln is not None else np.nan,
             off_bwd=float(ln.offset_bwd) if ln is not None and ln.offset_bwd == ln.offset_bwd else np.nan,
+            # 실제 음원선 전부(오프셋:방향:M 비율, model.source_lines: lane 이면 차로마다) — build 의 lines_used
+            lines=str(ln.lines_used) if ln is not None and "lines_used" in ln.index and ln.lines_used == ln.lines_used else "",
             traf_src=str(t.traffic_src), geometry=r.geometry))
     return gpd.GeoDataFrame(rows, geometry="geometry", crs=crs)
 
@@ -79,6 +89,17 @@ def emission_lines(roads):
     import geopandas as gpd
     rows = []
     for r in roads.itertuples():
+        if getattr(r, "lines", ""):                    # build 가 기록한 실제 음원선(차로별 포함)
+            for item in str(r.lines).split(";"):
+                o, a, fr = item.split(":")
+                off = float(o)
+                try:
+                    g = r.geometry if off == 0 else r.geometry.offset_curve(off)
+                except Exception:
+                    continue
+                rows.append(dict(fid=r.fid, ufid=r.ufid, side={"f": "fwd", "b": "bwd", "c": "both"}[a],
+                                 M_share=round(float(fr), 4), offset=off, geometry=g))
+            continue
         for side, off, share in (("fwd", r.off_fwd, r.split_fwd if r.oneway == 0 else 1.0),
                                  ("bwd", r.off_bwd, 1.0 - r.split_fwd)):
             if not (off == off):
@@ -169,11 +190,12 @@ def main(argv=None):
         "Teilstück 길이(자동이면 기록) |",
         "| **교차로 할증 K** | 표 2: 수음점 ~ 가장 가까운 신호 교차점(signals.shp) 40/70/100 m → 3/2/1 dB | "
         "도로 '신호교차로(Traffic lights)' 지정 — 같은 교차점 |",
-        "| 음원 위치 | 두 바깥 차로 중앙 0,5 m(emission_lines.shp, roads.shp 의 off_fwd·off_bwd) | "
+        "| 음원 위치 | 기본: 방향마다 1개선(RLS-90 = 두 바깥 차로 중앙 0,5 m). model.source_lines: lane 이면 차로마다 1개선 — emission_lines.shp(offset·M_share), roads.shp 의 lines | "
         "도로 폭·차로 배치(Emission line distance) |",
         "| **교통량** | roads.shp 의 M_D·M_N(대/h, 양방향 합), p_D·p_N(%) | 도로별 시간당 교통량(M)·화물차 비율 직접 입력(DTV 아님) |",
         "| 방향 배분 | roads.shp split_fwd(디지타이즈 방향 비율, 기본 0.5) | 차로별 교통량 |",
-        "| 속도 | roads.shp v_pkw·v_lkw | 승용차·화물차 속도 |",
+        "| 속도 | roads.shp v_pkw·v_lkw(공통), 방향별 vP_fwd·vL_fwd(선을 그린 방향)·vP_bwd·vL_bwd(반대 방향) | "
+        "승용차·화물차 속도(방향별 칸이 있으면 방향별 값) |",
         "| 노면 D_StrO | roads.shp DStrO(dB) | 노면 보정(Road surface) |",
         "| 경사 D_Stg | 지형(DTM)에서 산정, |g| > 5 % 일 때 0,6|g| − 3 | 도로 높이 = 지형 |",
         f"| 격자 | 영역 calc_area.shp, 간격 {cfg['receivers']['grid']['step']:g} m, 높이 {cfg['receivers']['grid']['heights']} m | "
@@ -189,7 +211,8 @@ def main(argv=None):
     for r in main_rows.itertuples():
         lines.append(f"| {r.name} | {r.lanes} | {r.M_D:.1f} | {r.M_N:.1f} | {r.p_D:g} | {r.p_N:g} | {r.v_pkw:g} | "
                      f"{r.surface} ({r.DStrO:g}) | {r.LmE_D:.1f} | {r.LmE_N:.1f} | {r.traf_src} |")
-    lines += ["", "L_m,E 는 도로 전체 교통량·경사 0 기준(식 6). SoundPLAN 도로 방출표(Emission)와 먼저 비교하면 "
+    lines += ["", "L_m,E 는 도로 전체 교통량·경사 0·공통 속도(v_pkw) 기준(식 6). 방향별 속도를 넣은 도로는 SORI 음원이 "
+              "방향마다 다른 속도를 쓰므로 이 값과 다르다. SoundPLAN 도로 방출표(Emission)와 먼저 비교하면 "
               "음원 입력 차이를 전파 차이와 나눠 볼 수 있음.", "",
               "## 파일", "", "| 파일 | 내용 |", "|---|---|",
               "| roads.shp | 도로중심선, 교통량·속도·노면·차로·음원선 오프셋·L_m,E |",

@@ -181,6 +181,39 @@ def test_model_metadata():
     r = get_model(c).info(c)
     assert r["propagation_method"] == "rls19" and r["representative_frequency_hz"] is None
     assert "표 8" in r["reflection_loss"] and r["D_refl_in_source"] is True
+    assert "hybrid_note" in iso and any("ISO 9613-2 전파" in x for x in iso["standard_deviations"])
+
+
+def test_d_refl_note_and_standard_deviations():
+    """D_refl + 허상음원 조합: RLS-19 는 2차까지(3.6, TEST-20 K2), RLS-90 은 1차까지(4.6)가 표준 절차.
+    그보다 높은 차수(기본 3차, 국내 고시)는 표준 밖 설정으로 기록"""
+    from sori.propagation import get_model
+
+    def info(method, order, canyon=True, **model):
+        c = _cfg(propagation_method=method, model={"canyon": {"enabled": canyon}, **model},
+                 propagation={"reflection": {"max_order_grid": order, "max_order_facade": order,
+                                             "max_order_point": order}})
+        return get_model(c).info(c)
+    r3 = info("rls19", 3)
+    assert "이중 계상" in r3["D_refl_note"] and any("반사 3차" in x for x in r3["standard_deviations"])
+    r2 = info("rls19", 2)
+    assert "표준 절차 범위" in r2["D_refl_note"] and r2["standard_deviations"] == []
+    off = info("rls19", 3, canyon=False)
+    assert off["D_refl_in_source"] is False and "미적용" in off["D_refl_note"]
+    assert any("반사 3차" in x and "겹침" not in x for x in off["standard_deviations"])
+    assert "표준 절차 범위" in info("rls90", 1)["D_refl_note"]
+    assert "이중 계상" in info("rls90", 2)["D_refl_note"]
+    assert any("차로마다" in x for x in info("rls19", 2, source_lines="lane")["standard_deviations"])
+
+
+def test_run_info_environment(rls_case):
+    """재현용 기록: 실행 환경(소스 식별자·Python·패키지 판)과 기본값까지 합친 설정"""
+    info = json.loads((rls_case / "run_info.json").read_text(encoding="utf-8"))
+    env = info["environment"]
+    assert env["python"] and env["os"] and len(env["source_sha256"]) == 64
+    assert env["packages"]["numpy"] and "git" in env
+    assert info["config_resolved"]["propagation_method"] == "rls19"
+    assert info["config_resolved"]["model"]["road_surface"] in ("flatten", "dtm")
 
 
 @pytest.fixture(scope="module")

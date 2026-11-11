@@ -102,6 +102,7 @@ def test_export_on_reference_case(tmp_path):
     T = T[T.traffic_src != "excluded_minor"].reset_index(drop=True)   # 음원에서 뺀 골목길은 내보내지 않음
     assert len(R) == len(T)
     assert np.allclose(R.M_D, T.M_day) and np.allclose(R.p_D, T.p_day, atol=1e-3)
+    assert np.allclose(R.vP_fwd, T.v_pkw_fwd) and np.allclose(R.vL_bwd, T.v_lkw_bwd)   # 방향별 속도(입력 없으면 공통)
     E = gpd.read_file(dst / "emission_lines.shp")
     assert len(E) >= len(R)
     for f in ("buildings.shp", "signals.shp", "calc_area.shp", "terrain_points.csv", "계산조건.md"):

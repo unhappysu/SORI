@@ -354,6 +354,38 @@ def draw_grid(fig, C, cfg, key, h):
     return ax
 
 
+def draw_grid_compact(fig, C, cfg, key, h):
+    """좁은 창(데스크톱 화면의 격자 + 3D 나란히 보기)용 지도만 크게: draw_grid 와 같은 지도 레이어(등음선 채움·
+    건물·간선 노면·신호교차로·도로명·방위표·축척)에 범례만 지도 안 작은 상자로. 정보란·계산 조건은 없음
+    (보고서 그림·지도 저장은 draw_grid). 반환: 지도 축(ax)"""
+    gx, gy, step, Am, A = grid_array(C, key, h)
+    bbox = grid_bbox(cfg)
+    ax = fig.add_axes([0.005, 0.005, 0.99, 0.945])
+    fig.text(0.01, 0.975, f"격자 소음지도 · {KEYNAME[key]} · 높이 {h:g} m · 간격 {step:g} m",
+             fontsize=10, weight="bold", va="center")
+    cmap, norm = din_cmap()
+    ax.contourf(gx, gy, Am, levels=[-200] + DIN_EDGES + [200], cmap=cmap, norm=norm, zorder=1, antialiased=True)
+    ax.contour(gx, gy, Am, levels=DIN_EDGES, colors="#333", linewidths=0.25, alpha=0.6, zorder=2)
+    base_layers(ax, C, bbox)
+    sig = C.J[C.J.type == "signal"].groupby("cluster")[["x", "y"]].mean()
+    ax.scatter(sig.x, sig.y, marker="o", s=50, fc="white", ec="k", lw=1.1, zorder=35)
+    road_labels(ax, C, bbox)
+    frame(ax, bbox); north_scale(ax, bbox)
+    ax.set_xticklabels([]); ax.set_yticklabels([])                    # 좁은 창에서는 좌표 글자를 뺌
+    # 범례: 지도 오른쪽 아래 작은 상자(등급 11칸)
+    lg = ax.inset_axes([0.80, 0.015, 0.185, 0.43], zorder=50)
+    n = len(DIN_COLS)
+    lg.set_xlim(0, 1); lg.set_ylim(0, n + 1.6); lg.axis("off")
+    lg.add_patch(Rectangle((0, 0), 1, n + 1.6, fc="white", ec="0.3", lw=0.6, alpha=0.93))
+    lg.text(0.08, n + 0.8, f"{key} dB(A)", fontsize=8, weight="bold", va="center")
+    labs = [f"≤ {DIN_EDGES[0]}"] + [f"{a} – {b}" for a, b in zip(DIN_EDGES[:-1], DIN_EDGES[1:])] + [f"> {DIN_EDGES[-1]}"]
+    for i, (c, t) in enumerate(zip(DIN_COLS, labs)):
+        y = n - 1 - i + 0.15
+        lg.add_patch(Rectangle((0.08, y), 0.28, 0.7, fc=c, ec="none"))
+        lg.text(0.42, y + 0.35, t, fontsize=7, va="center")
+    return ax
+
+
 # ------------------------------------------------------------------ 2) 기준 초과 지도
 def exceed_map(cfg, key="LrT", h=None, limits=None):
     C = Ctx(cfg)

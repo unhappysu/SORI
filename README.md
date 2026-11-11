@@ -56,7 +56,7 @@ Python 설치 없이 쓰는 데스크톱 앱입니다. 준비된 설정 파일(`
 앱은 PySide6(Qt) 화면을 먼저 쓰고, PySide6 가 없으면 위의 단순 화면(tkinter)으로 열립니다. Qt 화면에서는 앱을 켜면 지난번 설정의 결과가 가운데 지도에 바로 보입니다.
 
 - **격자 소음지도**: 보고서용 고품질 지도(`HQ_grid_*.png`)와 같은 그림입니다 — 5 dB 등음선 채움, 간선도로 노면·건물·신호교차로·도로명, 방위표·축척, 범례·계산 조건·주의 문구. 위 도구 줄에서 격자 높이·시간대(주간 LrT / 야간 LrN)를 고르고, 확대(돋보기)·이동 도구로 자세히 봅니다. 격자점을 클릭하면 오른쪽 속성 창에 그 점의 값이 나옵니다. 설정 파일 없이 결과 폴더만 열었을 때는 간단한 지도로 표시됩니다.
-- **3D 파사드 소음지도**: 지도에서 **건물을 클릭**하면 그 건물을 중심으로 한 3D 파사드 소음지도가 나옵니다(그림 파일 `facade_3d_*.png` 와 같은 모양, 2 dB 등급). 주변 건물도 벽면 결과가 있으면 층별 색으로 칠하고, 층별 값 글자는 클릭한 건물에만 붙입니다. 마우스로 끌어 돌려 볼 수 있고, 클릭한 건물의 층별 값 전체는 아래 **벽면** 표에 나옵니다. 벽면 계산 반경 밖 건물은 상태 줄에 "벽면 계산 결과 없음"으로 표시됩니다. 도구 줄 **격자+파사드 나란히**(기본 켬)이면 왼쪽 격자 지도는 그대로 두고 오른쪽 창에 3D 가 나오며(클릭한 건물은 격자 지도에 빨간 테두리), 끄면 한 창에서 바뀌고 **◀ 격자 지도** 로 돌아갑니다. 홈 화면에서 다른 작업을 골라도 이 선택은 유지됩니다('격자 + 3D 파사드' 작업만 켬).
+- **3D 파사드 소음지도**: 지도에서 **건물을 클릭**하면 그 건물을 중심으로 한 3D 파사드 소음지도가 나옵니다(그림 파일 `facade_3d_*.png` 와 같은 모양, 2 dB 등급). 주변 건물도 벽면 결과가 있으면 층별 색으로 칠하고, 층별 값 글자는 클릭한 건물에만 붙입니다. 마우스로 끌어 돌려 볼 수 있고, 클릭한 건물의 층별 값 전체는 아래 **벽면** 표에 나옵니다. 벽면 계산 반경 밖 건물은 상태 줄에 "벽면 계산 결과 없음"으로 표시됩니다. 도구 줄 **격자+파사드 나란히**(기본 켬)이면 왼쪽 격자 지도는 그대로 두고 오른쪽 창에 3D 가 나오며(클릭한 건물은 격자 지도에 빨간 테두리), 끄면 한 창에서 바뀌고 **◀ 격자 지도** 로 돌아갑니다. 나란히 보기에서는 왼쪽 격자 지도를 **지도만 크게**(정보란 없이, 범례는 지도 안 작은 상자) 그리고, 한 창 보기와 **지도 저장**은 보고서 틀(A3, 정보란 포함) 그대로입니다(2026-11-11). 홈 화면에서 다른 작업을 골라도 이 선택은 유지됩니다('격자 + 3D 파사드' 작업만 켬).
 - **격자 위 벽면 값**(2026-11-10): 도구 줄 **벽면 값**(기본 켬)이면 격자 지도 위 건물 외벽을 따라 벽면 결과를 색 띠로 함께 그립니다. 띠 값은 그 벽면 구간의 층별 최댓값, 색은 격자 지도와 같은 등급, 위치는 보고서 그림 `HQ_facade_*` 와 같습니다(벽에서 바깥으로 1.1 m). 벽면 계산을 하지 않은 결과에서는 단추가 꺼집니다.
 - **단면(수직) 소음지도**: **단면 선 긋기** 를 누르고 격자 지도에서 시작점 A, 끝점 B 를 차례로 클릭하면 그 선을 따라 거리 × 표고 단면의 수음점을 계산해 보여 줍니다(전농사거리 180 m 단면, 계산점 약 3,200개에 약 25초). 지형과 건물 단면을 함께 그리고, 건물 안(지붕 아래)·지면 아래는 계산하지 않습니다. 계산은 격자와 같은 함수·반사 차수를 쓰며, 같은 위치의 지면 위 4 m 값이 격자 결과와 최대 0.007 dB 안에서 같음을 시험으로 확인했습니다. 결과는 결과 폴더의 `section_result.csv`, `section_info.json`, 규칙 이름 사본(`…_주야_section.csv`)에 저장되고, 결과 폴더를 다시 열면 파일 ▸ **마지막 단면 보기** 로 볼 수 있습니다. 음원(노면 위 0.5 m) 바로 위의 낮은 점은 값이 매우 크게 나올 수 있습니다(근거리).
 - **전파 방법 고르기**(2026-11-02): **계산 실행** 탭의 **전파 방법** 칸에서 `ISO 9613-2 전파`(RLS-19 음원 + ISO 9613-2) 또는 `RLS-19 전파`(3.5·3.6 원문)를 고릅니다. 처음에는 설정 파일의 `propagation_method` 값이고, 설정 파일 자체는 바꾸지 않습니다. 설정과 다른 방법을 고르면 결과 폴더가 `output_rls19`(또는 `output_iso9613_2`)로 바뀌어 두 방법의 결과가 섞이지 않고, 그 폴더에 결과가 있으면 지도에 바로 보입니다. 계산하면 `config_used.yaml` 사본과 `run_conditions.json`(`propagation_method`, `propagation_method_override`)에 쓴 방법이 기록됩니다. 결과 폴더를 열면 칸이 그 결과의 방법으로 맞춰집니다. 화면 없이: `sori_gui.py --run config.yaml --out 폴더 --method rls19`.
@@ -119,6 +119,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | basis | | 교통량 근거: `measured`(실측) 또는 `assumed`(가정). 빈칸이면 unspecified. `traffic_used.csv`의 `traffic_basis`로 기록 |
 | dir_split_fwd | | 디지타이즈 방향 교통량 비율(0~1). **UFID 행이고 dir_basis = measured 일 때만 적용**, 그 밖은 0.5(RLS-19 3.3.1 기본). 일방통행은 무시 |
 | dir_basis | | 방향별 비율의 근거: `measured` 또는 `assumed`. 적용 여부는 `traffic_used.csv`의 `dir_split_src` |
+| v_pkw_fwd, v_lkw_fwd, v_pkw_bwd, v_lkw_bwd | | 방향별 속도 km/h(2026-11-11). fwd = 디지타이즈 방향, bwd = 반대. **UFID 행만** 적용(도로명 행은 무시·경고). 빈칸 = 공통 `v_pkw`·`v_lkw`(화물은 공통 v_lkw, 그것도 없으면 그 방향 승용) → 입력이 없으면 결과 불변. RLS-19·RLS-90 음원 모두 각 방향 음원선에 그 방향 속도. 기록: `traffic_used.csv` 의 `v_*_fwd/bwd`·`dir_speed_src`(same/ufid/name_key_ignored). SoundPLAN 처럼 방향마다 속도가 다를 때 |
 | p_day, p_night | | RLS-90 계산(`propagation_method: rls90`)만: 화물차 비율 % (허용 총중량 2.8 t 초과). 비우면 p1 + p2, 그것도 비우면 RLS-90 표 3 |
 
 교통량 파일에 없는 도로는 `fallback_dtv_by_lanes`(차로수별 가정값)를 쓰고, `output/traffic_used.csv`의 `traffic_src=fallback`으로 표시됩니다.
@@ -157,7 +158,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 5. 주요 설정 (config.yaml)
 
-**"혼합 방법" 표기**: 기본 `propagation_method: iso9613_2` 는 음원은 RLS-19, 전파는 ISO 9613-2 로 계산합니다. 이 결합은 RLS-19 와 ISO 9613-2 어느 쪽도 규정하지 않은 프로젝트 구성 방법이라, 지도 정보란 '구성'과 `run_info.json` 의 `method_label` 에 "RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 프로젝트 구성 방법"으로 적습니다(국내 「소음지도의 작성방법」 별표 2 제8호는 전달감쇠 영향인자에 KS I ISO 9613-1·-2 적용을 허용하나, 예측식 자체의 결합을 정한 것은 아님 — 해석). RLS-19 원문 그대로의 계산이 필요하면 `rls19` 를 씁니다. 두 방법의 결과 차이와 원인은 TECHNICAL_NOTES 4b절.
+**"혼합 방법" 표기**: 기본 `propagation_method: iso9613_2` 는 음원은 RLS-19, 전파는 ISO 9613-2 로 계산합니다. 이 결합은 RLS-19 와 ISO 9613-2 어느 쪽도 규정하지 않은 프로젝트 구성 방법이라, 지도 정보란 '구성'과 `run_info.json` 의 `method_label` 에 "RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 프로젝트 구성 방법"으로 적습니다(국내 「소음지도의 작성방법」 별표 2 제8호는 전달감쇠 영향인자에 KS I ISO 9613-1·-2 적용을 허용하나, 예측식 자체의 결합을 정한 것은 아님 — 해석). RLS-19 전파와 같은 값은 음원에서 가까운 곳뿐이고, 포장 지면에서 차폐 없이 먼 곳은 RLS-19 보다 높게 나옵니다(평지 100 m 에서 약 +4 ~ +6 dB, TECHNICAL_NOTES 2절). RLS-19 원문 그대로의 계산이 필요하면 `rls19` 와 반사 2차를 씁니다(기본 3차는 국내 고시 기준이며 RLS-19 3.6 을 넘고, 다중반사 가산값 D_refl 과 겹침 — TECHNICAL_NOTES 4a절). 표준 원문과 다른 설정은 계산 기록과 `run_info.json` 의 `standard_deviations` 에 나옵니다. 두 방법의 결과 차이와 원인은 TECHNICAL_NOTES 4b절.
 
 | 항목 | 기본값 | 의미 |
 |---|---|---|
@@ -175,6 +176,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `model.minor_roads` | exclude | 골목길(차로수 < `main_min_lanes` = 수치지도 1차로, 폭 0.5–14 m) 음원. `exclude` = 교통량 파일에 없는 골목길은 음원에서 뺌(교통량 파일에 UFID·도로명으로 넣은 골목길은 계산), `include` = 차로수 가정 교통량(DTV 1,000)으로 모두 계산(2026-11-07 이전 동작). 뺀 도로는 `traffic_used.csv` 의 `traffic_src = excluded_minor`, 도로선은 교차로 판정·차도 면 보정에 그대로 씀 |
 | `model.source_ground` | dtm_at_source | 음원 높이(지면 + 0.5 m)의 지면: `dtm_at_source` = 음원점 위치 DTM, `road_profile` = 도로중심선 종단 고도(경사 산정과 같은 평활 DTM). road_profile 은 노면이 주변 DTM 보다 낮은 곳에서 음원 옆 지형이 차폐로 잡힐 수 있음(TECHNICAL_NOTES) |
 | `model.odd_lane_rule` | ceil | 확인값이 없는 홀수 차로 양방향 도로의 방향별 차로 수. `ceil` = 양쪽 ⌈n/2⌉(5 → 3+3), `major_fwd` = 디지타이즈 방향 ⌈n/2⌉·반대 ⌊n/2⌋(5 → 3+2) |
+| `model.source_lines` | direction | 음원선 배치(2026-11-11). `direction` = 주행방향마다 1개선(RLS-19 Bild 6 / RLS-90 Bild 10). `lane` = **차로마다 1개선**(차로 중앙, 그 방향 M 을 차로 수로 똑같이 나눔) — 전체 차로를 도로중심선 대칭으로 펼침(3+2 처럼 비대칭이면 상·하행 경계가 중심선에서 반 차로 비켜남). 원문과 다른 프로젝트 선택으로 SoundPLAN 차로별 음원선 비교용. 기록: `source_lines.csv` 의 `source_lines`·`lines_used`(오프셋:방향:M 비율), `build_info.json` |
 | `model.lane_width` | auto | 음원선 위치 계산용 차로폭. `auto` = 도로폭/차로수를 `lane_width_clip`(2.75~3.5 m)로 제한, 도로폭 없으면 3.25 m. 숫자 = 고정값(m) |
 | `receivers.grid.heights` | [4.0] | 3D 격자 높이 목록 |
 | `propagation.max_dist_main/minor` | 300 / 150 m | 음원 탐색 거리 |
@@ -197,14 +199,14 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `path_terms.csv` | (설정 `propagation.terms_csv: true`) 점 수음점의 직접음·1차 반사 경로별 감쇠항. rls19: D_div·D_atm·D_gr·D_z·D_RV·D_A, rls90: D_s·D_BM·D_z·D_E·D_A·K, iso9613_2: A_div·A_atm·A_gr·D_Omega·D_z·A_bar·refl_dB·A_net, 경로별 L_day. 같은 점·차수의 L_day 에너지 합 = `LrT_direct`/`LrT_refl1` |
 | `segment_check.csv` | 구간 길이 진단: RLS-19 3.2 주석(경험칙) l ≤ s/2 를 어기는 음원이 있는 수음점만(위반 음원 수, 최소 s/l). 결과값에는 영향 없음. 요약은 `run_info.json` 의 `segment_check` |
 | `traffic_used.csv`, `junctions_used.csv` | 실제 사용된 교통량·교차로 판정 (보고서 근거자료) |
-| `build_info.json`, `run_info.json` | 모델 규모, 가정값 사용 수, 계산 조건 기록 |
+| `build_info.json`, `run_info.json` | 모델 규모, 가정값 사용 수, 계산 조건 기록. `run_info.json` 에는 표준 원문과 다른 설정(`standard_deviations`), 재현용 실행 환경(`environment`: git 커밋·소스 해시·Python·패키지 판)과 기본값까지 합친 설정(`config_resolved`)도 들어감(2026-11-11) |
 
 ## 7. 계산 시간
 단일 코어 기준 파사드 수음점 1개당 수 ms(가상자료) ~ 수십 ms(도심). 수만 개 수음점은 수 분~수십 분이 걸리며 numba가 CPU 코어를 모두 사용합니다. 빠른 시험은 `grid.step`을 10 m로, `max_order_facade`를 1로 낮추세요.
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 317개 시험(2026-11-10 v0.2: 316 통과, RLS-19 공식 시험과제 TEST-20 포함, 1개는 Krad 미지원 xfail): 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
+python -m pytest -q tests        # 330개 시험(2026-11-11 v0.2: 329 통과, RLS-19 공식 시험과제 TEST-20 포함, 1개는 Krad 미지원 xfail): 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
 `tests/test_reference.py` 는 저장소에 들어 있는 기준 사례(가상 교차로, `tests/reference/synthetic/`)를 계산해 기준값과 허용 오차(기본 0.01 dB, 프로젝트 임의 설정, `--sori-tol` 로 변경)로 비교하고, `tests/test_crs.py` 는 좌표 변환(EPSG) 결과를 확인합니다. 기준값을 만든 커밋·환경은 `tests/reference/synthetic/expected/meta.json`, 다시 만들기·결과 폴더 비교는 `python tools/reference.py make|compare`.

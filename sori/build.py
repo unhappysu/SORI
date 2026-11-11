@@ -375,6 +375,22 @@ def source_offsets(nd_fwd, nd_bwd, wl, oneway, single=False, oneway_dir=1, edge=
     return [(-off_f, True), (+off_b, False)]       # 우측선 = 디지타이즈 방향, 좌측선 = 반대방향
 
 
+def lane_source_offsets(nd_fwd, nd_bwd, wl, oneway, p_fwd=0.5, oneway_dir=1):
+    """model.source_lines: lane — 차로마다 음원선(차로 중앙, 높이는 같은 0.5 m). 반환: [(횡오프셋, along, M 비율)].
+    도로중심선 = 차도 전체의 가운데로 보고(수치지도 도로중심선) 전체 nd + nb 차로를 중심선 기준 대칭으로 펼침:
+    오른쪽(−)부터 디지타이즈 방향 nd 개, 그 왼쪽(+)에 반대 방향 nb 개. 그래서 3 + 2 처럼 비대칭이면 방향 경계가
+    중심선에서 반 차로 비켜남(방향별 1개선의 '중심선 = 방향 경계' 가정과 다름 — 대칭이면 같음).
+    방향 몫(p, 1−p)을 그 방향 차로 수로 똑같이 나눔. 일방통행: 진행방향 차로만, 전량을 나눔.
+    RLS-19 Bild 6 / RLS-90 Bild 10 의 방향별 1개선과 다른 프로젝트 선택(SoundPLAN '차로별 음원선' 비교용)"""
+    n = nd_fwd + nd_bwd
+    pos = [-(n / 2 - 0.5 - j) * wl for j in range(n)]   # j = 0 이 가장 오른쪽(디지타이즈 방향 기준)
+    if oneway:
+        along = oneway_dir != -1
+        return [(o, along, 1.0 / n) for o in pos]
+    return ([(o, True, p_fwd / nd_fwd) for o in pos[:nd_fwd]]
+            + [(o, False, (1.0 - p_fwd) / nd_bwd) for o in pos[nd_fwd:]])
+
+
 def detect_canyon(cfg, x, y, tx, ty, ftree, fgeoms, F, zroad):
     """식 (9) 입력 (hBeb, w): 양측 반사면이 도로축과 5° 이내 평행, 모든 탐침선에서 연속(폐쇄 파사드 근사)"""
     cc = cfg["model"]["canyon"]
@@ -423,6 +439,7 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
     name_max = road.groupby("axis")["lanes"].max().to_dict()
     half = float(mc.get("grade_base", 30.0)) / 2.0
     drop_minor = mc.get("minor_roads", "exclude") == "exclude"
+    per_lane = mc.get("source_lines", "direction") == "lane"
     for _, rd in road.iterrows():
         main = rd["lanes"] >= mc["main_min_lanes"]
         tr = I.traffic_for_road(cfg, rd, by_ufid, by_name, main, name_max.get(rd["axis"], 99))
@@ -439,17 +456,25 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
         odir = -1 if (rd["oneway"] and _finite(rd.get("oneway_dir")) and int(rd.get("oneway_dir")) == -1) else 1
         offs = source_offsets(nd, nb, wl, rd["oneway"], single=(rule == "single_centre"), oneway_dir=odir,
                               edge=_d_edge_rls90 if is90 else None)
+        p_fwd = float(tr["dir_split_fwd"])          # 방향별 배분(기본 0.5, 방향별 실측일 때만 다름)
+        if per_lane and rule != "single_centre":    # 차로마다 음원선(model.source_lines: lane)
+            plan = lane_source_offsets(nd, nb, wl, rd["oneway"], p_fwd, odir)
+        else:
+            # 음원선별 M 비율: 2개선 = 디지타이즈 방향 p, 반대 1−p / 1개선 = 1(양방향 중앙선은 아래에서 p, 1−p)
+            fracs = {True: p_fwd, False: 1.0 - p_fwd} if len(offs) > 1 else None
+            plan = [(off, along, fracs[along] if fracs else 1.0) for off, along in offs]
         lines.append({"fid": rd["fid"], "ufid": rd["ufid"], "name": rd["rname"], "lanes": rd["lanes"],
                       "width": rd["width"], "oneway": rd["oneway"], "lanes_fwd_used": nd, "lanes_bwd_used": nb,
                       "lane_rule": rule, "lane_width": wl, "offset_fwd": offs[0][0],
                       "offset_bwd": offs[1][0] if len(offs) > 1 else np.nan,
-                      "oneway_dir_used": odir if rd["oneway"] else np.nan})
-        p_fwd = float(tr["dir_split_fwd"])          # 방향별 배분(기본 0.5, 방향별 실측일 때만 다름)
-        # 음원선별 M 비율: 2개선 = 디지타이즈 방향 p, 반대 1−p / 1개선 = 1(양방향 중앙선은 아래에서 p, 1−p)
-        fracs = {True: p_fwd, False: 1.0 - p_fwd} if len(offs) > 1 else None
+                      "oneway_dir_used": odir if rd["oneway"] else np.nan,
+                      "source_lines": "lane" if (per_lane and rule != "single_centre") else "direction",
+                      # 실제로 쓴 음원선 전부: 오프셋:방향(f/b/c):M 비율 — 차로별이면 여러 개
+                      "lines_used": ";".join(f"{o:.3f}:{'c' if a is None else ('f' if a else 'b')}:{fr:.4f}"
+                                             for o, a, fr in plan)})
         seg = mc["segment_main"] if main else mc["segment_minor"]
         my_j = sorted(reach.get(rd["fid"], set()))
-        for off, along in offs:
+        for off, along, frac in plan:
             try:
                 gl = rd.geometry if off == 0 else rd.geometry.offset_curve(off)
             except Exception:
@@ -489,7 +514,7 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
                         xk, kt = 999.0, "other"
                     pc = cl.interpolate(sc); clx.append(pc.x); cly.append(pc.y)
                     rows.append(dict(x=p.x, y=p.y, l=L / k, tx=tx, ty=ty, g=g, along=along, main=main,
-                                     frac=(fracs[along] if fracs else 1.0), fid=rd["fid"], x_knot=xk, kt=kt,
+                                     frac=frac, fid=rd["fid"], x_knot=xk, kt=kt,
                                      lanes=rd["lanes"],
                                      name=rd["rname"]))
     S = pd.DataFrame(rows)
@@ -525,18 +550,28 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
         for r in S.itertuples():
             t = T.loc[r.fid]
             M = t[f"M_{per}"] * r.frac
-            args = (t[f"p1_{per}"], t[f"p2_{per}"], t["v_pkw"], t["v_lkw"], t["surface"])
+            p12 = (t[f"p1_{per}"], t[f"p2_{per}"])
             if r.along is None:                       # 양방향 1개선: 디지타이즈 방향 p(+경사), 반대 1−p(−경사)
                 pf = float(t["dir_split_fwd"])        # 기본 0.5 → M·0.5 = M/2 (비트 단위 동일)
-                a = rls19.LW_prime(M * pf, *args, r.g, r.D_K, r.D_refl)
-                b = rls19.LW_prime(M * (1.0 - pf), *args, -r.g, r.D_K, r.D_refl)
+                a = rls19.LW_prime(M * pf, *p12, *_dir_speeds(t, True), t["surface"], r.g, r.D_K, r.D_refl)
+                b = rls19.LW_prime(M * (1.0 - pf), *p12, *_dir_speeds(t, False), t["surface"], -r.g, r.D_K, r.D_refl)
                 lw.append(10 * math.log10(10 ** (0.1 * a) + 10 ** (0.1 * b)))
             else:
                 g = r.g if r.along else -r.g          # 반대방향 차선: 경사 부호 반전
-                lw.append(rls19.LW_prime(M, *args, g, r.D_K, r.D_refl))
+                lw.append(rls19.LW_prime(M, *p12, *_dir_speeds(t, r.along), t["surface"], g, r.D_K, r.D_refl))
         S[f"LWp_{per}"] = lw
         S[f"LW_{per}"] = S[f"LWp_{per}"] + 10 * np.log10(S.l)        # 점음원 LW = LW' + 10 lg l
     return S, T.reset_index(), pd.DataFrame(lines)
+
+
+def _dir_speeds(t, along):
+    """음원선 방향의 (v_Pkw, v_Lkw). along True = 디지타이즈 방향(fwd), False = 반대(bwd).
+    방향별 속도가 없는 이전 traffic_used(열 없음·빈칸)는 도로 공통 v_pkw·v_lkw"""
+    d = "fwd" if along else "bwd"
+    vp, vl = t.get(f"v_pkw_{d}"), t.get(f"v_lkw_{d}")
+    vp = t["v_pkw"] if vp is None or vp != vp else vp
+    vl = t["v_lkw"] if vl is None or vl != vl else vl
+    return vp, vl
 
 
 def _p90(t, per):
@@ -558,14 +593,13 @@ def _rls90_emission(S, T, Ln):
             t = T.loc[r.fid]
             M = t[f"M_{per}"] * r.frac
             p = _p90(t, per)
-            args = (p, t["v_pkw"], t["v_lkw"], t["surface"])
             if r.along is None:                       # 1차로 양방향 중앙선: 전량(디지타이즈 p, 반대 1−p 합)
                 pf = float(t["dir_split_fwd"])
-                a = rls90.LW_prime(M * pf, *args, r.g, r.D_refl)
-                b = rls90.LW_prime(M * (1.0 - pf), *args, -r.g, r.D_refl)
+                a = rls90.LW_prime(M * pf, p, *_dir_speeds(t, True), t["surface"], r.g, r.D_refl)
+                b = rls90.LW_prime(M * (1.0 - pf), p, *_dir_speeds(t, False), t["surface"], -r.g, r.D_refl)
                 v = 10 * math.log10(10 ** (0.1 * a) + 10 ** (0.1 * b))
-            else:
-                v = rls90.LW_prime(M, *args, r.g if r.along else -r.g, r.D_refl)   # D_Stg 는 |g| 라 부호 무관
+            else:                                     # D_Stg 는 |g| 라 부호 무관
+                v = rls90.LW_prime(M, p, *_dir_speeds(t, r.along), t["surface"], r.g if r.along else -r.g, r.D_refl)
             lw.append(v)
             lme.append(v - r.D_refl - rls90.LW_OFFSET)
         S[f"Lm_E_{per}"] = lme                        # 기록용: 음원선 L_m,E (식 6, D_refl 제외)
@@ -685,6 +719,7 @@ def main(cfg):
             "roads_narrow_same_name": int((T.traffic_src == "fallback_narrow").sum()),
             "canyon_segments": int((S.D_refl > 0).sum()),
             "minor_roads": cfg["model"].get("minor_roads", "exclude"), "minor_roads_excluded": n_minor_x,
+            "source_lines": cfg["model"].get("source_lines", "direction"),
             "emission": EMISSION_LABEL["rls90" if method_name(cfg) == "rls90" else "rls19"]}
     nstd = int((T.std_filled != "").sum())
     if nstd:                                       # 교통량 빈칸을 독일 기준표로 채운 도로가 있을 때만 기록

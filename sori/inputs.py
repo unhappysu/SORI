@@ -129,7 +129,9 @@ def sample_dem(path, xs, ys, crs):
 # ------------------------------------------------------------------ 교통량
 TRAFFIC_COLS = ["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "p2_day",
                 "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note", "basis",
-                "dir_split_fwd", "dir_basis", "p_day", "p_night"]
+                "dir_split_fwd", "dir_basis", "p_day", "p_night",
+                "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd"]
+DIR_SPEED_COLS = ("v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd")   # 방향별 속도(fwd = 디지타이즈 방향), UFID 행만
 TRAFFIC_BASIS = ("measured", "assumed")     # basis·dir_basis 열: 실측 / 가정. 빈칸 → unspecified
 _dir_warned = set()
 
@@ -341,6 +343,27 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
     vdef = tcfg["default_speed_main"] if main else tcfg["default_speed_minor"]
     out["v_pkw"] = _f(rec, "v_pkw") or vdef
     out["v_lkw"] = _f(rec, "v_lkw") or out["v_pkw"]
+    # 방향별 속도(fwd = 디지타이즈 방향, bwd = 반대). 빈칸 = 위 v_pkw·v_lkw(그래서 입력이 없으면 결과 불변).
+    # dir_split_fwd 와 같은 이유로 UFID 행만 — 같은 도로명의 객체들은 디지타이즈 방향이 같다는 보장이 없음
+    dv = {c: _f(rec, c) for c in DIR_SPEED_COLS}
+    for c, v in dv.items():
+        if v is not None and v <= 0:
+            raise RuntimeError(f"교통량 '{rec['key']}': {c}={v} 는 0 보다 커야 함(km/h)")
+    vsrc = "same"
+    if any(v is not None for v in dv.values()):
+        if via_ufid:
+            vsrc = "ufid"
+        else:
+            vsrc = "name_key_ignored"
+            _dir_warn(rec["key"], "도로명 지정 행의 방향별 속도(v_*_fwd·v_*_bwd)는 무시(UFID 로 지정할 것)")
+            dv = dict.fromkeys(dv)
+    lkw_in = _f(rec, "v_lkw")
+    for d in ("fwd", "bwd"):
+        vp = dv[f"v_pkw_{d}"] or out["v_pkw"]
+        out[f"v_pkw_{d}"] = vp
+        # 화물차: 그 방향 입력 → 행의 v_lkw 입력 → 그 방향 승용 속도(행 전체의 v_lkw 빈칸 규칙과 같음)
+        out[f"v_lkw_{d}"] = dv[f"v_lkw_{d}"] or lkw_in or vp
+    out["dir_speed_src"] = vsrc
     sf = (rec.get("surface") if rec else "") or cfg["input"]["surface_map"].get(row["surface_attr"], "ref")
     if sf not in rls19.SURFACES:
         raise RuntimeError(f"surface '{sf}' 는 {rls19.SURFACES} 중 하나여야 함")

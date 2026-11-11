@@ -1,0 +1,63 @@
+20:15:57 INFO 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
+20:15:59 INFO 레이어 building : 파일 9개, 객체 2427개
+20:16:00 INFO 레이어 road     : 파일 9개, 객체 1324개
+20:16:00 INFO 레이어 contour  : 파일 9개, 객체 288개
+20:16:01 INFO 레이어 spot     : 파일 9개, 객체 15개
+20:16:01 INFO 래스터 920 x 840 (1.0 m)
+20:16:01 INFO 차도 면 지형 보정(flatten): {'mode': 'flatten', 'smooth_m': 20.0, 'cells': 123033, 'dz_mean': -0.021, 'dz_abs_p90': 0.344, 'dz_min': -4.731, 'dz_max': 1.951, 'cells_lowered_over_1m': 1635, 'cells_raised_over_1m': 544}
+20:16:02 INFO CSV 읽기: traffic.csv (인코딩 utf-8)
+20:16:02 INFO 교통량 파일: 도로명 4건, UFID 19건
+20:16:03 INFO Created 1,635 records
+20:16:03 INFO Created 1,324 records
+20:16:03 INFO 모델 구축 완료: {'terrain': {'contour_pts': 18438, 'spot_pts': 15, 'dem_pts': 0, 'mode': 'contours', 'smooth_m': 5.0}, 'buildings': 1635, 'roads': 1324, 'sources': 2649, 'sources_main': 2649, 'facade_edges': 6854, 'junctions': 231, 'signal_junction_points': 2, 'grid_receivers_per_height': 4308, 'facade_receivers': 0, 'roads_with_fallback_traffic': 43, 'roads_narrow_same_name': 0, 'canyon_segments': 232, 'minor_roads': 'exclude', 'minor_roads_excluded': 1168, 'emission': 'RLS-19 (FGSV 052, 2019, Korrektur 2020)', 'traffic_defaults': {'standard': 'RLS-19 표 2', 'roads': 103, 'dtv_by_lanes_roads': 43, 'note': '독일 기준(도로유형별 표준값)으로, 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음'}, 'road_surface': {'mode': 'flatten', 'smooth_m': 20.0, 'cells': 123033, 'dz_mean': -0.021, 'dz_abs_p90': 0.344, 'dz_min': -4.731, 'dz_max': 1.951, 'cells_lowered_over_1m': 1635, 'cells_raised_over_1m': 544}}
+20:16:03 WARNING 교통량 가정값(fallback) 사용 도로객체 43개 — output/traffic_used.csv 의 traffic_src 확인
+20:16:03 INFO 골목길(차로수 < 2) 중 교통량 자료가 없는 1168개 객체는 음원에서 뺌(model.minor_roads: exclude)
+20:16:03 WARNING 교통량 자료가 없는 항목(M·p)을 표준값(RLS-19 표 2)으로 채운 도로객체 103개 — 독일 기준(도로유형별 표준값)으로, 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음. traffic_used.csv 의 std_filled 열 참고
+20:16:03 INFO CSV 읽기: points_sp.csv (인코딩 utf-8)
+20:16:04 INFO 점 수음점 256/554  1s  (남은 시간 약 1s)
+20:16:04 INFO 점 수음점 512/554  1s  (남은 시간 약 0s)
+20:16:04 INFO 점 수음점 554/554  1s  (남은 시간 약 0s)
+20:16:56 INFO 감쇠항별 중간값: path_terms.csv (1721052 경로, 직접음·1차 반사)
+20:16:56 WARNING 점 수음점 149개 계산 안 함: G002(건물 안), G006(건물 안), G022(건물 안), G023(건물 안), G035(건물 안), G036(건물 안), G052(건물 안), G053(건물 안), G065(건물 안), G066(건물 안), G082(건물 안), G094(건물 안), G095(건물 안), G099(건물 안), G100(건물 안), G101(건물 안), G102(건물 안), G112(건물 안), G113(건물 안), G126(건물 안), G131(건물 안), G132(건물 안), G133(건물 안), G134(건물 안), G135(건물 안), G136(건물 안), G157(건물 안), G158(건물 안), G163(건물 안), G164(건물 안), G185(건물 안), G186(건물 안), G187(건물 안), G192(건물 안), G193(건물 안), G194(건물 안), G217(건물 안), G222(건물 안), G223(건물 안), G224(건물 안), G254(건물 안), G255(건물 안), G256(건물 안), G257(건물 안), G258(건물 안), G261(건물 안), G262(건물 안), G263(건물 안), G264(건물 안), G265(건물 안), G266(건물 안), G270(건물 안), G271(건물 안), G295(건물 안), G296(건물 안), G297(건물 안), G298(건물 안), G299(건물 안), G300(건물 안), G301(건물 안), G304(건물 안), G332(건물 안), G333(건물 안), G334(건물 안), G337(건물 안), G370(건물 안), G371(건물 안), G372(건물 안), G373(건물 안), G488(건물 안), G489(건물 안), G490(건물 안), G491(건물 안), G492(건물 안), G493(건물 안), G494(건물 안), G495(건물 안), G496(건물 안), G497(건물 안), G521(건물 안), G522(건물 안), G523(건물 안), G524(건물 안), G525(건물 안), G526(건물 안), G527(건물 안), G528(건물 안), G529(건물 안), G531(건물 안), G535(건물 안), G536(건물 안), G549(건물 안), G550(건물 안), G551(건물 안), G552(건물 안), G560(건물 안), G561(건물 안), G564(건물 안), G565(건물 안), G566(건물 안), G569(건물 안), G570(건물 안), G573(건물 안), G582(건물 안), G583(건물 안), G596(건물 안), G598(건물 안), G599(건물 안), G601(건물 안), G603(건물 안), G607(건물 안), G608(건물 안), G615(건물 안), G617(건물 안), G618(건물 안), G619(건물 안), G620(건물 안), G622(건물 안), G623(건물 안), G624(건물 안), G625(건물 안), G632(건물 안), G633(건물 안), G637(건물 안), G639(건물 안), G640(건물 안), G643(건물 안), G644(건물 안), G648(건물 안), G649(건물 안), G657(건물 안), G658(건물 안), G661(건물 안), G662(건물 안), G663(건물 안), G667(건물 안), G671(건물 안), G672(건물 안), G673(건물 안), G676(건물 안), G679(건물 안), G681(건물 안), G682(건물 안), G686(건물 안), G687(건물 안), G690(건물 안), G697(건물 안), G699(건물 안), G700(건물 안)
+20:16:56 INFO 계산 완료: {'points': {'LrT': [41.46542292969821, 80.29063260095212], 'LrN': [37.58402323553743, 76.47147113852719]}}
+20:16:56 INFO 그림 글꼴: Noto Sans KR
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/sori/__main__.py", line 5, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/sori/cli.py", line 64, in main
+    for f in maps_hq.main(cfg):
+             ~~~~~~~~~~~~^^^^^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/sori/maps_hq.py", line 487, in main
+    files += grid_map(cfg, key, hs[0])
+             ~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/sori/maps_hq.py", line 326, in grid_map
+    draw_grid(fig, C, cfg, key, h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/sori/maps_hq.py", line 333, in draw_grid
+    gx, gy, step, Am, A = grid_array(C, key, h)
+                          ~~~~~~~~~~^^^^^^^^^^^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/sori/maps_hq.py", line 304, in grid_array
+    G = pd.read_csv(os.path.join(C.out, "grid_result.csv"))
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/.venv/lib/python3.14/site-packages/pandas/io/parsers/readers.py", line 1866, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/.venv/lib/python3.14/site-packages/pandas/io/parsers/readers.py", line 423, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/.venv/lib/python3.14/site-packages/pandas/io/parsers/readers.py", line 2721, in __init__
+    self._engine = self._make_engine(f, self.engine)
+                   ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/.venv/lib/python3.14/site-packages/pandas/io/parsers/readers.py", line 2988, in _make_engine
+    self.handles = get_handle(
+                   ~~~~~~~~~~^
+        f,
+        ^^
+    ...<6 lines>...
+        storage_options=self.options.get("storage_options", None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/.venv/lib/python3.14/site-packages/pandas/io/common.py", line 948, in get_handle
+    handle = open(handle, ioargs.mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/sp_compare_1109/rls19_v30/output/grid_result.csv'

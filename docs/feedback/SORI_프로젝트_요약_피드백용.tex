@@ -1,0 +1,192 @@
+%% SORI 프로젝트·앱 현황 요약 — 외부(GPT) 피드백 요청용, 단독 컴파일 문서(xelatex 2회)
+%% 기준: SORI v0.2, 브랜치 packaging/app, 2026-11-11. 수치는 저장소 기록(README, TECHNICAL_NOTES.md,
+%%       docs/manual/*, field_measurement/2026-10-22, validation/soundplan/*)에서 옮김
+%% 본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.
+\documentclass[10pt,a4paper]{article}
+\usepackage[a4paper,top=22mm,bottom=22mm,left=20mm,right=20mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xetexko}
+\IfFontExistsTF{Noto Serif CJK KR}{%
+  \setmainfont{Noto Serif CJK KR}\setsansfont{Noto Sans CJK KR}%
+  \setmainhangulfont{Noto Serif CJK KR}\setsanshangulfont{Noto Sans CJK KR}%
+  \setmonohangulfont{Noto Sans CJK KR}[Scale=0.85]}{%
+  \setmainfont{Times New Roman}\setsansfont{Apple SD Gothic Neo}%
+  \setmainhangulfont{AppleMyungjo}[AutoFakeBold=2.5]\setsanshangulfont{Apple SD Gothic Neo}%
+  \setmonohangulfont{Apple SD Gothic Neo}[Scale=0.85]}
+\IfFontExistsTF{DejaVu Sans Mono}{\setmonofont{DejaVu Sans Mono}[Scale=0.85]}{%
+  \setmonofont{DejaVuSansMono.ttf}[Scale=0.85,BoldFont=DejaVuSansMono-Bold.ttf]}
+\usepackage{amsmath}
+\usepackage{booktabs,tabularx,longtable,array}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\linespread{1.2}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em}
+\setlist{itemsep=0.15em,topsep=0.3em}
+\newcommand{\f}[1]{\texttt{#1}}
+\renewcommand{\contentsname}{목차}
+\renewcommand{\tablename}{표}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\title{\textbf{SORI — 국내 수치지도 기반 도로교통소음 예측·소음지도 앱}\\[2mm]
+\large 프로젝트·소프트웨어 현황 요약 (피드백 요청용)}
+\author{전현수 (서울시립대학교 환경공학부, 2022890065) \\ 소음진동설계 (2026학년도 2학기)}
+\date{SORI v0.2 기준, 2026년 11월 11일}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+\fbox{\begin{minipage}{0.92\textwidth}\small
+\textbf{AI 활용 표기.} SORI 소프트웨어와 이 문서는 Claude(Anthropic의 AI)를 활용하여 제작하였다. 사람(작성자)이 무엇을 만들지와 가정값을 정하고 승인했으며, 계산 결과의 검토·검증 책임은 작성자에게 있다.\\[1mm]
+\textbf{이 문서의 목적.} 지금까지의 설계·구현·검증 상태를 한곳에 정리해 외부 검토(피드백)를 받기 위한 것이다. ``확인함''과 ``가정·미확인''을 구분해 적었다.
+\end{minipage}}
+\end{center}
+
+\tableofcontents
+
+%% =====================================================================
+\section{배경과 목표}
+\subsection{배경}
+\begin{itemize}
+\item 수업(소음진동설계)에서 상용 소음 예측 프로그램 SoundPLAN 을 실습했다. 상용 프로그램은 라이선스·설치 PC 제약이 있고, 국내 수치지도의 속성(층수·차로 수)을 건물 높이·음원선으로 바꾸는 입력 준비가 번거로우며, 소스가 비공개라 표준 해석 방식(구간 나누기, 평균 높이 등)을 확인하기 어렵다.
+\item 학회: 한국소음진동공학회 추계학술대회(2026-11-25~27) 포스터 발표 예정(조 리더 조형찬). 주제는 ``Python 을 활용한 AI 기반 도로교통소음 예측 프로그램 제작''이며, SoundPLAN 결과와의 비교와 현장 노트북 시연을 계획한다.
+\end{itemize}
+
+\subsection{목표}
+국내 수치지도(국토지리정보원 수치지형도 v2.0)와 교통량만 넣으면 개인 노트북에서 계산 근거(표준 식·경로별 감쇠항)까지 보이는 도로교통소음 지도가 나오는 가벼운 도구. SoundPLAN 을 대체하는 것이 아니라 수업·초기 검토용 보완 도구를 지향한다. 1차 사용자는 학생·연구자.
+
+%% =====================================================================
+\section{적용 기준과 계산 방법}
+\begin{table}[h]\centering\small
+\caption{적용 기준}
+\begin{tabularx}{\textwidth}{P{26mm}L}
+\toprule
+구분 & 내용 \\ \midrule
+음원(방출) & RLS-19(FGSV 052, Ausgabe 2019, Korrektur 2020) 식 (4)–(9), 표 2–5. \f{rls90} 선택 시 RLS-90(1990) 식 (6)–(9), 표 4 \\
+전파(감쇠) & 설정 \f{propagation\_method}: \f{iso9613\_2}(기본, ISO 9613-2:1996 + ISO 9613-1 대기흡수) / \f{rls19}(RLS-19 3.5·3.6) / \f{rls90}(RLS-90 Teilstück-Verfahren, 음원도 RLS-90) \\
+반사 & 허상음원, 기본 3차(국내 「소음지도의 작성방법」 별표 2 제8호 ``3차 이상 원칙''). RLS-19 3.6 은 1·2차, RLS-90 4.6 은 1차만 규정 — 3차 결과는 그 표준 자체의 계산 결과가 아님 \\
+수음점 & 격자(여러 높이), 건물 벽면(층별, 외벽 앞 5 cm), 점 수음점, 화면에서 그은 단면 \\
+지표 & 주간 LrT(06–22시), 야간 LrN(22–06시), A 가중 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{음원(RLS-19)}
+음원선 1 m 당 음향파워레벨(식 4):
+\begin{equation*}
+L_W' = 10\lg M + 10\lg\!\left[\tfrac{100-p_1-p_2}{100}\tfrac{10^{0.1L_{W,\mathrm{Pkw}}}}{v_\mathrm{Pkw}} + \tfrac{p_1}{100}\tfrac{10^{0.1L_{W,\mathrm{Lkw1}}}}{v_\mathrm{Lkw}} + \tfrac{p_2}{100}\tfrac{10^{0.1L_{W,\mathrm{Lkw2}}}}{v_\mathrm{Lkw}}\right] - 30
+\end{equation*}
+차종별 $L_W = L_{W0}(v) + D_{SD}(\text{노면}) + D_{LN}(\text{경사}) + D_K(\text{교차로}) + D_\mathrm{refl}(\text{다중반사})$. 음원선은 주행방향마다 1개(Bild 6, 높이 0.5 m), 구간 길이 간선 3 m·이면도로 5 m.
+
+\subsection{RLS-19 음원 + ISO 9613-2 전파 결합(기본값)}
+RLS-19 의 $L_W$ 는 반공간(2π) 기준이다. ISO 일반법에서 단단한 지면(G = 0)·근거리이면 $A_\mathrm{gr} = -3$ dB 라 $L = L_W - 10\lg(2\pi d^2)$ 가 되어 \textbf{가까운 거리에서는} 정의가 맞는다. 그래서 점음원 $L_W = L_W' + 10\lg l$ 을 ISO 식 (3)에 넣는다. 이 결합은 \textbf{어느 표준도 규정하지 않은 프로젝트 구성 방법}(RLS-19 source model + ISO 9613-2 propagation, project-defined hybrid)이며 지도·결과 파일에 그렇게 표기한다. \textbf{일치 범위(2026-11-11 검토)}: 먼 거리는 $A_\mathrm{gr} = -3 - 3q$ 이고 RLS-19 식 (14)의 지면·기상 감쇠(0–4.8 dB)가 없어 RLS-19 전파보다 높다 — 평지·차폐 없음에서 수음 1.5 m 는 50 m +4.0, 100 m +5.9 dB, 수음 4 m 는 50 m +2.9, 100 m +4.2, 200 m +5.9 dB. 차폐 경로는 ISO 식 (12)에서 $A_\mathrm{gr}$ 이 상쇄되어 회절이 작을 때 약 2.9 dB 낮다. 대역은 500 Hz 1개(RLS-19 가 A 가중 단일값만 주므로), 순풍 조건($C_\mathrm{met}$ 미적용).
+
+\subsection{그 밖의 결정(기본값)과 판정}
+\begin{longtable}{P{40mm}P{30mm}P{86mm}}
+\toprule 항목 & 기본값 & 내용·근거 \\ \midrule\endhead
+차도 면 지형 \f{model.road\_surface} & \f{flatten} & 등고선 DTM 은 노면을 몰라 차도 안 지형이 음원보다 높아져 차폐로 잡힘(사가정로 모델 간선 음원 10 \% 가 1 m 이상). 차도 칸을 도로중심선 종단 고도(20 m 이동평균)로 평탄화. \textbf{해석}. 격자 영향 5–95 \% −0.25 – +0.06 dB \\
+골목길 \f{model.minor\_roads} & \f{exclude} & 교통량 자료가 없는 수치지도 1차로 도로는 음원에서 뺌(사용자 결정). 교통량을 넣은 골목길은 계산 \\
+교통량 빈칸 & 독일 기준표 & 빈 $M$·$p$ 는 RLS-19 표 2 / RLS-90 표 3(독일 도로유형별 표준값). 국내 주·야 비율·화물차 비율과 다를 수 있어 결과 파일에 출처 기록 \\
+교통량 없는 도로 & 차로수별 가정 DTV & 1차로 1,000 … 6차로 40,000 대/일(프로젝트 가정값) \\
+홀수 차로 & $\lceil n/2 \rceil$ 양쪽 & 확인값(\f{roads\_override.csv})이 있으면 우선 \\
+방향별 속도(v0.2) & 공통 속도 & \f{v\_pkw\_fwd/bwd} 등, UFID 행만. SoundPLAN 비교 모델처럼 방향마다 속도가 다를 때 \\
+음원선 배치(v0.2) & \f{direction} & \f{lane} = 차로마다 1개선(원문과 다른 프로젝트 선택, SoundPLAN 비교용), 전체 차로를 도로중심선 대칭 배치 \\
+교차로 $D_K$ & 원문 식 (8) & 거리 $x$ 는 음원선 교차점 대신 도로중심선 교차점(근사). 신호교차로 자동 판정: 4차로 이상 도로축 2개 이상 \\
+격자·벽면 & 5 m, 4 m / 반경 230 m & 4 m 는 EU END 기준. 국내 고시 1.5 m 와 다름. 벽면 수음점은 외벽 앞 5 cm(RLS-19), 고시는 1.0 m·반사음 포함 \\
+다중반사 $D_\mathrm{refl}$ + 허상음원 & 둘 다 적용 & RLS-19 는 식 (9)와 1·2차 반사를 함께 씀(TEST-20 K2), RLS-90 4.6 은 1차 + $D_\mathrm{refl}$. 기본 3차는 $D_\mathrm{refl}$ 과 겹침(비교 554점에서 $D_\mathrm{refl}$ 영향 평균 +0.06·최대 +0.43 dB, 3차 − 2차 평균 +0.43·최대 +2.95 dB). 결과 파일에 기록, 기본값 변경은 결정 대기 \\
+\bottomrule
+\end{longtable}
+
+%% =====================================================================
+\section{소프트웨어 구조}
+\subsection{계산 흐름}
+\begin{enumerate}
+\item \textbf{build}: 수치지도(건물·도로·등고선·표고점) → 지형 DTM 1 m·DSM·건물 ID·지면계수 G 래스터 → 차도 면 평탄화 → 도로 위상·교차로 판정 → 골목길 제외 → 음원선 배치·구간 분할 → $L_W'$ → \f{sources.csv}; 파사드·격자·벽면 수음점.
+\item \textbf{run}: 수음점마다 numba 커널(\f{solver.compute})로 직접음 + 1·2·3차 허상음원 경로. 기하(수직 단면, 고무줄 껍질 차폐, $h_m$, $z$)는 공통, 감쇠식만 방법별(ISO / RLS-19 / RLS-90).
+\item \textbf{plots}: A3 보고서 지도(격자·기준 초과·벽면 띠·건물), 3D 파사드, 3D 웹 뷰어.
+\end{enumerate}
+코드 약 8,200 행(Python: \f{sori/} 패키지 + 화면). 의존: NumPy, numba, GeoPandas, Shapely, rasterio, pyproj, Matplotlib, PySide6.
+
+\subsection{데스크톱 앱(v0.2)}
+\begin{itemize}
+\item PyInstaller 로 macOS(arm64)·Windows(x64) 더블클릭 앱. GitHub Actions 에서 두 OS 빌드·자가 점검, 태그 시 Release 초안. Windows 화면(GUI)은 실제 PC 에서 미확인.
+\item 화면: 홈(작업 7개) → 입력값 설정(설정값·교통량 표·차로 수 탭, 저장 전 검사) → 작업 화면(보고서 수준 격자 지도, 격자 위 벽면 값 띠, 건물 클릭 → 층별 3D 파사드 나란히, 단면 선 긋기, 경로별 감쇠항 표, 지도 저장).
+\item 자가 점검: 좌표 변환과 내장 기준 사례 계산을 기준값과 비교(최대 차이 5e-11 dB).
+\item 판 번호: \f{sori.\_\_version\_\_} 하나로 앱·결과 파일·매뉴얼 표지를 연동(결과가 바뀌는 변경·기능 추가 = 둘째 자리).
+\end{itemize}
+
+\subsection{개발 방법(AI 활용)}
+사람이 고칠 점·기능을 요청 → AI(Claude)가 표준 원문의 식·표 번호를 근거로 설계안 → 사람이 검토·승인한 것만 구현 → 자동 시험·기준값 대조 → 커밋·기술 노트 기록. 2026-10-16 이후 커밋 109개(그 뒤 미커밋 변경 있음). 문서: User's Manual(20쪽), Technical Manual(18쪽), 기술 노트(결정 근거 18항목), 작업 기록.
+
+%% =====================================================================
+\section{검증}
+\subsection{자동 시험(pytest)}
+330개 수집, \textbf{329 통과, 1 xfail}(2026-11-11, macOS). 내용: 원문 식 재계산(자기 일관성), 직선 음원 해석해(0.05 dB), 차폐·1–3차 반사 수계산(1e-6 dB), 기준 사례 회귀(0.01 dB), 좌표 변환, RLS-90 수계산(Bild 22 계산 예 재현), 화면 동작(단추 클릭 경로 포함).
+
+\subsection{RLS-19 공식 시험과제 TEST-20(BASt, v2.1)}
+\begin{itemize}
+\item 방출 E1–E7: 122항목 중 121 통과(±0.01 dB). 1개는 이륜차(Krad) 차량군 미지원(손계산 일치).
+\item 전파 I1–I9, K1–K5: 지형·벽·건물을 래스터로 만들어 SORI 커널로 재현. 엄격 기준(±0.01 dB) 18/20, 나머지 2개 −0.02(래스터 벽 모서리 위치), +0.04 dB(구간 나누기 의존).
+\item 대조로 고친 것: 수음점 외벽 반사 규칙, $h_m$ 끝 구간·부호 있는 면적, numba 캐시.
+\item 한계: RLS-90 과 ISO 9613-2 전파는 공식 시험과제 대조가 없음(수계산·해석해만).
+\item \textbf{입증 범위}: TEST-20 은 RLS-19 방출식과 RLS-19 전파(1·2차 반사)의 수치 구현만 확인한다. 기본값인 RLS-19 음원 + ISO 9613-2 결합, 3차 반사, 지형 전처리·평탄화·교통량 기본값, 국내 도로 예측 정확도는 범위 밖이다. ±0.01 dB 는 TEST-20 시험 설정의 시험결과 기준이고, 자동 시험의 판정 허용 오차 0.05 dB 는 프로젝트 설정이다.
+\end{itemize}
+
+\subsection{현장 측정 비교(사가정로, 2026-10-22)}
+\begin{itemize}
+\item 2지점 동시 측정 × 3회(16시대), 실측 교통량(양방향 약 2,540 대/h, 화물차 약 25.8 \%), 측정 $L_\mathrm{Aeq}$ 3회 에너지 평균: 지점1 68.6, 지점2 69.1 dB.
+\item 모델(ISO 전파, 반사 3차, 노면 AC11, 신호교차로 보정) − 측정: \textbf{+5.6 – +5.7 dB(30 km/h 가정), +8.2 – +8.5 dB(50 km/h, 제한속도)}.
+\item 지점 간 차이는 측정 +0.5, 모델 +0.7 dB 로 맞지만, 회차 간 변화는 반대(모델은 교통량 적은 3회가 가장 낮고 측정은 3회가 가장 높음).
+\item 비교 조건의 한계: 10분 × 3회·2지점, 속도 미측정(30 km/h 는 RLS-19 하한), 화물차 계수에 이륜차가 섞여 전부 Lkw1 로 넣음, 모델 LrT 에 물리 레벨이 아닌 가산값 $D_K$ 포함(끄면 P1 −1.0, P2 −0.7 dB), 기상은 인근 정보. 국내 고시 별표 2 제15호의 검토 기준(오차 평균 ±3 dB·표준편차 3)에 못 미친다. SoundPLAN 수음점 값(74.09·77.30 dB)도 측정보다 약 5.5·8 dB 높다(좌표 4.6·9.5 m 차이, 교통량 미확인).
+\item 원인 후보(미확정): RLS-19 방출식의 보수성(독일 차량·타이어), 신호 대기 정지 차량(RLS 는 모두 주행 가정), 주정차 차량 차폐(마이크 1.3 m), 측정점 위치 불확실, 화물차 분류(2.8–3.5 t 소형 화물차를 Lkw1 로 넣었을 가능성 — 절반을 Pkw 로 두면 −1.1 dB).
+\end{itemize}
+
+\subsection{SoundPLAN 비교(조 리더의 SoundPLAN 모델, 2026-11-11)}
+받은 자료: SoundPLAN 격자 결과(5 m 간격 701점, 지면 위 2 m, LrD)와 수음점 2곳(지면 위 1.31 m, LrD 74.09·77.30 dB). 도로는 사가정로 하나(5차로: 서쪽 방향 북측 3차로 30 km/h, 동쪽 방향 남측 2차로 50 km/h, 차로마다 음원선), 계산 기준은 `Trucks1' 표기로 RLS-19 로 판단.
+
+SORI 를 SoundPLAN 과 \textbf{같은 좌표·높이}의 점 수음점으로 계산했다(\f{propagation\_method: rls19} — 기본값인 ISO 9613-2 결합이 아님). \textbf{SoundPLAN 의 실제 설정을 받지 못한 가정 기반 비교}이며 ``일치''·``동일 조건''이라고 쓰지 않는다. 사용자 결정: 교통량은 같다고 봄(실측 기준), SoundPLAN 에 없는 주변 도로는 비교 한계로 둠, SoundPLAN 설정은 기본값으로 가정.
+
+\begin{table}[h]\centering\small
+\caption{SORI − SoundPLAN (격자 552점 + 수음점 2곳; 모두 RLS-19). 위 3행 = 초기·조건 변경, 아래 2행 = 결과를 본 뒤 노면을 바꾼 가정 조건}
+\begin{tabular}{lrrrrrr}
+\toprule
+조건 & 평균 & SD & RMSE & 도로변(SP ≥ 75 dB) & P1 & P2 \\ \midrule
+30 km/h, 지도 차로, 방향별 1개선, 반사 1, AC11 & −4.18 & 4.44 & 6.10 & −4.14 & −2.18 & −4.10 \\
+서 30·동 50, 지도 차로, 방향별 1개선, 반사 1, AC11 & −2.63 & 4.23 & 4.98 & −2.44 ± 1.83 & −1.38 & −1.62 \\
+서 30·동 50, 3+2 차로별, 반사 2, AC11 & −1.92 & 3.77 & 4.23 & −2.31 ± 1.26 & −1.92 & −2.24 \\
+\textbf{서 30·동 50, 3+2 차로별, 반사 2, 기준 노면} & \textbf{+0.33} & 3.79 & 3.80 & \textbf{−0.09 ± 1.26} & \textbf{+0.30} & \textbf{−0.01} \\
+서 30·동 50, 3+2 차로별, 반사 3, 기준 노면 & +0.76 & 3.80 & 3.87 & −0.06 ± 1.26 & +0.36 & +0.03 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{itemize}
+\item 도로변의 일정한 −2.3 dB 가 노면 AC11 보정(승용 −2.7, 화물 −1.9 dB)과 같은 크기였고, SoundPLAN 기본(기준 노면)으로 두자 수음점이 +0.30·−0.01 dB 로 맞았다. \textbf{SoundPLAN 이 실제로 기준 노면·반사 2차를 썼는지는 미확인(가정)}.
+\item 구역별(최종 조건): 사가정로 영향권 365점 평균 +0.08, SD 2.22 dB, 76 \% 가 ±2 dB 안. 서쪽 129점 +4.1 dB(SORI 만 넣은 전농로 등 주변 도로 — 비교 한계). 남측 큰 건물 뒤 58점 −6.5 dB(건물 자료·차폐 조건 차이로 추정, 미확인). SoundPLAN 격자점 149개는 SORI 건물 안이라 값 없음(건물 자료 차이).
+\item 가정 조건의 추가 지표: MAE 2.55 dB, ±1/±2/±3 dB 안 40/57/69 \%, $r$ = 0.91, 회귀 기울기 0.97. SoundPLAN 60–65 dB 구간(건물 뒤가 많음, 137점)은 −1.90 ± 5.63 dB, 구간 안 $r$ = 0.19 — 전체 $r$ 은 도로변과 뒤편의 레벨 차이가 만든 값이다. SORI 가 넣은 $D_K$·$D_\mathrm{refl}$ 이 SoundPLAN 모델에 있는지도 미확인. 격자점은 5 m 간격이라 서로 독립이 아니다.
+\item 같은 교통량·30 km/h 에서 RLS-90 이 RLS-19 보다 측정점에서 약 6 dB 높았다(계산 기준 선택이 결과에 가장 크게 작용).
+\end{itemize}
+
+%% =====================================================================
+\section{한계와 미확인 사항}
+\begin{itemize}
+\item \textbf{절대값 신뢰도}: 표준 식 구현은 TEST-20 으로 확인했으나, 국내 도로의 측정값보다 5–8 dB 높게 예측한다. 대안 간 상대 비교(방음벽 전후, 위치별 차이)에는 쓸 수 있다고 보지만 근거는 한 장소·2지점·짧은 측정뿐.
+\item 독일 기준(RLS 방출식·교통량 표준표)을 국내에 적용. 국내 차종 구성·이륜차 처리 미반영.
+\item 고가도로·교량·지하차도 노면 높이 표현 불가(평탄화도 맞지 않음).
+\item ISO 대안법의 $D_\Omega$ 와 $D_z$ 중복 여부, ISO $h_m$ 의 $d$ 정의, 파사드 수음점 높이 2.8 m 근거 등 원문 해석이 남은 항목.
+\item 미구현: 측면 회절, 음(−)의 $z$, $C_\mathrm{met}$, 4차 이상 반사, 이륜차 차량군.
+\item 국내 「소음지도의 작성방법」 별표 2(원문 대조 2026-11-11): 제3호가 열거한 도로 예측식은 CRTN, RLS, NMPB, Nord 2000, ASJ RTN Model 이고 그 외는 국립환경과학원 검증 — RLS-19 음원 + ISO 9613-2 결합은 열거 밖. 영향 소음원 거리 2,000 m, 격자 높이 1.5 m, 음원선 차선별 원칙, 검증된 저소음포장만 노면 보정, 외벽 1.0 m, 지역 기상은 기본값에 없음. ``국내 소음지도 작성방법을 충족한다''고 쓰지 않는다.
+\item 재현성: \f{run\_info.json} 에 git 커밋·소스 해시·Python·패키지 판과 기본값까지 합친 설정을 기록하도록 고침(2026-11-11). v0.2 태그와 미커밋 변경 정리는 남음.
+\item Windows 실제 화면, 큰 지역 계산 시간(전농사거리 반사 3차 약 21분).
+\end{itemize}
+
+\section{앞으로의 계획}
+\begin{enumerate}
+\item SoundPLAN 설정(노면, 반사 차수, 건물 높이) 확인 후 최종 비교 → 학회 포스터(11-25~27)·현장 시연.
+\item 측정 차이 원인 분석: 차종 분류·정지 차량·주정차 차폐 영향의 분리, 추가 측정 지점.
+\item 국내 교통량·차종 자료 반영, 도로별 노면 높이 입력.
+\item v0.2 태그·두 OS 앱 배포, Windows 실제 PC 확인.
+\end{enumerate}
+
+\end{document}

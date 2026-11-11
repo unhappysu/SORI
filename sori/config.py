@@ -97,6 +97,8 @@ DEFAULTS = {
                                                    # 빼도 도로선은 교차로 판정·차도 면 보정(flatten)에 그대로 씀
         # 음원선 배치(RLS-19 3.3.1, Bild 6). 확인값(input.road_override)이 있으면 그 방향별 차로 수가 우선
         "odd_lane_rule": "ceil",                   # 홀수 차로 양방향: ceil = 양쪽 ⌈n/2⌉(현행) | major_fwd = 디지타이즈 방향 ⌈n/2⌉, 반대 ⌊n/2⌋
+        "source_lines": "direction",               # direction = 주행방향마다 1개선(RLS-19 Bild 6 / RLS-90 Bild 10, 현행)
+                                                   # | lane = 차로마다 1개선(차로 중앙, 그 방향 M 을 차로 수로 나눔 — SoundPLAN 비교용)
         "lane_width": "auto",                      # auto = 도로폭/차로수를 lane_width_clip 범위로(현행) | 숫자 = 고정 차로폭(m)
         "lane_width_clip": [2.75, 3.5],
         "lane_width_default": 3.25,                # auto 에서 도로폭 값이 없을 때
@@ -224,6 +226,8 @@ def _validate(c):
         raise ValueError("model.source_ground 는 dtm_at_source 또는 road_profile")
     if m["odd_lane_rule"] not in ("ceil", "major_fwd"):
         raise ValueError("model.odd_lane_rule 는 ceil 또는 major_fwd")
+    if m.get("source_lines", "direction") not in ("direction", "lane"):
+        raise ValueError("model.source_lines 는 direction 또는 lane")
     if m["lane_width"] not in ("auto", None) and not (2.0 <= float(m["lane_width"]) <= 5.0):
         raise ValueError("model.lane_width 는 auto 또는 2.0~5.0 m")
     if c["input"]["ground"]["method"] not in ("general", "alternative"):

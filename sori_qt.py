@@ -13,6 +13,7 @@ SORI 데스크톱 화면 (PySide6 / Qt Widgets) — 화면 개편 1단계 시제
 """
 import json
 import logging
+import math
 import sys
 import traceback
 from pathlib import Path
@@ -230,15 +231,20 @@ class MapView(QtWidgets.QWidget):
         w, h = max(self.canvas.width(), 50) * r, max(self.canvas.height(), 50) * r
         self.fig.set_size_inches(w / self.fig.dpi, h / self.fig.dpi, forward=False)
 
-    def draw_hq_grid(self, C, cfg, key, h, redraw):
+    def draw_hq_grid(self, C, cfg, key, h, redraw, compact=False):
         """보고서 수준 격자 소음지도(maps_hq.draw_grid, 그림 파일 HQ_grid_* 와 같은 그리기).
-        보고서 틀은 A3(16.54 × 11.69 in) 기준 글자 크기이므로, 창 안에 A3 이상이 담기도록 화면 dpi 를 맞춤"""
-        from sori.maps_hq import draw_grid
+        보고서 틀은 A3(16.54 × 11.69 in) 기준 글자 크기이므로, 창 안에 A3 이상이 담기도록 화면 dpi 를 맞춤.
+        compact=True(격자 + 3D 나란히 보기): 정보란 없이 지도만 창 가득(maps_hq.draw_grid_compact, 화면 dpi 그대로)"""
+        from sori.maps_hq import draw_grid, draw_grid_compact
         self._clear(hq=redraw)
         self.fig.set_layout_engine(None)                 # 보고서 틀은 고정 배치
-        w, hgt = max(self.canvas.width(), 50), max(self.canvas.height(), 50)
-        self._set_dpi(max(20.0, min(w / 16.54, hgt / 11.69)))
-        self.ax = draw_grid(self.fig, C, cfg, key, h)
+        if compact:
+            self._set_dpi(self._base_dpi)
+            self.ax = draw_grid_compact(self.fig, C, cfg, key, h)
+        else:
+            w, hgt = max(self.canvas.width(), 50), max(self.canvas.height(), 50)
+            self._set_dpi(max(20.0, min(w / 16.54, hgt / 11.69)))
+            self.ax = draw_grid(self.fig, C, cfg, key, h)
         self.canvas.draw_idle()
 
     def message(self, text):
@@ -660,6 +666,10 @@ TRAFFIC_VIEW = [
     ("p2_night", "p2 야간 %", None, None),
     ("v_pkw", "속도 승용 km/h", "빈칸 = 설정 기본 속도(간선 50)", None),
     ("v_lkw", "속도 화물 km/h", "빈칸 = 승용 속도", None),
+    ("v_pkw_fwd", "정방향 승용 km/h", "UFID 행만: 디지타이즈 방향 승용 속도. 빈칸 = 위 공통 속도", None),
+    ("v_lkw_fwd", "정방향 화물 km/h", "UFID 행만: 디지타이즈 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 정방향 승용)", None),
+    ("v_pkw_bwd", "역방향 승용 km/h", "UFID 행만: 디지타이즈 반대 방향 승용 속도. 빈칸 = 위 공통 속도", None),
+    ("v_lkw_bwd", "역방향 화물 km/h", "UFID 행만: 반대 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 역방향 승용)", None),
     ("surface", "노면", "RLS-19 표 4a·4b (빈칸 = 수치지도 포장 속성)", None),   # 선택지는 rls19.SURFACES
     ("grade", "종단경사 %", "빈칸 = 지형에서 산정", None),
     ("basis", "근거", "measured = 실측, assumed = 가정", ["", "measured", "assumed"]),
@@ -668,7 +678,7 @@ TRAFFIC_VIEW = [
     ("note", "메모", "출처·가정 등", None),
 ]
 NUM_COLS = {"DTV", "M_day", "M_night", "p1_day", "p2_day", "p1_night", "p2_night", "v_pkw", "v_lkw", "grade",
-            "dir_split_fwd"}
+            "dir_split_fwd", "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd"}
 LW_COLS = ["LW′ 주간", "LW′ 야간"]
 
 
@@ -689,6 +699,14 @@ def lw_prime_row(rec, tcfg):
         raise ValueError("DTV 또는 M 필요")
     v_pkw = f("v_pkw") or float(tcfg.get("default_speed_main", 50.0))
     v_lkw = f("v_lkw") or v_pkw
+    # 방향별 속도(UFID 행만 계산에 쓰임 — inputs.traffic_for_road 와 같은 채움 규칙). 둘이 같으면 아래 합은 이전과 같음
+    ufid = (rec.get("key_type") or "").strip().lower() == "ufid"
+    vd = {}
+    for d in ("fwd", "bwd"):
+        vp = (f(f"v_pkw_{d}") if ufid else None) or v_pkw
+        vd[d] = (vp, (f(f"v_lkw_{d}") if ufid else None) or f("v_lkw") or vp)
+    split = f("dir_split_fwd") if ufid and (rec.get("dir_basis") or "").strip().lower() == "measured" else None
+    share = {"fwd": 0.5 if split is None else split, "bwd": 0.5 if split is None else 1.0 - split}
     sf = (rec.get("surface") or "").strip() or "ref"
     if sf not in rls19.SURFACES:
         raise ValueError(f"노면 '{sf}'")
@@ -704,7 +722,13 @@ def lw_prime_row(rec, tcfg):
                 o = "night" if per == "day" else "day"
                 M = m[o] * Mf / t2[o][0]
         p1, p2 = f(f"p1_{per}"), f(f"p2_{per}")
-        out.append(rls19.LW_prime(M, p1s if p1 is None else p1, p2s if p2 is None else p2, v_pkw, v_lkw, sf, g))
+        p1, p2 = (p1s if p1 is None else p1), (p2s if p2 is None else p2)
+        if vd["fwd"] == vd["bwd"] == (v_pkw, v_lkw):
+            out.append(rls19.LW_prime(M, p1, p2, v_pkw, v_lkw, sf, g))
+        else:                                   # 방향별 속도: 두 방향 L_W′ 의 에너지 합(경사는 방향마다 부호 반대)
+            e = sum(10 ** (0.1 * rls19.LW_prime(M * share[d], p1, p2, *vd[d], sf, g if d == "fwd" else -g))
+                    for d in ("fwd", "bwd") if share[d] > 0)
+            out.append(10 * math.log10(e))
     return tuple(out)
 
 
@@ -1939,7 +1963,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif kind == "run_info":
             ri = self.R["run_info"]
             self._show_props([(k, json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
-                              for k, v in ri.items() if k != "notice"])
+                              for k, v in ri.items() if k not in ("notice", "config_resolved")])
         else:
             self._show_props(self._summary_props())
 
@@ -1967,6 +1991,8 @@ class MainWindow(QtWidgets.QMainWindow):
         ri = self.R.get("run_info")
         if ri:
             rows += [("전파(결과)", ri.get("propagation")), ("계산 시각", ri.get("time"))]
+            for i, w in enumerate(ri.get("standard_deviations") or [], 1):       # 표준 원문과 다른 설정(propagation.py)
+                rows.append((f"표준과 다른 설정 {i}", w))
             for k, v in (ri.get("results_range") or {}).items():
                 rows.append((f"범위 {k}", "  ".join(f"{t} {lo:.1f}~{hi:.1f}" for t, (lo, hi) in v.items())))
         bi = self.R.get("build_info")
@@ -2066,8 +2092,10 @@ class MainWindow(QtWidgets.QMainWindow):
             C = self._hq_ctx()
             if C is not None:                                       # 보고서 수준 지도(maps_hq 와 같은 그리기)
                 try:
+                    # 나란히 보기(좁은 왼쪽 창)는 지도만 크게, 한 창 보기·지도 저장은 보고서 틀(A3) 그대로
+                    compact = self.act_split.isChecked() and not getattr(self, "_force_report", False)
                     return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
-                                                 lambda: (self._redraw_grid(), self._grid_extras()))
+                                                 lambda: (self._redraw_grid(), self._grid_extras()), compact=compact)
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key)
@@ -2128,7 +2156,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.redraw()
         return True
 
-    def _toggle_split(self, on):
+    def _toggle_split(self, on=None):
+        # 도구 줄 단추(addAction 의 triggered)는 인자 없이 부름 → 단추의 눌림 상태를 씀(2026-11-11: 인자 필수라
+        # 단추를 누르면 TypeError 로 오른쪽 창이 끝내 켜지지 않던 오류)
+        if on is None:
+            on = self.act_split.isChecked()
         self.map3d.setVisible(on)
         if on:
             if self.view == "facade":                    # 한 창에서 보던 건물을 오른쪽으로 옮김
@@ -2187,7 +2219,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 f"층별 값 전체는 아래 '벽면' 표")
 
     # ------------------------------------------------------------ 단면 소음지도
-    def _toggle_section(self, on):
+    def _toggle_section(self, on=None):
+        if on is None:                                   # 도구 줄 단추에서 부를 때(인자 없음)
+            on = self.act_sec.isChecked()
         self.sec_pts = []
         if on:
             if self.view != "grid":
@@ -2276,7 +2310,17 @@ class MainWindow(QtWidgets.QMainWindow):
         path = Path(path)
         if path.suffix.lower() not in (".png", ".pdf"):
             path = path.with_suffix(".png")
-        mv.fig.savefig(path, dpi=200, facecolor=mv.fig.get_facecolor())
+        # 나란히 보기의 왼쪽 격자 지도(지도만 크게)는 저장할 때 보고서 틀(A3, 정보란 포함)로 다시 그려 저장
+        report = mv is self.map and self.view == "grid" and self.act_split.isChecked() and self._hq_ctx() is not None
+        if report:
+            self._force_report = True
+            self._redraw_main()
+        try:
+            mv.fig.savefig(path, dpi=200, facecolor=mv.fig.get_facecolor())
+        finally:
+            if report:
+                self._force_report = False
+                self._redraw_main()
         log.info("지도 저장: %s", path)
         self.lbl_status.setText(f"지도 저장: {path}")
         return path

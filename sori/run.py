@@ -12,6 +12,7 @@ import pandas as pd
 from . import AI_NOTICE, __version__, HAVE_NUMBA
 from . import naming, rls19, rls90
 from .propagation import get_model, EMISSION_LABEL
+from .provenance import environment
 from .solver import compute, facade_neighbors, to_db
 
 log = logging.getLogger("sori")
@@ -343,7 +344,12 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             "reflection": cfg["propagation"]["reflection"], "results_range": summary,
             "segment_check": ({"rule": "RLS-19 3.2 주석 l_i <= s_i/2 (경험칙, 진단만·결과값 불변). "
                                        "s = 직접 경로 3D 거리", **seg_sum} if do_seg else None),
-            "config": cfg["_config_path"], "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+            "config": cfg["_config_path"],
+            # 재현용: 기본값까지 합친 설정 전체(기본값은 판마다 바뀔 수 있음)와 실행 환경(소스 식별자·패키지 판)
+            "config_resolved": {k: v for k, v in cfg.items() if not k.startswith("_")},
+            "environment": environment(), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+    for w in info.get("standard_deviations") or []:
+        log.info("표준 원문과 다른 설정: %s", w)
     with open(os.path.join(out, "run_info.json"), "w", encoding="utf-8") as f:
         json.dump(info, f, ensure_ascii=False, indent=2, default=str)
     log.info("계산 완료: %s", summary)

@@ -49,14 +49,14 @@ SORI(Simulation of Outdoor Road-noise Impact) v\soriversion{} 은 도로교통�
 구분 & 적용 기준 \\ \midrule
 음원(방출) & RLS-19(FGSV 052, Ausgabe 2019, Korrektur 04.03.2020) 식 (4)–(9), 표 2–5. \f{rls90} 을 고르면 RLS-90(Ausgabe 1990) 식 (6)–(9), 표 4 \\
 전파(감쇠) & 설정 \f{propagation\_method} 로 선택. \f{iso9613\_2}(기본): ISO 9613-2:1996 + 대기흡수 ISO 9613-1:1993. \f{rls19}: RLS-19 3.5 식 (11)–(17), 3.6·표 8. \f{rls90}: RLS-90 Teilstück-Verfahren 식 (20)–(27), 4.6(음원도 RLS-90, SoundPLAN RLS-90 비교용, v0.2 추가) \\
-반사 & 허상음원 3차까지(기본 3차, 국내 「소음지도의 작성방법」 별표 2 제8호 ``3차 이상'' 원칙) \\
+반사 & 허상음원 3차까지(기본 3차, 국내 「소음지도의 작성방법」 별표 2 제8호 ``3차 이상'' 원칙). RLS-19 3.6 은 1·2차, RLS-90 4.6 은 1차만 규정하므로 3차 결과는 그 표준 자체의 계산 결과가 아니다 \\
 수음점 & 격자(여러 높이), 건물 벽면(층별, 외벽 앞 5 cm), 점 수음점(측정점 비교), 단면(화면에서 선을 그어 계산) \\
 지표 & 주간 LrT(06–22시), 야간 LrN(22–06시) — RLS-19 평가레벨, A 가중 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\lb{``혼합 방법'' 표기} 기본값 \f{iso9613\_2} 는 음원은 RLS-19, 전파는 ISO 9613-2 로 계산한다. 이 결합은 RLS-19 와 ISO 9613-2 어느 쪽도 규정하지 않은 프로젝트 구성 방법이므로 지도 정보란과 \f{run\_info.json} 에 그렇게 적힌다. RLS-19 원문 그대로의 계산이 필요하면 \f{propagation\_method: rls19} 를 쓴다.
+\lb{``혼합 방법'' 표기} 기본값 \f{iso9613\_2} 는 음원은 RLS-19, 전파는 ISO 9613-2 로 계산한다. 이 결합은 RLS-19 와 ISO 9613-2 어느 쪽도 규정하지 않은 프로젝트 구성 방법이므로 지도 정보란과 \f{run\_info.json} 에 그렇게 적힌다. RLS-19 전파와 같은 값은 음원에서 가까운 곳뿐이고, 포장 지면에서 차폐 없이 먼 곳은 RLS-19 보다 높게 나온다(평지 100 m 에서 약 +4 – +6 dB, Technical Manual 5.3절). RLS-19 원문 그대로의 계산이 필요하면 \f{propagation\_method: rls19} 와 반사 2차(\f{reflection.max\_order\_*: 2})를 쓴다. 설정이 표준 원문과 다른 점은 계산 기록창과 \f{run\_info.json} 의 \f{standard\_deviations} 에 나온다.
 
 \subsection{쓰는 방법 세 가지}
 \begin{enumerate}
@@ -68,7 +68,8 @@ SORI(Simulation of Outdoor Road-noise Impact) v\soriversion{} 은 도로교통�
 \subsection{사용상 주의}
 \begin{itemize}
 \item 교통량 파일에 없는 도로는 차로수별 가정 교통량을 쓴다. 다만 골목길(수치지도 1차로)은 기본으로 음원에서 뺀다(\f{model.minor\_roads: exclude}, 교통량 파일에 넣은 골목길은 계산). 결과를 인용할 때는 \f{traffic\_used.csv} 의 출처(\f{traffic\_src}, \f{traffic\_basis})를 함께 밝힌다.
-\item 국내 고시의 다른 원칙(영향 소음원 거리 2,000 m, 격자 높이 1.5 m, 지역 기상)은 기본값에 반영되어 있지 않다(기본 격자 높이 4 m, 음원 탐색 300/150 m).
+\item 국내 「소음지도의 작성방법」 별표 2 의 조건과 기본값이 다르다: 격자 높이 1.5 m(SORI 4 m), 영향 소음원 거리 2,000 m 이상(SORI 300/150 m), 음원선 차선별(SORI 방향별 1개선), 건물 외벽 1.0 m 앞·반사음 포함(SORI 5 cm 앞·자기 외벽 반사 제외), 지역 기상. 또 고시가 열거한 예측식(CRTN, RLS, NMPB, Nord 2000, ASJ RTN Model)에 기본값인 RLS-19 음원 + ISO 9613-2 결합은 없다. SORI 결과를 ``국내 소음지도 작성방법에 따른 소음지도''라고 쓰지 않는다(대조표: TECHNICAL\_NOTES 5b절).
+\item 다중반사 가산값 $D_\mathrm{refl}$(평행한 건물 사이 도로)은 RLS-19 에서 1·2차 반사와 함께 쓰는 값이다. 기본 3차 반사에서는 3차 반사와 겹친다(이 지역 시험에서 평균 +0.06, 최대 +0.4 dB). 겹침을 피하려면 반사 2차 또는 \f{model.canyon.enabled: false}.
 \item 차도 안 지형은 기본으로 도로중심선 종단 고도로 평탄화한다(\f{model.road\_surface: flatten}). 고가도로·교량·지하차도는 노면이 지형과 떨어져 있어 이 보정으로도 맞지 않는다.
 \item \textbf{절대값의 신뢰도.} 현장 측정 비교(사가정로 2지점, 2026-10-22)에서 모델이 측정 $L_\mathrm{Aeq}$ 보다 약 5.6 dB(30 km/h) – 8.5 dB(50 km/h) 높게 나왔고 원인은 분석 중이다. 표준 식 구현은 RLS-19 공식 시험과제(TEST-20)로 확인했으나 국내 도로의 절대 소음도를 맞힌다는 근거는 아직 없다. 대안 간 비교(방음벽 전후, 위치별 상대 차이)에 쓰고, 절대값은 참고로만 본다.
 \item SORI 는 공인 프로그램이 아니다. 계산 결과의 검토·검증 책임은 사용자에게 있다.
@@ -244,7 +245,7 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \end{figure}
 \begin{itemize}
 \item 격자 지도에서 \textbf{건물을 클릭}하면 그 건물을 중심으로 반경 80 m 안의 건물을 그린 3D 파사드 소음지도가 나온다(그림 파일 \f{facade\_3d\_*.png} 와 같은 모양, 2 dB 등급).
-\item \textbf{나란히 보기}(기본 켬, 그림~\ref{fig:main}): 왼쪽 격자 지도는 그대로 두고 오른쪽 창에 3D 가 나온다. 클릭한 건물은 격자 지도에 빨간 테두리로 표시되고, 다른 건물을 클릭하면 오른쪽만 바뀐다. 시간대를 바꾸면 양쪽이 함께 바뀐다. 도구 줄 \ui{격자+파사드 나란히}를 끄면 한 창에서 격자 ↔ 3D 로 바뀌어 보이고(그림~\ref{fig:facade}) \ui{◀ 격자 지도}로 돌아간다. 이 선택은 홈에서 다른 작업을 골라도 유지된다(\ui{격자 + 3D 파사드} 작업만 켬).
+\item \textbf{나란히 보기}(기본 켬, 그림~\ref{fig:main}): 왼쪽 격자 지도는 그대로 두고 오른쪽 창에 3D 가 나온다. 클릭한 건물은 격자 지도에 빨간 테두리로 표시되고, 다른 건물을 클릭하면 오른쪽만 바뀐다. 시간대를 바꾸면 양쪽이 함께 바뀐다. 도구 줄 \ui{격자+파사드 나란히}를 끄면 한 창에서 격자 ↔ 3D 로 바뀌어 보이고(그림~\ref{fig:facade}) \ui{◀ 격자 지도}로 돌아간다. 이 선택은 홈에서 다른 작업을 골라도 유지된다(\ui{격자 + 3D 파사드} 작업만 켬). 나란히 보기에서는 왼쪽 창이 좁으므로 격자 지도를 \textbf{지도만 크게}(정보란 없이, 범례는 지도 안 작은 상자) 그리고, 한 창 보기와 \ui{지도 저장}은 보고서 틀(A3, 계산 조건 정보란 포함) 그대로다(2026-11-11).
 \item 주변 건물도 벽면 결과가 있으면 층별 색으로 칠하고, 층별 값 글자는 클릭한 건물에만 붙인다. 마우스로 끌어 돌려 본다.
 \item 클릭한 건물의 층별 값 전체는 아래 \ui{벽면} 표에 나온다.
 \item 벽면 계산 반경(\f{receivers.facade.radius}) 밖 건물은 상태 줄에 ``벽면 계산 결과 없음''으로 표시된다.
@@ -363,6 +364,7 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \f{grade} & & 도로별 종단경사 \% 직접 지정(깎거나 쌓은 도로) \\
 \f{basis} & & 교통량 근거 \f{measured}/\f{assumed}(빈칸이면 unspecified) \\
 \f{dir\_split\_fwd}, \f{dir\_basis} & & 디지타이즈 방향 비율(0–1). UFID 행이고 \f{dir\_basis = measured} 일 때만 적용, 그 밖은 0.5 \\
+\f{v\_pkw\_fwd}, \f{v\_lkw\_fwd}, \f{v\_pkw\_bwd}, \f{v\_lkw\_bwd} & & 방향별 속도 km/h(v0.2, 2026-11-11). fwd = 디지타이즈 방향, bwd = 반대. UFID 행만(도로명 행은 무시). 빈칸 = 공통 \f{v\_pkw}·\f{v\_lkw}. SoundPLAN 처럼 방향마다 속도가 다를 때. 앱 \ui{교통량} 탭에도 같은 칸 \\
 \f{note} & & 출처 메모 \\
 \bottomrule
 \end{longtable}
@@ -388,6 +390,7 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \f{propagation\_method} & iso9613\_2 & 전파 방법. \f{rls19} = RLS-19 3.5·3.6, \f{rls90} = 음원·전파 모두 RLS-90(v0.2). 한 결과 폴더에는 한 방법의 결과만(섞이면 실행 중단). 앱에서는 \ui{전파 방법} 칸으로 바꿀 수 있음 \\
 \f{model.road\_surface} & flatten & 차도 면 지형. \f{flatten} = 차도 안 지형을 도로중심선 종단 고도(20 m 이동평균)로 평탄화, \f{dtm} = 등고선 지형 그대로(v0.1 동작) \\
 \f{model.minor\_roads} & exclude & 교통량 파일에 없는 골목길(수치지도 1차로) 음원. \f{exclude} = 뺌, \f{include} = 차로수별 가정 교통량으로 계산(v0.1 동작) \\
+\f{model.source\_lines} & direction & 음원선 배치. \f{direction} = 주행방향마다 1개선(원문), \f{lane} = 차로마다 1개선(차로 중앙, 그 방향 교통량을 차로 수로 나눔 — SoundPLAN 비교용, v0.2) \\
 \f{reflection.D\_E} & −1 dB & \f{rls90} 반사 보정(RLS-90 표 7: 매끈한 외벽 −1, 요철 외벽 −2) \\
 \f{reflection.max\_order\_grid / \_facade / \_point} & 3 / 3 / 3 & 반사 차수 0–3. 3차는 2차보다 약 6배 느림(전농사거리 표본). 2026-10-29 이전 기본 1/2/2 \\
 \f{reflection.own\_facade} & last & 수음점이 놓인 외벽의 반사 제외 범위. \f{last} = 마지막 반사만, \f{all} = 모든 반사 순서(이전 동작) \\
@@ -425,7 +428,7 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \f{path\_terms.csv} & (\f{terms\_csv: true}) 점 수음점 경로별 감쇠항 \\
 \f{segment\_check.csv} & 구간 길이 진단(RLS-19 3.2 주석, 결과값에 영향 없음) \\
 \f{traffic\_used.csv}, \f{junctions\_used.csv} & 실제 사용한 교통량·교차로 판정(보고서 근거자료) \\
-\f{build\_info.json}, \f{run\_info.json} & 모델 규모, 가정값 사용 수, 계산 조건(전파 방법·식·반사 차수) \\
+\f{build\_info.json}, \f{run\_info.json} & 모델 규모, 가정값 사용 수, 계산 조건(전파 방법·식·반사 차수), 표준 원문과 다른 설정(\f{standard\_deviations}), 재현용 기록(\f{environment}: 소스 식별자·Python·패키지 판, \f{config\_resolved}: 기본값까지 합친 설정) \\
 \f{config\_used.yaml}, \f{run\_conditions.json} & 앱이 남기는 사용 설정 사본과 실행 조건 \\
 \f{model\_rasters.npz}, \f{*.gpkg} & 모델 파일(단면 계산·화면 지도에 씀) \\
 \bottomrule
@@ -479,7 +482,7 @@ CSV 칸 수 오류 & 따옴표 없는 쉼표. 메모 칸을 따옴표로 묶음 
 \toprule 판 & 날짜 & 변경 \\ \midrule\endfirsthead
 \toprule 판 & 날짜 & 변경 \\ \midrule\endhead
 v0.1 & 2026-11-04 & 첫 배포(태그 \f{v0.1}, 공개하지 않음): RLS-19 음원 + ISO 9613-2 / RLS-19 전파, 반사 3차, 격자·벽면·점·단면, Qt 화면, 자가 점검, 전농사거리 예제 \\
-v0.2 & 2026-11-10 & \textbf{결과가 바뀜}: RLS-90 방법 추가(\f{rls90}), 차도 면 지형 보정 기본 \f{flatten}, 교통량 빈칸을 RLS-19 표 2 / RLS-90 표 3 으로, 교통량 없는 골목길 음원 제외(\f{minor\_roads: exclude}). \textbf{화면}: 홈 화면, 입력값 설정(설정값·교통량·차로 수), 격자·3D 파사드 나란히 보기, 격자 위 벽면 값 띠, 화면별 저장 단축키. \textbf{도구}: SoundPLAN 9.1 비교 입력 내보내기·결과 비교. 태그·배포 파일은 아직 없음 \\
+v0.2 & 2026-11-10 & \textbf{결과가 바뀜}: RLS-90 방법 추가(\f{rls90}), 차도 면 지형 보정 기본 \f{flatten}, 교통량 빈칸을 RLS-19 표 2 / RLS-90 표 3 으로, 교통량 없는 골목길 음원 제외(\f{minor\_roads: exclude}). \textbf{입력}: 방향별 속도(\f{v\_*\_fwd/bwd}, 11-11, 입력이 없으면 결과 불변). \textbf{화면}: 홈 화면, 입력값 설정(설정값·교통량·차로 수), 격자·3D 파사드 나란히 보기, 격자 위 벽면 값 띠, 화면별 저장 단축키. \textbf{도구}: SoundPLAN 9.1 비교 입력 내보내기·결과 비교. 태그·배포 파일은 아직 없음 \\
 \bottomrule
 \end{longtable}
 v0.1 로 계산한 결과 폴더를 v0.2 로 다시 계산하면 위 기본값 변경 때문에 값이 달라질 수 있다. 이전 동작이 필요하면 \f{model.road\_surface: dtm}, \f{model.minor\_roads: include} 로 둔다(교통량 빈칸 규칙은 되돌리는 설정이 없다).

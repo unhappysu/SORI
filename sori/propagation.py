@@ -22,9 +22,58 @@ EMISSION_LABEL = {"rls19": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
 
 # 이번 판에서 계산하지 않는 항목(두 방법 공통)
 _COMMON_NOT_IMPLEMENTED = ["section(단면) 소음지도", "4차 이상 반사"]
-_D_REFL_NOTE = ("D_refl(RLS-19 식 9, 다중 반사 가산값)을 음원 L_W′ 에 포함하고 허상음원 반사도 함께 적용 — "
-                "도로 협곡에서 이중 계상 가능성 있음. 이 결합을 배제·허용하는 규정은 RLS-19 3.3.8·3.6, "
-                "ISO 9613-2 7.5, 「소음지도의 작성방법」 별표 2에서 확인하지 못함(근거 미확인)")
+# D_refl(다중 반사 가산값)과 허상음원 반사의 조합 — 2026-11-11 원문 대조:
+#   RLS-19: 3.3.8 식 (9) + 3.6 "1차 및 2차 반사". 공식 시험과제 TEST-20 v2.1 K2 가 직접음 + 1차 + 2차 반사에
+#           식 (9)를 함께 적용(12·23쪽) → D_refl + 2차까지가 표준 절차. 3차 이상은 표준 밖
+#   RLS-90: 4.6 "평행 벽 사이 도로는 1차 반사만 D_E 로, 그 뒤 반사는 D_refl 로" → D_refl + 1차가 표준 절차
+#   국내 「소음지도의 작성방법」 별표 2 제8호: 반사차수 3차 이상 원칙(주변 환경에 따라 변경 가능),
+#           제14호 가: 양쪽 반사 구조는 다중반사 효과 고려 — D_refl 같은 가산값과의 조합은 규정 없음
+_STD_ORDER = {"rls19": 2, "iso9613_2": 2, "rls90": 1}       # D_refl 과 함께 쓰는 표준의 최고 반사 차수
+                                                            # (iso9613_2 는 음원이 RLS-19 라 RLS-19 기준)
+
+
+def _max_order(cfg):
+    rf = cfg["propagation"]["reflection"]
+    return max(int(rf["max_order_grid"]), int(rf["max_order_facade"]), int(rf["max_order_point"]))
+
+
+def _canyon_on(cfg):
+    return bool(cfg["model"]["canyon"]["enabled"])
+
+
+def d_refl_note(name, cfg):
+    """run_info.json 의 D_refl_note: 음원 쪽 다중 반사 가산값과 허상음원 반사 차수의 조합이 표준 절차인지"""
+    if not _canyon_on(cfg):
+        return "D_refl(다중 반사 가산값) 미적용(model.canyon.enabled: false) — 반사는 허상음원만"
+    n, std = _max_order(cfg), _STD_ORDER[name]
+    if name == "rls90":
+        base = ("D_refl(RLS-90 식 24a, 4·h_Beb/w ≤ 3,2)을 음원에 포함. RLS-90 4.6: 평행 벽 사이 도로는 "
+                "1차 반사만 허상음원(D_E)으로, 그 뒤 반사는 D_refl 로 계산")
+    else:
+        base = ("D_refl(RLS-19 식 9, 2·h_Beb/w ≤ 1,6)을 음원 L_W′ 에 포함. RLS-19 3.3.8·3.6 과 공식 시험과제 "
+                "TEST-20 K2 는 D_refl 을 1·2차 허상음원 반사와 함께 적용")
+    if n <= std:
+        return base + f" — 반사 {n}차: 표준 절차 범위"
+    return base + (f" — 반사 {n}차는 표준({std}차)을 넘는 프로젝트 설정이며, {std + 1}차 이상 허상음원은 D_refl 이 "
+                   "대신하는 고차 반사와 겹침(도로 협곡에서 이중 계상). 겹침을 피하려면 반사 차수를 "
+                   f"{std}로 낮추거나 model.canyon.enabled: false")
+
+
+def standard_deviations(name, cfg):
+    """표준 원문의 계산 절차와 다른 설정 목록(run_info.json `standard_deviations`, 계산 때 기록창에도 표시)"""
+    out = []
+    n, std = _max_order(cfg), _STD_ORDER[name]
+    src = "RLS-90 4.6(1차)" if name == "rls90" else "RLS-19 3.6(1·2차)"
+    if n > std:
+        out.append(f"반사 {n}차 — {src}을 넘음. 근거: 「소음지도의 작성방법」 별표 2 제8호(3차 이상 원칙)"
+                   + (" + D_refl 과 겹침" if _canyon_on(cfg) else ""))
+    if name == "iso9613_2":
+        out.append("RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 구성. RLS-19 전파와 같은 값은 "
+                   "가까운 거리(지면 감쇠 0)뿐이고, 포장 지면(G = 0)·차폐 없는 먼 거리에서는 RLS-19 보다 높게 나옴"
+                   "(평지 100 m 에서 약 +4 ~ +6 dB: RLS-19 식 14 의 지면·기상 감쇠가 ISO 일반법 G = 0 에는 없음)")
+    if cfg["model"].get("source_lines", "direction") == "lane" and name != "rls90":
+        out.append("음원선을 차로마다 둠(model.source_lines: lane) — RLS-19 Bild 6 은 주행방향마다 1개선")
+    return out
 
 
 class PropagationModel(ABC):
@@ -66,7 +115,8 @@ class PropagationModel(ABC):
                 "equations": self.equations(cfg),
                 "reflection_order": {"grid": int(rf["max_order_grid"]), "facade": int(rf["max_order_facade"]),
                                      "points": int(rf["max_order_point"])},
-                "D_refl_in_source": True, "D_refl_note": _D_REFL_NOTE,
+                "D_refl_in_source": _canyon_on(cfg), "D_refl_note": d_refl_note(self.name, cfg),
+                "standard_deviations": standard_deviations(self.name, cfg),
                 "lateral_diffraction": self.lateral(cfg),
                 "not_implemented": self.not_implemented(cfg), **self.metadata(cfg)}
 
@@ -133,7 +183,11 @@ class ISO9613Propagation(PropagationModel):
                 "representative_frequency_basis": "ISO 9613-2 1절 비고 1(A 가중 L_W 만 알면 500 Hz 감쇠항)"
                 if len(b) == 1 else "옥타브 대역(spectrum_dBA)",
                 "meteorology": "L_AT(DW) 순풍 조건(ISO 9613-2 식 3·5), C_met 미적용",
-                "reflection_loss": f"ρ = {float(cfg['propagation']['reflection']['rho']):g} (ISO 9613-2 식 20)"}
+                "reflection_loss": f"ρ = {float(cfg['propagation']['reflection']['rho']):g} (ISO 9613-2 식 20)",
+                "hybrid_note": ("RLS-19 의 L_W 는 반공간(2π) 기준. ISO 일반법 G = 0·근거리(q = 0)에서만 A_gr = −3 dB 로 "
+                                "RLS-19 전파와 같은 값. 먼 거리는 A_gr = −3 − 3q(더 큰 음수)이고 RLS-19 식 (14)의 "
+                                "감쇠(0 ~ 4,8 dB)가 없어 더 높게, 차폐 경로는 식 (12)에서 A_gr 이 상쇄되어 "
+                                "회절이 작을 때 약 3 dB 낮게 나옴(TECHNICAL_NOTES 4a절)")}
 
 
 class RLS19Propagation(PropagationModel):
@@ -226,12 +280,6 @@ class RLS90Propagation(PropagationModel):
                                 "p = 교통량 표 p_day·p_night → 입력 p1 + p2(RLS-19 3,5 t 기준 — 근사) → 둘 다 없으면 표 3(독일 기준)",
                                 "M·p 빈칸 = 표 3(DTV × 계수, 독일 기준 — 국내와 다를 수 있음)",
                                 "노면: SORI 코드 → 표 4 행 대응(rls90.SURFACE_ROW, 해석)"]}
-
-    def info(self, cfg):
-        d = super().info(cfg)
-        d["D_refl_in_source"] = True
-        d["D_refl_note"] = "D_refl(식 24a, 4·h_Beb/w ≤ 3,2)을 1차 반사(D_E)와 함께 씀 — RLS-90 4.6 규정 그대로"
-        return d
 
 
 METHODS = {m.name: m for m in (ISO9613Propagation(), RLS19Propagation(), RLS90Propagation())}

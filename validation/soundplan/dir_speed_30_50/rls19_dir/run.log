@@ -1,0 +1,58 @@
+20:11:38 INFO 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
+20:11:39 INFO 레이어 building : 파일 9개, 객체 2427개
+20:11:40 INFO 레이어 road     : 파일 9개, 객체 1324개
+20:11:41 INFO 레이어 contour  : 파일 9개, 객체 288개
+20:11:41 INFO 레이어 spot     : 파일 9개, 객체 15개
+20:11:41 INFO 래스터 920 x 840 (1.0 m)
+20:11:42 INFO 차도 면 지형 보정(flatten): {'mode': 'flatten', 'smooth_m': 20.0, 'cells': 123033, 'dz_mean': -0.021, 'dz_abs_p90': 0.344, 'dz_min': -4.731, 'dz_max': 1.951, 'cells_lowered_over_1m': 1635, 'cells_raised_over_1m': 544}
+20:11:42 INFO CSV 읽기: traffic.csv (인코딩 utf-8)
+20:11:42 INFO 교통량 파일: 도로명 4건, UFID 53건
+20:11:44 INFO Created 1,635 records
+20:11:44 INFO Created 1,324 records
+20:11:44 INFO 모델 구축 완료: {'terrain': {'contour_pts': 18438, 'spot_pts': 15, 'dem_pts': 0, 'mode': 'contours', 'smooth_m': 5.0}, 'buildings': 1635, 'roads': 1324, 'sources': 2649, 'sources_main': 2649, 'facade_edges': 6854, 'junctions': 231, 'signal_junction_points': 2, 'grid_receivers_per_height': 4308, 'facade_receivers': 0, 'roads_with_fallback_traffic': 43, 'roads_narrow_same_name': 0, 'canyon_segments': 232, 'minor_roads': 'exclude', 'minor_roads_excluded': 1168, 'emission': 'RLS-19 (FGSV 052, 2019, Korrektur 2020)', 'traffic_defaults': {'standard': 'RLS-19 표 2', 'roads': 103, 'dtv_by_lanes_roads': 43, 'note': '독일 기준(도로유형별 표준값)으로, 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음'}, 'road_surface': {'mode': 'flatten', 'smooth_m': 20.0, 'cells': 123033, 'dz_mean': -0.021, 'dz_abs_p90': 0.344, 'dz_min': -4.731, 'dz_max': 1.951, 'cells_lowered_over_1m': 1635, 'cells_raised_over_1m': 544}}
+20:11:44 WARNING 교통량 가정값(fallback) 사용 도로객체 43개 — output/traffic_used.csv 의 traffic_src 확인
+20:11:44 INFO 골목길(차로수 < 2) 중 교통량 자료가 없는 1168개 객체는 음원에서 뺌(model.minor_roads: exclude)
+20:11:44 WARNING 교통량 자료가 없는 항목(M·p)을 표준값(RLS-19 표 2)으로 채운 도로객체 103개 — 독일 기준(도로유형별 표준값)으로, 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음. traffic_used.csv 의 std_filled 열 참고
+20:11:44 INFO 격자 h=4 m 256/4308  0s  (남은 시간 약 8s)
+20:11:45 INFO 격자 h=4 m 512/4308  1s  (남은 시간 약 6s)
+20:11:45 INFO 격자 h=4 m 768/4308  1s  (남은 시간 약 6s)
+20:11:45 INFO 격자 h=4 m 1024/4308  2s  (남은 시간 약 5s)
+20:11:46 INFO 격자 h=4 m 1280/4308  2s  (남은 시간 약 5s)
+20:11:46 INFO 격자 h=4 m 1536/4308  2s  (남은 시간 약 4s)
+20:11:47 INFO 격자 h=4 m 1792/4308  3s  (남은 시간 약 4s)
+20:11:47 INFO 격자 h=4 m 2048/4308  3s  (남은 시간 약 4s)
+20:11:48 INFO 격자 h=4 m 2304/4308  4s  (남은 시간 약 3s)
+20:11:48 INFO 격자 h=4 m 2560/4308  4s  (남은 시간 약 3s)
+20:11:48 INFO 격자 h=4 m 2816/4308  5s  (남은 시간 약 2s)
+20:11:49 INFO 격자 h=4 m 3072/4308  5s  (남은 시간 약 2s)
+20:11:49 INFO 격자 h=4 m 3328/4308  6s  (남은 시간 약 2s)
+20:11:50 INFO 격자 h=4 m 3584/4308  6s  (남은 시간 약 1s)
+20:11:51 INFO 격자 h=4 m 3840/4308  7s  (남은 시간 약 1s)
+20:11:51 INFO 격자 h=4 m 4096/4308  7s  (남은 시간 약 0s)
+20:11:52 INFO 격자 h=4 m 4308/4308  8s  (남은 시간 약 0s)
+20:11:52 INFO CSV 읽기: points.csv (인코딩 utf-8)
+20:11:52 INFO 점 수음점 21/21  0s  (남은 시간 약 0s)
+20:11:54 INFO 감쇠항별 중간값: path_terms.csv (69098 경로, 직접음·1차 반사)
+20:11:54 INFO 구간 길이 진단(l ≤ s/2, 결과값 불변): {'grid_h4': {'receivers': 4308, 'violating': 1046, 'violating_pct': np.float64(24.28), 'violating_via_main': 1046, 'min_s_over_l': 1.1696574695664501}}
+20:11:54 INFO 계산 완료: {'grid_h4': {'LrT': [28.947772177007973, 81.62993846795176], 'LrN': [24.939193569882278, 77.81082594145207]}, 'points': {'LrT': [47.27370384514935, 76.5599872444787], 'LrN': [43.128305530125445, 72.74033768935948]}}
+20:11:54 INFO 그림 글꼴: Noto Sans KR
+20:11:55 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/grid_LrT_h4m_grid.png
+20:11:55 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/grid_LrT_h4m_isophone.png
+20:11:55 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/grid_LrN_h4m_grid.png
+20:11:55 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/grid_LrN_h4m_isophone.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_grid_LrT_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_grid_LrT_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_주간_grid_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_주간_grid_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_exceed_LrT_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_exceed_LrT_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_주간_grid_exceed_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_주간_grid_exceed_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_grid_LrN_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_grid_LrN_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_야간_grid_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_야간_grid_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_exceed_LrN_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/HQ_exceed_LrN_h4m.pdf
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_야간_grid_exceed_h4m.png
+20:11:59 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/validation/soundplan/dir_speed_30_50/rls19_dir/output/사가정로-SoundPLAN비교-rls19-dir_현황-RLS_야간_grid_exceed_h4m.pdf
