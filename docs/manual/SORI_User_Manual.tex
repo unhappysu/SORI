@@ -1,17 +1,20 @@
-%% SORI v0.1 User's Manual(사용자 매뉴얼) — 전현수 (2022890065)
+%% SORI User's Manual(사용자 매뉴얼) — 전현수 (2022890065). 판 번호는 version.tex(\soriversion, build.sh 가
+%% sori/__init__.py 의 __version__ 으로 만듦) — 매뉴얼 판 = 프로그램 판
 %% 컴파일: docs/manual 에서 sh build.sh SORI_User_Manual.tex (xelatex 2회)
-%% 초안: README.md, 목차안 v1: docs/매뉴얼_개발노트.md. 화면 그림: figures/gui_*.png(2026-11-02, 커밋 2376a59 화면을
-%%       화면 없이(offscreen) 그려 저장, 전농사거리 기본 계산 결과)
+%% 초안: README.md, 목차안 v1: docs/매뉴얼_개발노트.md. 화면 그림: figures/gui_*.png — gui_home·gui_input·gui_grid·
+%%       gui_facade3d 는 2026-11-10(v0.2) 화면, gui_section 은 2026-11-02(커밋 2376a59) 화면. 모두 화면 없이(offscreen)
+%%       그려 저장, 전농사거리 기본 계산 결과
 %% 본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.
 \documentclass[10.5pt,a4paper]{article}
-\def\docheader{SORI v0.1 User's Manual}
+\input{version}
+\def\docheader{SORI v\soriversion{} User's Manual}
 \input{preamble}
 \begin{document}
 \sloppy
 
 \begin{titlepage}
 \centering\vspace*{40mm}
-{\sffamily\Huge\bfseries\color{navy} SORI v0.1\par}
+{\sffamily\Huge\bfseries\color{navy} SORI v\soriversion\par}
 \vspace{4mm}
 {\sffamily\LARGE User's Manual (사용자 매뉴얼)\par}
 \vspace{6mm}
@@ -21,8 +24,8 @@
 \vspace{2mm}
 {서울시립대학교 환경공학부 · 소음진동설계 (2026학년도 2학기)\par}
 \vspace{10mm}
-{문서 기준: 브랜치 \f{packaging/app} 커밋 \f{2376a59}\par}
-{작성일: 2026-11-02 \quad 개정: 2026-11-05\par}
+{문서 기준: SORI v\soriversion{} (브랜치 \f{packaging/app}, 커밋 \f{2100572} 이후)\par}
+{작성일: 2026-11-02 \quad 개정: 2026-11-05, 2026-11-10(v0.2)\par}
 \vfill
 \begin{minipage}{0.85\textwidth}\small
 \textbf{AI 활용 표기.} 본 매뉴얼과 SORI 소프트웨어는 AI(Claude, Anthropic)를 활용하여 제작하였다. 계산 결과의 검토·검증 책임은 사용자에게 있다.\par\vspace{2mm}
@@ -37,15 +40,15 @@
 \section{개요}
 
 \subsection{SORI 와 SORI Map}
-SORI(Simulation of Outdoor Road-noise Impact) v0.1 은 도로교통소음을 예측하는 소프트웨어다. 국토지리정보원 수치지형도(SHP)와 교통량 표를 넣으면 지형·건물·도로 모델을 만들고, 격자(여러 높이), 건물 벽면(층별), 임의 점의 소음도를 계산해 지도·표로 낸다. 소음지도 기능과 결과물은 \emph{SORI Map} 이라 부른다.
+SORI(Simulation of Outdoor Road-noise Impact) v\soriversion{} 은 도로교통소음을 예측하는 소프트웨어다. 국토지리정보원 수치지형도(SHP)와 교통량 표를 넣으면 지형·건물·도로 모델을 만들고, 격자(여러 높이), 건물 벽면(층별), 임의 점의 소음도를 계산해 지도·표로 낸다. 소음지도 기능과 결과물은 \emph{SORI Map} 이라 부른다.
 
 \begin{table}[h]\centering\small
 \caption{적용 기준}\label{tab:std}
 \begin{tabularx}{\textwidth}{P{24mm}L}
 \toprule
 구분 & 적용 기준 \\ \midrule
-음원(방출) & RLS-19(FGSV 052, Ausgabe 2019, Korrektur 04.03.2020) 식 (4)–(9), 표 2–5 \\
-전파(감쇠) & 설정 \f{propagation\_method} 로 선택. \f{iso9613\_2}(기본): ISO 9613-2:1996 + 대기흡수 ISO 9613-1:1993. \f{rls19}: RLS-19 3.5 식 (11)–(17), 3.6·표 8 \\
+음원(방출) & RLS-19(FGSV 052, Ausgabe 2019, Korrektur 04.03.2020) 식 (4)–(9), 표 2–5. \f{rls90} 을 고르면 RLS-90(Ausgabe 1990) 식 (6)–(9), 표 4 \\
+전파(감쇠) & 설정 \f{propagation\_method} 로 선택. \f{iso9613\_2}(기본): ISO 9613-2:1996 + 대기흡수 ISO 9613-1:1993. \f{rls19}: RLS-19 3.5 식 (11)–(17), 3.6·표 8. \f{rls90}: RLS-90 Teilstück-Verfahren 식 (20)–(27), 4.6(음원도 RLS-90, SoundPLAN RLS-90 비교용, v0.2 추가) \\
 반사 & 허상음원 3차까지(기본 3차, 국내 「소음지도의 작성방법」 별표 2 제8호 ``3차 이상'' 원칙) \\
 수음점 & 격자(여러 높이), 건물 벽면(층별, 외벽 앞 5 cm), 점 수음점(측정점 비교), 단면(화면에서 선을 그어 계산) \\
 지표 & 주간 LrT(06–22시), 야간 LrN(22–06시) — RLS-19 평가레벨, A 가중 \\
@@ -66,6 +69,8 @@ SORI(Simulation of Outdoor Road-noise Impact) v0.1 은 도로교통소음을 예
 \begin{itemize}
 \item 교통량 파일에 없는 도로는 차로수별 가정 교통량을 쓴다. 다만 골목길(수치지도 1차로)은 기본으로 음원에서 뺀다(\f{model.minor\_roads: exclude}, 교통량 파일에 넣은 골목길은 계산). 결과를 인용할 때는 \f{traffic\_used.csv} 의 출처(\f{traffic\_src}, \f{traffic\_basis})를 함께 밝힌다.
 \item 국내 고시의 다른 원칙(영향 소음원 거리 2,000 m, 격자 높이 1.5 m, 지역 기상)은 기본값에 반영되어 있지 않다(기본 격자 높이 4 m, 음원 탐색 300/150 m).
+\item 차도 안 지형은 기본으로 도로중심선 종단 고도로 평탄화한다(\f{model.road\_surface: flatten}). 고가도로·교량·지하차도는 노면이 지형과 떨어져 있어 이 보정으로도 맞지 않는다.
+\item \textbf{절대값의 신뢰도.} 현장 측정 비교(사가정로 2지점, 2026-10-22)에서 모델이 측정 $L_\mathrm{Aeq}$ 보다 약 5.6 dB(30 km/h) – 8.5 dB(50 km/h) 높게 나왔고 원인은 분석 중이다. 표준 식 구현은 RLS-19 공식 시험과제(TEST-20)로 확인했으나 국내 도로의 절대 소음도를 맞힌다는 근거는 아직 없다. 대안 간 비교(방음벽 전후, 위치별 상대 차이)에 쓰고, 절대값은 참고로만 본다.
 \item SORI 는 공인 프로그램이 아니다. 계산 결과의 검토·검증 책임은 사용자에게 있다.
 \end{itemize}
 
@@ -73,6 +78,8 @@ SORI(Simulation of Outdoor Road-noise Impact) v0.1 은 도로교통소음을 예
 \section{설치와 실행}
 
 \subsection{받는 파일과 확인 상태}
+\textbf{판 안내.} 아래 표의 배포 파일은 \textbf{v0.1}(2026-11-04 태그)이다. v\soriversion{} 의 태그·배포 파일은 아직 만들지 않았으므로, 이 매뉴얼의 v0.2 기능(\ref{sec:ver}장)을 쓰려면 개발자용 실행(2.5절)이나 직접 빌드한 앱을 쓴다. 앱의 판은 홈 화면 제목, \ui{도움말}\menu SORI 정보, 결과 폴더 \f{run\_info.json} 의 \f{software} 로 확인한다.
+
 앱 파일은 GitHub Actions(\f{.github/workflows/build.yml})가 만든다. 받는 곳은 두 가지다.
 \begin{itemize}
 \item \textbf{판 번호 빌드}(\f{v0.1} 같은 \f{v*} 태그): 두 OS 빌드·점검이 모두 통과하면 저장소 Releases 에 \textbf{초안(Draft)}이 만들어지고 아래 표의 파일이 붙는다. 초안은 공개되지 않아 저장소 관리자만 받을 수 있다. v0.1 은 공개하지 않기로 했다(2026-11-04).
@@ -125,9 +132,32 @@ macOS 에서는 저장소의 \f{SORI.command} 를 Finder 에서 더블클릭해�
 %% =====================================================================
 \section{화면 구성}
 
+앱은 세 화면으로 이루어진다: \textbf{홈}(시작, 작업 고르기) → \textbf{입력값 설정}(설정 파일·교통량·차로 수를 칸으로 고침) 또는 \textbf{작업 화면}(지도·계산·결과 표). 어느 화면에서든 왼쪽 위 \ui{홈}으로 홈에 돌아간다.
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.92\textwidth]{figures/gui_home.png}
+\caption{홈 화면 — 왼쪽: 프로젝트 열기·예제·최근 프로젝트, 오른쪽: 현재 프로젝트와 작업 단추 7개. 결과가 필요한 작업(격자 소음지도 등)은 결과가 있을 때만 눌린다. 2026-11-10(v0.2) 화면}\label{fig:home}
+\end{figure}
+
+\begin{table}[h]\centering\small
+\caption{홈 화면 작업 단추}\label{tab:tasks}
+\begin{tabularx}{\textwidth}{P{30mm}L}
+\toprule
+작업 & 하는 일 \\ \midrule
+입력값 설정 & 입력값 화면(\ref{sec:input}절)으로 \\
+입력 지도 확인 & 수치지도 건물·도로와 계산 범위(파란 점선)를 지도에서 확인 \\
+계산 실행 & 작업 화면 아래 \ui{계산 실행} 탭으로 \\
+격자 소음지도 & 높이·시간대별 격자 소음지도 \\
+격자 + 3D 파사드 & 격자 지도에서 건물을 클릭하면 오른쪽에 층별 3D 파사드(나란히 보기를 켬) \\
+단면 소음지도 & 지도에 A→B 선을 그어 수직 단면 계산 \\
+자가 점검 & 좌표 변환과 기준 사례(가상 교차로) 계산 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \begin{figure}[h]\centering
 \includegraphics[width=\textwidth]{figures/gui_grid.png}
-\caption{주 창 — 전농사거리 기본 계산 결과를 연 모습(격자 높이 4 m, 주간 LrT). 2026-11-02, 커밋 \f{2376a59} 화면을 화면 없이 그려 저장한 것}\label{fig:main}
+\caption{작업 화면 — 전농사거리 기본 계산 결과(격자 높이 4 m, 주간 LrT). 가운데 왼쪽 격자 소음지도에는 건물 외벽을 따라 벽면 값 띠가 겹쳐 있고, 건물 1498 을 클릭해 오른쪽에 3D 파사드가 나란히 나온 모습. 2026-11-10(v0.2) 화면}\label{fig:main}
 \end{figure}
 
 \begin{table}[h]\centering\small
@@ -135,11 +165,11 @@ macOS 에서는 저장소의 \f{SORI.command} 를 Finder 에서 더블클릭해�
 \begin{tabularx}{\textwidth}{P{30mm}L}
 \toprule
 부분 & 내용 \\ \midrule
-메뉴 \ui{파일} & 설정 파일 열기(Command/Ctrl+O), 결과 폴더 열기, 예제 불러오기(가상 교차로), 전농사거리 불러오기(수치지도는 따로 받음, \ref{sec:jn}장), 지도 저장(PNG·PDF, Command/Ctrl+S), 마지막 단면 보기, 결과 폴더를 파인더/탐색기로 보기, 끝내기 \\
+메뉴 \ui{파일} & 설정 파일 열기(Command/Ctrl+O), 결과 폴더 열기, 예제 불러오기(가상 교차로), 전농사거리 불러오기(수치지도는 따로 받음, \ref{sec:jn}장), 지도 저장(PNG·PDF), 오른쪽 3D 파사드 저장, 마지막 단면 보기, 결과 폴더를 파인더/탐색기로 보기, 끝내기. Command/Ctrl+S 는 화면별 저장(입력값 화면 = 설정 파일, 작업 화면 = 지도 그림) \\
 메뉴 \ui{계산} & 계산 실행, 자가 점검 \\
 메뉴 \ui{도움말} & SORI 정보(판, 적용 기준, AI 활용 고지) \\
-도구 줄 & 격자 높이, 시간대(주간 LrT / 야간 LrN), \ui{◀ 격자 지도}, \ui{단면 선 긋기}, \ui{지도 저장…} \\
-지도(가운데) & 격자 소음지도 / 3D 파사드 / 단면 지도. 위쪽 matplotlib 도구(처음·뒤·앞·이동·확대·여백·저장) \\
+도구 줄 & \ui{홈}, \ui{입력값}, 격자 높이, 시간대(주간 LrT / 야간 LrN), \ui{◀ 격자 지도}, \ui{격자+파사드 나란히}(기본 켬), \ui{벽면 값}(기본 켬), \ui{단면 선 긋기}, \ui{지도 저장…} \\
+지도(가운데) & 격자 소음지도 / 3D 파사드 / 단면 지도. 나란히 보기면 왼쪽 격자, 오른쪽 3D 파사드. 각 지도 위쪽 matplotlib 도구(처음·뒤·앞·이동·확대·여백·저장) \\
 \ui{프로젝트}(왼쪽) & 시나리오·입력 자료·실행 결과 목록. 항목을 누르면 속성 창에 내용 \\
 \ui{속성}(오른쪽) & 설정·결과 요약, 클릭한 격자점·건물·단면의 값 \\
 \ui{계산·결과 표}(아래) & 탭: 계산 실행 / 기록 / 점 수음점 / 감쇠항(path\_terms) / 벽면(상위 200) \\
@@ -162,22 +192,37 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \item 계산 결과 폴더만 보려면 \ui{파일}\menu\ui{결과 폴더 열기…}. 이 경우 설정이 없어 격자 지도는 간단한 지도로 보이고 단면 계산은 할 수 없다.
 \end{itemize}
 
+\subsection{입력값 설정(설정값 · 교통량 · 차로 수)}\label{sec:input}
+홈의 \ui{입력값 설정} 또는 도구 줄 \ui{입력값}으로 연다. 탭 세 개로 설정 파일과 입력 표를 칸으로 고친다. 고친 뒤 \ui{저장}(Command/Ctrl+S)해야 계산에 쓰이며, 이미 있는 결과에는 \ui{계산 실행}으로 다시 계산해야 반영된다.
+
+\begin{figure}[h]\centering
+\includegraphics[width=0.92\textwidth]{figures/gui_input.png}
+\caption{입력값 설정 — \ui{설정값} 탭(프로젝트·입력 파일·계산 범위·전파 반사). 2026-11-10(v0.2) 화면}\label{fig:input}
+\end{figure}
+
+\begin{itemize}
+\item \textbf{설정값}: 프로젝트 이름·시나리오·좌표계, 입력 파일(수치지도 폴더, 교통량 CSV, 기본 도로 유형, DEM, 교차로·녹지·도로 확인값), 계산 범위(격자 중심·크기·간격·높이, 건물 벽면 계산과 반경, 층 높이, \ui{차도 면 지형}, \ui{골목길(1차로) 음원}, 점 수음점), 전파·반사(전파 방법, 지면 계산법, 기온·습도, 반사 차수). 저장할 때 설정을 검사하고, 처음 저장할 때 원본을 \f{config.yaml.bak} 로 남긴다(YAML 주석은 저장하면 사라짐). \ui{지도에서 격자 중심 찍기}·\ui{지도에서 범위 보기}로 범위를 지도에서 정하고 확인한다.
+\item \textbf{교통량}: 교통량 CSV 를 표로 고친다(도로명 또는 UFID, 도로 유형, DTV, $M$, 화물차 비율, 속도, 노면, 근거). 칸을 고치면 그 도로의 $L_W'$(RLS-19 식 4)를 오른쪽 끝에 바로 다시 계산해 보여 준다. 파일의 다른 열은 보존하고, 처음 저장할 때 \f{traffic.csv.bak} 를 남긴다.
+\item \textbf{차로 수}: 한 번 계산해 \f{roads.gpkg} 가 생기면 도로 객체별 방향별 차로 수(확인값)를 고쳐 \f{roads\_override.csv} 로 저장한다. 고치면 음원선 위치를 바로 다시 계산해 보이고, 행을 고르고 \ui{지도에서 보기}를 누르면 그 도로·그린 방향 화살표·음원선(빨강 = 정방향, 파랑 = 역방향)을 지도에 그린다. 지도 차로 수와 합이 다르면 노랗게 표시된다.
+\end{itemize}
+
 \subsection{계산 실행}
 \begin{enumerate}
 \item \ui{계산 실행} 탭에서 \ui{결과 폴더}를 확인한다(\ui{찾아보기…}로 변경).
 \item 계산 대상을 고른다: \ui{격자(소음지도)}, \ui{건물 벽면}, \ui{점 수음점}(설정에 점 파일이 있을 때), \ui{그림·3D 뷰어 만들기}(보고서 그림 \f{HQ\_*}·\f{noise3d.html}).
-\item \ui{전파 방법}을 고른다(4.3절). 처음에는 설정 파일 값이다.
+\item \ui{전파 방법}을 고른다(\ref{sec:method}절). 처음에는 설정 파일 값이다.
 \item \ui{▶ 계산 실행}. 결과 폴더에 이미 파일이 있으면 덮어쓸지 묻는다. 계산은 주간·야간을 모두 수행하며 반사 차수는 설정 파일 값이다(속성 창에서 확인).
 \item 진행은 상태 줄(지점 수, 남은 시간)과 \ui{기록} 탭에서 본다. 끝나면 결과가 지도와 표에 나온다. 계산 중에 창을 닫으면 끝낼지 묻는다.
 \end{enumerate}
 결과 폴더에는 계산 결과(8장) 외에 \f{config\_used.yaml}(사용한 설정 사본)과 \f{run\_conditions.json}(실행 일시·설정 경로·계산 대상·소요 시간·요약·앱 환경)이 함께 저장된다.
 
-\subsection{전파 방법 고르기}
+\subsection{전파 방법 고르기}\label{sec:method}
 \ui{계산 실행} 탭의 \ui{전파 방법} 칸에서 고른다. 설정 파일(\f{propagation\_method})을 고치지 않고 이번 계산에만 쓴다.
 \begin{itemize}
 \item \ui{ISO 9613-2 전파}: 음원은 RLS-19, 전파는 ISO 9613-2(기본값, 어느 표준도 규정하지 않은 프로젝트 구성 방법).
 \item \ui{RLS-19 전파}: RLS-19 3.5·3.6 원문의 전파식.
-\item 설정 파일과 다른 방법을 고르면 결과 폴더가 \f{output\_rls19}(또는 \f{output\_iso9613\_2})로 바뀐다. 한 결과 폴더에는 한 방법의 결과만 둘 수 있기 때문이다. 그 폴더에 이미 결과가 있으면 지도에 바로 보이므로 칸을 바꿔 가며 두 방법의 결과를 비교할 수 있다.
+\item \ui{RLS-90}(v0.2): 음원·전파 모두 RLS-90(1990). SoundPLAN RLS-90 결과와 비교하려고 넣었다. 음원식이 달라 지형·음원 모델부터 다시 계산한다. 교통량 표의 \f{p\_day}·\f{p\_night}(2.8 t 초과 화물차 비율)를 쓰고, 비우면 $p_1 + p_2$ 로 근사한다. RLS-90 은 1차 반사만 규정하지만 반사 차수는 설정 값(기본 3)을 그대로 쓴다.
+\item 설정 파일과 다른 방법을 고르면 결과 폴더가 \f{output\_rls19}(또는 \f{output\_rls90}, \f{output\_iso9613\_2})로 바뀐다. 한 결과 폴더에는 한 방법의 결과만 둘 수 있기 때문이다. 그 폴더에 이미 결과가 있으면 지도에 바로 보이므로 칸을 바꿔 가며 두 방법의 결과를 비교할 수 있다.
 \item 계산하면 결과 폴더의 \f{config\_used.yaml} 사본에 쓴 방법이 적히고(그 사본만으로 같은 계산을 재현할 수 있음), \f{run\_conditions.json} 에 \f{propagation\_method}·\f{propagation\_method\_override} 가 남는다.
 \item 결과 폴더를 열면 칸이 그 결과의 방법으로 맞춰진다. 지도 정보란·파일 이름(\f{-ISO}/\f{-RLS})·속성 창 ``전파(결과)''로도 확인할 수 있다.
 \item 화면 없이: \f{sori\_gui.py --run config.yaml --out 폴더 --method rls19}.
@@ -189,22 +234,23 @@ PySide6 를 불러오지 못하면 단순 화면(tkinter)이 열린다. 단순 �
 \item 도구 줄에서 \ui{격자 높이}와 \ui{시간대}를 고른다.
 \item 화면은 A3 틀을 창에 맞춰 줄여 보이므로 정보란 글자가 작다. 확대(돋보기)·이동 도구로 자세히 본다. 창 크기를 바꾸면 다시 그린다.
 \item 격자점을 클릭하면 속성 창에 그 점의 좌표·지면고·높이·LrT·LrN·성분(직접음, 반사 차수별)이 나온다.
+\item \textbf{벽면 값 띠}(v0.2): 도구 줄 \ui{벽면 값}이 켜져 있으면(기본) 건물 외벽을 따라 벽면 결과를 색 띠로 함께 그린다. 띠 값은 그 벽면 구간의 \textbf{층별 최댓값}, 색은 격자 지도와 같은 등급, 위치는 보고서 그림 \f{HQ\_facade\_*} 와 같다(벽에서 바깥으로 1.1 m, 진한 테두리). 벽면 계산을 하지 않은 결과에서는 단추가 꺼진다. 층별 값은 3D 파사드에서 본다.
 \end{itemize}
 
 \subsection{건물 클릭 → 3D 파사드 소음지도}
 \begin{figure}[h]\centering
 \includegraphics[width=0.92\textwidth]{figures/gui_facade3d.png}
-\caption{건물 1498 클릭 — 3D 파사드 소음지도(주간 LrT, 2 dB 등급). 속성 창에 건물 정보와 기준 초과 수음점 수}\label{fig:facade}
+\caption{한 창 보기(\ui{격자+파사드 나란히} 끔)에서 건물 1498 클릭 — 3D 파사드 소음지도(주간 LrT, 2 dB 등급). 속성 창에 건물 정보와 기준 초과 수음점 수. 2026-11-10(v0.2) 화면}\label{fig:facade}
 \end{figure}
 \begin{itemize}
 \item 격자 지도에서 \textbf{건물을 클릭}하면 그 건물을 중심으로 반경 80 m 안의 건물을 그린 3D 파사드 소음지도가 나온다(그림 파일 \f{facade\_3d\_*.png} 와 같은 모양, 2 dB 등급).
+\item \textbf{나란히 보기}(기본 켬, 그림~\ref{fig:main}): 왼쪽 격자 지도는 그대로 두고 오른쪽 창에 3D 가 나온다. 클릭한 건물은 격자 지도에 빨간 테두리로 표시되고, 다른 건물을 클릭하면 오른쪽만 바뀐다. 시간대를 바꾸면 양쪽이 함께 바뀐다. 도구 줄 \ui{격자+파사드 나란히}를 끄면 한 창에서 격자 ↔ 3D 로 바뀌어 보이고(그림~\ref{fig:facade}) \ui{◀ 격자 지도}로 돌아간다. 이 선택은 홈에서 다른 작업을 골라도 유지된다(\ui{격자 + 3D 파사드} 작업만 켬).
 \item 주변 건물도 벽면 결과가 있으면 층별 색으로 칠하고, 층별 값 글자는 클릭한 건물에만 붙인다. 마우스로 끌어 돌려 본다.
 \item 클릭한 건물의 층별 값 전체는 아래 \ui{벽면} 표에 나온다.
 \item 벽면 계산 반경(\f{receivers.facade.radius}) 밖 건물은 상태 줄에 ``벽면 계산 결과 없음''으로 표시된다.
-\item \ui{◀ 격자 지도}로 돌아간다.
 \end{itemize}
 
-\subsection{단면(수직) 소음지도}
+\subsection{단면(수직) 소음지도}\label{sec:section}
 \begin{figure}[h]\centering
 \includegraphics[width=0.92\textwidth]{figures/gui_section.png}
 \caption{단면 소음지도 — A→B 44 m, 계산점 1,796개(반사 3차). 왼쪽 평면에 단면 위치, 회색은 건물 단면}\label{fig:section}
@@ -339,7 +385,10 @@ CSV 는 UTF-8 또는 CP949 로 읽는다(읽은 인코딩은 기록에 남음). 
 \toprule 항목 & 기본값 & 의미 \\ \midrule\endhead
 \f{project.name}, \f{scenario} & 소음지도, 현황 & 파일명 규칙의 프로젝트·시나리오 칸 \\
 \f{project.output\_dir} & output & 결과 폴더(설정 파일 기준 상대경로) \\
-\f{propagation\_method} & iso9613\_2 & 전파 방법. \f{rls19} = RLS-19 3.5·3.6. 한 결과 폴더에는 한 방법의 결과만(섞이면 실행 중단). 앱에서는 \ui{전파 방법} 칸으로 바꿀 수 있음(4.3절) \\
+\f{propagation\_method} & iso9613\_2 & 전파 방법. \f{rls19} = RLS-19 3.5·3.6, \f{rls90} = 음원·전파 모두 RLS-90(v0.2). 한 결과 폴더에는 한 방법의 결과만(섞이면 실행 중단). 앱에서는 \ui{전파 방법} 칸으로 바꿀 수 있음 \\
+\f{model.road\_surface} & flatten & 차도 면 지형. \f{flatten} = 차도 안 지형을 도로중심선 종단 고도(20 m 이동평균)로 평탄화, \f{dtm} = 등고선 지형 그대로(v0.1 동작) \\
+\f{model.minor\_roads} & exclude & 교통량 파일에 없는 골목길(수치지도 1차로) 음원. \f{exclude} = 뺌, \f{include} = 차로수별 가정 교통량으로 계산(v0.1 동작) \\
+\f{reflection.D\_E} & −1 dB & \f{rls90} 반사 보정(RLS-90 표 7: 매끈한 외벽 −1, 요철 외벽 −2) \\
 \f{reflection.max\_order\_grid / \_facade / \_point} & 3 / 3 / 3 & 반사 차수 0–3. 3차는 2차보다 약 6배 느림(전농사거리 표본). 2026-10-29 이전 기본 1/2/2 \\
 \f{reflection.own\_facade} & last & 수음점이 놓인 외벽의 반사 제외 범위. \f{last} = 마지막 반사만, \f{all} = 모든 반사 순서(이전 동작) \\
 \f{reflection.rho} / \f{D\_RV} & 0.8 / 0.5 dB & 반사 손실(iso9613\_2 의 ρ / rls19 의 회당 dB) \\
@@ -408,7 +457,7 @@ Intel Mac 에서 열리지 않음 & 앱은 Apple Silicon(arm64) 전용 \\
 CSV 칸 수 오류 & 따옴표 없는 쉼표. 메모 칸을 따옴표로 묶음 \\
 건물 클릭 시 ``벽면 계산 결과 없음'' & 벽면 계산 반경 밖이거나 벽면을 계산하지 않음. \f{receivers.facade.radius} 를 키우고 \ui{건물 벽면}을 골라 다시 계산 \\
 \ui{단면 선 긋기}가 오류 & 설정 파일과 계산한 결과 폴더(\f{model\_rasters.npz})가 열려 있어야 함. 단면 선 1 m 미만, 모델 범위 밖도 오류 \\
-단면에서 도로 바로 위 값이 매우 큼 & 음원 근거리 값(오류 아님, 4.6절) \\
+단면에서 도로 바로 위 값이 매우 큼 & 음원 근거리 값(오류 아님, \ref{sec:section}절) \\
 지도 정보란 글자가 겹침 & 교통량 설명이 길면 주의 문구가 AI 고지와 겹침(알려진 문제) \\
 전농사거리 불러오기를 해도 ``수치지도가 아직 없습니다'' 창이 다시 뜸 & \f{문서/SORI/전농사거리/data/map} 에 건물 레이어(\f{N1A\_B0010000*.shp})가 없음. 9도엽 zip 을 그 폴더에 넣었는지, 수치지형도 v2.0 SHP 판인지 확인(\ref{sec:jn}장) \\
 자가 점검 실패 & \f{문서/SORI/selfcheck\_report.json} 의 실패 항목 확인. 좌표 변환 실패는 PROJ 자료 문제 가능성 \\
@@ -416,6 +465,25 @@ CSV 칸 수 오류 & 따옴표 없는 쉼표. 메모 칸을 따옴표로 묶음 
 \end{longtable}
 
 %% =====================================================================
+%% =====================================================================
+\section{판 번호와 변경 이력}\label{sec:ver}
+\textbf{판 번호 규칙}(2026-11-10). 프로그램의 판은 \f{sori/\_\_init\_\_.py} 의 \f{\_\_version\_\_} 하나로 정하고, 앱 제목·SORI 정보·결과 \f{run\_info.json} 의 \f{software}·보고서 지도 아래 글·두 매뉴얼 표지가 모두 이 값을 쓴다(매뉴얼은 \f{build.sh} 가 \f{version.tex} 를 만들어 반영, 시험 \f{test\_version\_sync.py} 가 어긋나면 실패).
+\begin{itemize}
+\item \textbf{둘째 자리}(0.1 → 0.2): 같은 설정으로 계산 결과가 바뀌는 변경(식·기본값), 계산 방법이나 화면 기능 추가.
+\item \textbf{셋째 자리}(0.2 → 0.2.1): 결과가 바뀌지 않는 오류 수정·문서·화면 다듬기.
+\item 판을 올릴 때마다 \f{docs/release/v<판>.md}(변경 기록), 두 매뉴얼의 이 장과 Technical Manual 변경 이력, PDF 를 함께 고친다. 배포 파일은 \f{v<판>} 태그로 만든다.
+\end{itemize}
+
+\begin{longtable}{P{14mm}P{20mm}P{118mm}}
+\caption{판별 변경(사용자에게 보이는 것)}\label{tab:ver}\\
+\toprule 판 & 날짜 & 변경 \\ \midrule\endfirsthead
+\toprule 판 & 날짜 & 변경 \\ \midrule\endhead
+v0.1 & 2026-11-04 & 첫 배포(태그 \f{v0.1}, 공개하지 않음): RLS-19 음원 + ISO 9613-2 / RLS-19 전파, 반사 3차, 격자·벽면·점·단면, Qt 화면, 자가 점검, 전농사거리 예제 \\
+v0.2 & 2026-11-10 & \textbf{결과가 바뀜}: RLS-90 방법 추가(\f{rls90}), 차도 면 지형 보정 기본 \f{flatten}, 교통량 빈칸을 RLS-19 표 2 / RLS-90 표 3 으로, 교통량 없는 골목길 음원 제외(\f{minor\_roads: exclude}). \textbf{화면}: 홈 화면, 입력값 설정(설정값·교통량·차로 수), 격자·3D 파사드 나란히 보기, 격자 위 벽면 값 띠, 화면별 저장 단축키. \textbf{도구}: SoundPLAN 9.1 비교 입력 내보내기·결과 비교. 태그·배포 파일은 아직 없음 \\
+\bottomrule
+\end{longtable}
+v0.1 로 계산한 결과 폴더를 v0.2 로 다시 계산하면 위 기본값 변경 때문에 값이 달라질 수 있다. 이전 동작이 필요하면 \f{model.road\_surface: dtm}, \f{model.minor\_roads: include} 로 둔다(교통량 빈칸 규칙은 되돌리는 설정이 없다).
+
 \appendix
 \section{명령어 요약}
 \begin{Verbatim}
@@ -423,7 +491,9 @@ python -m sori init 폴더                 # 작업 폴더·설정 예제
 python -m sori template -c config.yaml   # 교통량·교차로 서식
 python -m sori all -c config.yaml        # build → run → plot
 python -m sori run -c config.yaml --points   # 점 수음점만
-python -m pytest -q tests                # 시험(238 통과·1 xfailed, 2026-11-05)
+python -m pytest -q tests                # 시험(전체 통과·1 xfailed — 개수는 Technical Manual 9.1절)
+python tools/export_soundplan.py 설정.yaml    # SoundPLAN 비교용 입력 내보내기(v0.2)
+python tools/compare_soundplan.py --sori 결과폴더 --sp-points 파일   # SoundPLAN 결과 비교(v0.2)
 python tools/check_baseline.py           # 전농사거리 기준선 비교(약 1분)
 python tools/reference.py make|compare   # 기준 사례 기준값 만들기·비교
 \end{Verbatim}

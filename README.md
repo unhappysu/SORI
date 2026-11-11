@@ -1,6 +1,6 @@
 # SORI — RLS-19 + ISO 9613-2 도로교통소음 3D 소음지도(SORI Map)
 
-**SORI** (Simulation of Outdoor Road-noise Impact) v0.1 — 도로교통소음 예측 소프트웨어. 소음지도 기능·결과물은 **SORI Map** 이라 부른다. Python 패키지·명령은 `sori` (`python -m sori …`).
+**SORI** (Simulation of Outdoor Road-noise Impact) v0.2 — 도로교통소음 예측 소프트웨어(판 번호 규칙·변경은 9절). 소음지도 기능·결과물은 **SORI Map** 이라 부른다. Python 패키지·명령은 `sori` (`python -m sori …`).
 
 > ※ 본 소프트웨어와 문서는 Claude(Anthropic의 AI)를 활용하여 제작하였음. 계산 결과의 검토·검증 책임은 사용자에게 있음.
 
@@ -204,10 +204,21 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 8. 검증
 ```bash
-python -m pytest -q tests        # 230개 시험(RLS-19 공식 시험과제 TEST-20 포함, 1개는 Krad 미지원 xfail): 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
+python -m pytest -q tests        # 317개 시험(2026-11-10 v0.2: 316 통과, RLS-19 공식 시험과제 TEST-20 포함, 1개는 Krad 미지원 xfail): 원문 식 재계산, 해석해(직선 음원), 차폐·1·2차 반사 수계산 비교(ISO·RLS-19 전파), 입력·음원 배치 회귀시험, 기준 사례·좌표 변환
 ```
 기본값에서 결과가 바뀌지 않았는지는 `python tools/check_baseline.py`(전농사거리 기준선 `baseline/` 과 SHA-256 비교, 약 1분)로 확인합니다.
 `tests/test_reference.py` 는 저장소에 들어 있는 기준 사례(가상 교차로, `tests/reference/synthetic/`)를 계산해 기준값과 허용 오차(기본 0.01 dB, 프로젝트 임의 설정, `--sori-tol` 로 변경)로 비교하고, `tests/test_crs.py` 는 좌표 변환(EPSG) 결과를 확인합니다. 기준값을 만든 커밋·환경은 `tests/reference/synthetic/expected/meta.json`, 다시 만들기·결과 폴더 비교는 `python tools/reference.py make|compare`.
 
 그 밖의 도구: `tools/make_review_lists.py`(지도 확인 목록 → `docs/review/`), `tools/diagnostics.py`(구간 분할·횡단경사 진단 재현). 교통량 비교 시나리오는 `scenarios/`.
 자세한 내용은 `TECHNICAL_NOTES.md`, 작업 경과와 남은 일은 `docs/작업기록_2026-10-15_17.md`.
+
+## 9. 판 번호(버전)
+
+- 판은 `sori/__init__.py` 의 `__version__` 하나로 정한다. 앱 제목·SORI 정보·결과 `run_info.json` 의 `software`·보고서 지도 아래 글이 이 값을 쓰고, User's·Technical Manual 표지·머리글은 `docs/manual/build.sh` 가 만드는 `docs/manual/version.tex`(`\soriversion`)로 같은 값을 쓴다. 어긋나면 `tests/test_version_sync.py` 가 실패한다(→ `sh docs/manual/build.sh` 후 `version.tex` 커밋).
+- **둘째 자리**(0.1 → 0.2): 같은 설정으로 계산 결과가 바뀌는 변경(식·기본값), 계산 방법이나 화면 기능 추가. **셋째 자리**(0.2 → 0.2.1): 결과가 바뀌지 않는 오류 수정·문서·화면 다듬기.
+- 판을 올릴 때: `__version__` → `docs/release/v<판>.md` → 두 매뉴얼의 판별 변경 표 → `sh docs/manual/build.sh` → 배포는 `v<판>` 태그.
+
+| 판 | 날짜 | 요약 |
+|---|---|---|
+| v0.1 | 2026-11-04 | 첫 배포(태그 `v0.1`, 공개 안 함) — `docs/release/v0.1.md` |
+| v0.2 | 2026-11-10 | RLS-90 추가, 차도 면 보정 기본 flatten, 교통량 빈칸 독일 기준표, 골목길 제외 기본(**결과 바뀜**), 홈·입력값 화면, 나란히 보기, 격자 위 벽면 값 — `docs/release/v0.2.md`. 태그 전 |
