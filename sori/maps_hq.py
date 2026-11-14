@@ -59,15 +59,23 @@ PALETTES = {
 }
 
 
+# 색표마다 건물 바탕·테두리·테두리 굵기·간선 노면 색. simple(2026-11-14): 건물 #f2f2f2 는 50 dB 이하 칸(#e6ecdf)과
+# 거의 같아 골목 지역이 건물과 섞여 보였음 → 회색 #c9c9c9 + 진한 테두리(후보 넷 비교), 노면은 건물과 섞이지 않게 더 밝게 #ececec
+PALETTE_STYLE = {"din": ("#f2f2f2", "#3a3a3a", 0.35, "#d9d9d9"),
+                 "simple": ("#c9c9c9", "#4a4a4a", 0.45, "#ececec")}
+
+
 def set_palette(name):
     """색표 바꾸기("din" = DIN 45682 11색, 보고서 그림 기본 / "simple" = 앱 화면 7색). DIN_EDGES·DIN_COLS 목록을
     제자리에서 바꾸므로 이 목록을 가져다 쓰는 곳(viewer3d 등)도 함께 바뀜. 반환: 이전 색표 이름"""
     if name not in PALETTES:
         raise ValueError(f"색표는 {sorted(PALETTES)} 중 하나")
+    global BLD_FC, BLD_EC, BLD_LW, ROAD_FC
     prev = palette_name()
     e, c = PALETTES[name]
     DIN_EDGES[:] = e
     DIN_COLS[:] = c
+    BLD_FC, BLD_EC, BLD_LW, ROAD_FC = PALETTE_STYLE[name]
     return prev
 
 
@@ -78,6 +86,7 @@ EXC_COLS = ["#e9ede6", "#ffd84d", "#ff8a1f", "#d7261e", "#7a0a2a"]
 ROAD_FC = "#d9d9d9"
 BLD_FC = "#f2f2f2"
 BLD_EC = "#3a3a3a"
+BLD_LW = 0.35
 
 DEFAULT_LIMITS = {"LrT": 68.0, "LrN": 58.0,
                   "label": "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"}
@@ -219,13 +228,14 @@ def frame(ax, bbox, tick=100):
         s.set_linewidth(1.6)
 
 
-def base_layers(ax, C, bbox, roads=True, bld=True, bld_fc=BLD_FC, z=10):
+def base_layers(ax, C, bbox, roads=True, bld=True, bld_fc=None, z=10):
+    """간선 노면 띠·건물. 색은 부를 때의 색표 값(set_palette 가 BLD_FC·BLD_EC·ROAD_FC·BLD_LW 를 바꿈)"""
     v = box(*bbox)
     if roads:
         gpd.GeoSeries([C.road_band.intersection(v)]).plot(ax=ax, fc=ROAD_FC, ec="none", lw=0, zorder=z)
     if bld:
         B = C.bld[C.bld.intersects(v)]
-        B.plot(ax=ax, fc=bld_fc, ec=BLD_EC, lw=0.35, zorder=z + 2)
+        B.plot(ax=ax, fc=bld_fc or BLD_FC, ec=BLD_EC, lw=BLD_LW, zorder=z + 2)
 
 
 def road_labels(ax, C, bbox, min_lanes=4, z=30):

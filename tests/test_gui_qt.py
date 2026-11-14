@@ -888,11 +888,36 @@ def test_simple_palette_switch():
     try:
         assert M.palette_name() == "simple" and len(M.DIN_COLS) == len(M.DIN_EDGES) + 1 == 7
         assert V.DIN_EDGES is M.DIN_EDGES and M.din_cmap()[0].N == 7
+        assert M.BLD_FC == "#c9c9c9"                                         # 건물이 50 dB 이하 칸과 구분되게
         with pytest.raises(ValueError):
             M.set_palette("rainbow")
     finally:
         M.set_palette(prev)
-    assert M.palette_name() == "din" and len(M.DIN_COLS) == 11
+    assert M.palette_name() == "din" and len(M.DIN_COLS) == 11 and M.BLD_FC == "#f2f2f2"   # 보고서 그림 색 그대로
+
+
+def test_cursor_value_in_status_bar(tmp_path):
+    """상태 줄: 마우스 위치 좌표 + 가까운 격자점 값(2026-11-14). 격자 밖은 좌표만, 건물 안은 '건물 안'"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.show()
+    w.open_config(tmp_path / "case" / "config.yaml", out)
+    w.enter_task("grid")
+    G = w.R["grid"]; Gh = G[G.h == w.cb_h.currentData()].dropna(subset=["LrT"])
+    r = Gh.iloc[len(Gh) // 3]
+    w._on_map_move(float(r.x) + 0.4, float(r.y) - 0.4)
+    assert w.lbl_xy.text().endswith(f"LrT {r.LrT:.1f} dB")
+    w._on_map_move(float(Gh.x.max()) + 500, float(r.y))                   # 격자 밖
+    assert "dB" not in w.lbl_xy.text() and w.lbl_xy.text().startswith("X ")
+    w.cb_key.setCurrentIndex(1)                                           # 야간으로 바꾸면 야간 값
+    w._on_map_move(float(r.x), float(r.y))
+    assert w.lbl_xy.text().endswith(f"LrN {r.LrN:.1f} dB")
+    w.close()
+    app.processEvents()
 
 
 def test_facade3d_building_numbers_values_and_ghost(tmp_path):

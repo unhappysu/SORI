@@ -2296,7 +2296,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.map = MapView()
         self.map.clicked.connect(self._on_map_click)
         self.map.finished.connect(self._finish_barrier)
-        self.map.moved.connect(lambda x, y: self.lbl_xy.setText(f"X {x:,.1f}  Y {y:,.1f}"))
+        self.map.moved.connect(self._on_map_move)
         # 나란히 보기: 왼쪽 격자 지도(self.map), 오른쪽 3D 파사드(self.map3d). 끄면 예전처럼 한 창에서 바꿔 봄
         self.map3d = MapView()
         self.map3d.message(MSG_3D_EMPTY)
@@ -2573,6 +2573,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.timer = QtCore.QTimer(self, interval=1000)
         self.timer.timeout.connect(self._tick)
         self.lbl_xy = QtWidgets.QLabel("")
+        self.lbl_xy.setMinimumWidth(330)                  # 좌표 + 마우스 위치 값("X 205,123.0  Y 553,110.0 · LrT 80.1 dB")
         sb.addWidget(self.lbl_status, 1)
         sb.addPermanentWidget(self.lbl_xy)
         sb.addPermanentWidget(self.lbl_time)
@@ -3281,6 +3282,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.map.canvas.draw_idle()
 
     FACADE_BID_LABELS = 30                               # 3D 파사드·격자 지도에 번호를 붙일 주변 건물 수
+
+    def _on_map_move(self, x, y):
+        """상태 줄 오른쪽: 마우스 위치 좌표 + 가까운 격자점 값(2026-11-14)"""
+        v = self._value_at(x, y)
+        self.lbl_xy.setText(f"X {x:,.1f}  Y {y:,.1f}" + (f"   ·   {v}" if v else ""))
+
+    def _value_at(self, x, y):
+        """마우스 위치에서 가장 가까운 격자점 값 글(지금 보이는 격자 지도 기준: 보통 = LrT·LrN, 전후 차이 = Δ, 주야 차이 =
+        LrT − LrN). 격자 밖·입력 지도·3D·단면이면 빈 글, 건물 안 격자점은 "건물 안". 격자 표는 바뀔 때 한 번만 배열로 만듦"""
+        g = getattr(self, "_grid_now", None)
+        if g is None or self.view != "grid" or self.map_mode == "input":
+            return ""
+        Gh, key = g
+        lut = getattr(self, "_cursor_lut", None)
+        if lut is None or lut[0] is not Gh:
+            if "d" + key in Gh.columns:
+                col, lab = "d" + key, f"Δ{key}"
+            elif self.act_dn.isChecked() and {"LrT", "LrN"} <= set(Gh.columns):
+                Gh = Gh.assign(_dn=Gh.LrT - Gh.LrN)
+                col, lab = "_dn", "LrT − LrN"
+            else:
+                col, lab = key, key
+            xs, ys = np.sort(Gh.x.unique()), np.sort(Gh.y.unique())
+            step = float(np.min(np.diff(xs))) if len(xs) > 1 else 1.0
+            A = np.full((len(ys), len(xs)), np.nan)
+            A[np.searchsorted(ys, Gh.y), np.searchsorted(xs, Gh.x)] = Gh[col].values
+            lut = self._cursor_lut = (g[0], xs[0], ys[0], step, A, lab, col.startswith("d") or col == "_dn")
+        _, x0, y0, step, A, lab, signed = lut
+        j, i = int(round((x - x0) / step)), int(round((y - y0) / step))
+        if not (0 <= i < A.shape[0] and 0 <= j < A.shape[1]):
+            return ""
+        v = A[i, j]
+        if not np.isfinite(v):
+            return "건물 안"
+        return f"{lab} {v:+.1f} dB" if signed else f"{lab} {v:.1f} dB"
 
     def _facade_view(self, bid):
         """3D 파사드에 그리는 범위: 클릭한 건물 중심 반경(설정 radius_3d, 최대 80 m)"""
