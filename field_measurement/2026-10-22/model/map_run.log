@@ -1,0 +1,208 @@
+수음점: [{'point_id': 'P1', 'x': np.float64(205192.18), 'y': np.float64(553140.81), 'h': 1.309, 'lon': 127.058779, 'lat': 37.577802, 's_along_m': 88.0, 'curb_from_centerline_m': np.float64(10.67), 'receiver_from_centerline_m': np.float64(14.88), 'building_from_receiver_m': np.float64(1.01)}, {'point_id': 'P2', 'x': np.float64(205208.1), 'y': np.float64(553115.46), 'h': 1.312, 'lon': 127.058959, 'lat': 37.577573, 's_along_m': 100.0, 'curb_from_centerline_m': np.float64(9.23), 'receiver_from_centerline_m': np.float64(12.55), 'building_from_receiver_m': np.float64(2.93)}]
+  $ python -m noisemap build -c config.yaml (in AVG)
+16:16:14 INFO 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
+16:16:14 INFO NumExpr defaulting to 8 threads.
+16:16:15 INFO 레이어 building : 파일 9개, 객체 4327개
+16:16:16 INFO 레이어 road     : 파일 9개, 객체 2261개
+16:16:17 INFO 레이어 contour  : 파일 9개, 객체 470개
+16:16:17 INFO 레이어 spot     : 파일 9개, 객체 19개
+16:16:17 INFO 래스터 1160 x 1200 (1.0 m)
+16:16:18 INFO 교통량 파일: 도로명 4건, UFID 19건
+16:16:23 INFO Created 2,911 records
+16:16:23 INFO Created 2,261 records
+16:16:23 INFO 모델 구축 완료: {'terrain': {'contour_pts': 24565, 'spot_pts': 19, 'dem_pts': 0, 'mode': 'contours', 'smooth_m': 5.0}, 'buildings': 2911, 'roads': 2261, 'sources': 10671, 'sources_main': 5282, 'facade_edges': 12860, 'junctions': 403, 'signal_junction_points': 6, 'grid_receivers_per_height': 25719, 'facade_receivers': 12327, 'roads_with_fallback_traffic': 1994, 'roads_narrow_same_name': 241, 'canyon_segments': 380}
+16:16:23 WARNING 교통량 가정값(fallback) 사용 도로객체 1994개 — output/traffic_used.csv 의 traffic_src 확인
+  $ python -m noisemap run -c config.yaml (in AVG)
+16:16:24 INFO 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
+16:16:24 INFO NumExpr defaulting to 8 threads.
+16:16:25 INFO 격자 h=4 m 256/25719  1s  (남은 시간 약 72s)
+16:16:26 INFO 격자 h=4 m 512/25719  1s  (남은 시간 약 59s)
+16:16:26 INFO 격자 h=4 m 768/25719  2s  (남은 시간 약 55s)
+16:16:27 INFO 격자 h=4 m 1024/25719  2s  (남은 시간 약 54s)
+16:16:27 INFO 격자 h=4 m 1280/25719  3s  (남은 시간 약 53s)
+16:16:28 INFO 격자 h=4 m 1536/25719  3s  (남은 시간 약 52s)
+16:16:28 INFO 격자 h=4 m 1792/25719  4s  (남은 시간 약 51s)
+16:16:29 INFO 격자 h=4 m 2048/25719  4s  (남은 시간 약 50s)
+16:16:29 INFO 격자 h=4 m 2304/25719  5s  (남은 시간 약 49s)
+16:16:30 INFO 격자 h=4 m 2560/25719  5s  (남은 시간 약 48s)
+16:16:30 INFO 격자 h=4 m 2816/25719  6s  (남은 시간 약 47s)
+16:16:31 INFO 격자 h=4 m 3072/25719  6s  (남은 시간 약 46s)
+16:16:31 INFO 격자 h=4 m 3328/25719  7s  (남은 시간 약 45s)
+16:16:32 INFO 격자 h=4 m 3584/25719  7s  (남은 시간 약 45s)
+16:16:32 INFO 격자 h=4 m 3840/25719  8s  (남은 시간 약 44s)
+16:16:33 INFO 격자 h=4 m 4096/25719  8s  (남은 시간 약 43s)
+16:16:33 INFO 격자 h=4 m 4352/25719  9s  (남은 시간 약 43s)
+16:16:34 INFO 격자 h=4 m 4608/25719  9s  (남은 시간 약 42s)
+16:16:34 INFO 격자 h=4 m 4864/25719  10s  (남은 시간 약 42s)
+16:16:35 INFO 격자 h=4 m 5120/25719  10s  (남은 시간 약 41s)
+16:16:35 INFO 격자 h=4 m 5376/25719  11s  (남은 시간 약 41s)
+16:16:36 INFO 격자 h=4 m 5632/25719  11s  (남은 시간 약 40s)
+16:16:36 INFO 격자 h=4 m 5888/25719  12s  (남은 시간 약 40s)
+16:16:37 INFO 격자 h=4 m 6144/25719  12s  (남은 시간 약 39s)
+16:16:37 INFO 격자 h=4 m 6400/25719  13s  (남은 시간 약 39s)
+16:16:38 INFO 격자 h=4 m 6656/25719  13s  (남은 시간 약 39s)
+16:16:38 INFO 격자 h=4 m 6912/25719  14s  (남은 시간 약 38s)
+16:16:39 INFO 격자 h=4 m 7168/25719  15s  (남은 시간 약 38s)
+16:16:39 INFO 격자 h=4 m 7424/25719  15s  (남은 시간 약 37s)
+16:16:40 INFO 격자 h=4 m 7680/25719  16s  (남은 시간 약 37s)
+16:16:40 INFO 격자 h=4 m 7936/25719  16s  (남은 시간 약 36s)
+16:16:41 INFO 격자 h=4 m 8192/25719  17s  (남은 시간 약 36s)
+16:16:42 INFO 격자 h=4 m 8448/25719  17s  (남은 시간 약 35s)
+16:16:42 INFO 격자 h=4 m 8704/25719  18s  (남은 시간 약 35s)
+16:16:43 INFO 격자 h=4 m 8960/25719  18s  (남은 시간 약 34s)
+16:16:43 INFO 격자 h=4 m 9216/25719  19s  (남은 시간 약 34s)
+16:16:43 INFO 격자 h=4 m 9472/25719  19s  (남은 시간 약 33s)
+16:16:44 INFO 격자 h=4 m 9728/25719  20s  (남은 시간 약 32s)
+16:16:44 INFO 격자 h=4 m 9984/25719  20s  (남은 시간 약 32s)
+16:16:45 INFO 격자 h=4 m 10240/25719  21s  (남은 시간 약 31s)
+16:16:45 INFO 격자 h=4 m 10496/25719  21s  (남은 시간 약 30s)
+16:16:46 INFO 격자 h=4 m 10752/25719  21s  (남은 시간 약 30s)
+16:16:46 INFO 격자 h=4 m 11008/25719  22s  (남은 시간 약 29s)
+16:16:47 INFO 격자 h=4 m 11264/25719  22s  (남은 시간 약 29s)
+16:16:47 INFO 격자 h=4 m 11520/25719  23s  (남은 시간 약 28s)
+16:16:48 INFO 격자 h=4 m 11776/25719  23s  (남은 시간 약 28s)
+16:16:48 INFO 격자 h=4 m 12032/25719  24s  (남은 시간 약 27s)
+16:16:49 INFO 격자 h=4 m 12288/25719  24s  (남은 시간 약 27s)
+16:16:49 INFO 격자 h=4 m 12544/25719  25s  (남은 시간 약 26s)
+16:16:49 INFO 격자 h=4 m 12800/25719  25s  (남은 시간 약 25s)
+16:16:50 INFO 격자 h=4 m 13056/25719  26s  (남은 시간 약 25s)
+16:16:50 INFO 격자 h=4 m 13312/25719  26s  (남은 시간 약 24s)
+16:16:51 INFO 격자 h=4 m 13568/25719  27s  (남은 시간 약 24s)
+16:16:51 INFO 격자 h=4 m 13824/25719  27s  (남은 시간 약 23s)
+16:16:52 INFO 격자 h=4 m 14080/25719  27s  (남은 시간 약 23s)
+16:16:52 INFO 격자 h=4 m 14336/25719  28s  (남은 시간 약 22s)
+16:16:53 INFO 격자 h=4 m 14592/25719  28s  (남은 시간 약 22s)
+16:16:53 INFO 격자 h=4 m 14848/25719  29s  (남은 시간 약 21s)
+16:16:54 INFO 격자 h=4 m 15104/25719  29s  (남은 시간 약 21s)
+16:16:54 INFO 격자 h=4 m 15360/25719  30s  (남은 시간 약 20s)
+16:16:55 INFO 격자 h=4 m 15616/25719  30s  (남은 시간 약 20s)
+16:16:55 INFO 격자 h=4 m 15872/25719  31s  (남은 시간 약 19s)
+16:16:56 INFO 격자 h=4 m 16128/25719  31s  (남은 시간 약 19s)
+16:16:56 INFO 격자 h=4 m 16384/25719  32s  (남은 시간 약 18s)
+16:16:57 INFO 격자 h=4 m 16640/25719  32s  (남은 시간 약 18s)
+16:16:57 INFO 격자 h=4 m 16896/25719  33s  (남은 시간 약 17s)
+16:16:58 INFO 격자 h=4 m 17152/25719  33s  (남은 시간 약 17s)
+16:16:58 INFO 격자 h=4 m 17408/25719  34s  (남은 시간 약 16s)
+16:16:59 INFO 격자 h=4 m 17664/25719  35s  (남은 시간 약 16s)
+16:17:00 INFO 격자 h=4 m 17920/25719  35s  (남은 시간 약 15s)
+16:17:00 INFO 격자 h=4 m 18176/25719  36s  (남은 시간 약 15s)
+16:17:01 INFO 격자 h=4 m 18432/25719  36s  (남은 시간 약 14s)
+16:17:01 INFO 격자 h=4 m 18688/25719  37s  (남은 시간 약 14s)
+16:17:02 INFO 격자 h=4 m 18944/25719  38s  (남은 시간 약 13s)
+16:17:03 INFO 격자 h=4 m 19200/25719  38s  (남은 시간 약 13s)
+16:17:03 INFO 격자 h=4 m 19456/25719  39s  (남은 시간 약 13s)
+16:17:04 INFO 격자 h=4 m 19712/25719  40s  (남은 시간 약 12s)
+16:17:05 INFO 격자 h=4 m 19968/25719  40s  (남은 시간 약 12s)
+16:17:05 INFO 격자 h=4 m 20224/25719  41s  (남은 시간 약 11s)
+16:17:06 INFO 격자 h=4 m 20480/25719  41s  (남은 시간 약 11s)
+16:17:06 INFO 격자 h=4 m 20736/25719  42s  (남은 시간 약 10s)
+16:17:07 INFO 격자 h=4 m 20992/25719  43s  (남은 시간 약 10s)
+16:17:08 INFO 격자 h=4 m 21248/25719  43s  (남은 시간 약 9s)
+16:17:08 INFO 격자 h=4 m 21504/25719  44s  (남은 시간 약 9s)
+16:17:09 INFO 격자 h=4 m 21760/25719  44s  (남은 시간 약 8s)
+16:17:09 INFO 격자 h=4 m 22016/25719  45s  (남은 시간 약 8s)
+16:17:10 INFO 격자 h=4 m 22272/25719  46s  (남은 시간 약 7s)
+16:17:11 INFO 격자 h=4 m 22528/25719  46s  (남은 시간 약 7s)
+16:17:11 INFO 격자 h=4 m 22784/25719  47s  (남은 시간 약 6s)
+16:17:12 INFO 격자 h=4 m 23040/25719  48s  (남은 시간 약 6s)
+16:17:13 INFO 격자 h=4 m 23296/25719  48s  (남은 시간 약 5s)
+16:17:13 INFO 격자 h=4 m 23552/25719  49s  (남은 시간 약 4s)
+16:17:14 INFO 격자 h=4 m 23808/25719  49s  (남은 시간 약 4s)
+16:17:14 INFO 격자 h=4 m 24064/25719  50s  (남은 시간 약 3s)
+16:17:15 INFO 격자 h=4 m 24320/25719  50s  (남은 시간 약 3s)
+16:17:15 INFO 격자 h=4 m 24576/25719  51s  (남은 시간 약 2s)
+16:17:16 INFO 격자 h=4 m 24832/25719  51s  (남은 시간 약 2s)
+16:17:16 INFO 격자 h=4 m 25088/25719  52s  (남은 시간 약 1s)
+16:17:17 INFO 격자 h=4 m 25344/25719  52s  (남은 시간 약 1s)
+16:17:17 INFO 격자 h=4 m 25600/25719  53s  (남은 시간 약 0s)
+16:17:18 INFO 격자 h=4 m 25719/25719  53s  (남은 시간 약 0s)
+16:17:25 INFO 건물 벽면 256/12327  7s  (남은 시간 약 333s)
+16:17:27 INFO 건물 벽면 512/12327  9s  (남은 시간 약 199s)
+16:17:30 INFO 건물 벽면 768/12327  12s  (남은 시간 약 180s)
+16:17:34 INFO 건물 벽면 1024/12327  16s  (남은 시간 약 177s)
+16:17:35 INFO 건물 벽면 1280/12327  17s  (남은 시간 약 143s)
+16:17:36 INFO 건물 벽면 1536/12327  17s  (남은 시간 약 121s)
+16:17:36 INFO 건물 벽면 1792/12327  18s  (남은 시간 약 104s)
+16:17:37 INFO 건물 벽면 2048/12327  18s  (남은 시간 약 92s)
+16:17:37 INFO 건물 벽면 2304/12327  19s  (남은 시간 약 83s)
+16:17:40 INFO 건물 벽면 2560/12327  22s  (남은 시간 약 83s)
+16:17:42 INFO 건물 벽면 2816/12327  24s  (남은 시간 약 81s)
+16:17:43 INFO 건물 벽면 3072/12327  25s  (남은 시간 약 75s)
+16:17:45 INFO 건물 벽면 3328/12327  26s  (남은 시간 약 71s)
+16:17:45 INFO 건물 벽면 3584/12327  27s  (남은 시간 약 65s)
+16:17:46 INFO 건물 벽면 3840/12327  28s  (남은 시간 약 62s)
+16:17:50 INFO 건물 벽면 4096/12327  32s  (남은 시간 약 64s)
+16:17:56 INFO 건물 벽면 4352/12327  37s  (남은 시간 약 68s)
+16:17:59 INFO 건물 벽면 4608/12327  41s  (남은 시간 약 68s)
+16:18:05 INFO 건물 벽면 4864/12327  47s  (남은 시간 약 72s)
+16:18:10 INFO 건물 벽면 5120/12327  51s  (남은 시간 약 72s)
+16:18:14 INFO 건물 벽면 5376/12327  55s  (남은 시간 약 71s)
+16:18:18 INFO 건물 벽면 5632/12327  59s  (남은 시간 약 71s)
+16:18:23 INFO 건물 벽면 5888/12327  64s  (남은 시간 약 70s)
+16:18:28 INFO 건물 벽면 6144/12327  70s  (남은 시간 약 70s)
+16:18:32 INFO 건물 벽면 6400/12327  74s  (남은 시간 약 68s)
+16:18:36 INFO 건물 벽면 6656/12327  78s  (남은 시간 약 66s)
+16:18:41 INFO 건물 벽면 6912/12327  82s  (남은 시간 약 64s)
+16:18:46 INFO 건물 벽면 7168/12327  87s  (남은 시간 약 63s)
+16:18:52 INFO 건물 벽면 7424/12327  93s  (남은 시간 약 62s)
+16:18:59 INFO 건물 벽면 7680/12327  100s  (남은 시간 약 61s)
+16:19:04 INFO 건물 벽면 7936/12327  105s  (남은 시간 약 58s)
+16:19:08 INFO 건물 벽면 8192/12327  109s  (남은 시간 약 55s)
+16:19:11 INFO 건물 벽면 8448/12327  113s  (남은 시간 약 52s)
+16:19:13 INFO 건물 벽면 8704/12327  115s  (남은 시간 약 48s)
+16:19:14 INFO 건물 벽면 8960/12327  116s  (남은 시간 약 43s)
+16:19:15 INFO 건물 벽면 9216/12327  116s  (남은 시간 약 39s)
+16:19:18 INFO 건물 벽면 9472/12327  120s  (남은 시간 약 36s)
+16:19:23 INFO 건물 벽면 9728/12327  124s  (남은 시간 약 33s)
+16:19:27 INFO 건물 벽면 9984/12327  128s  (남은 시간 약 30s)
+16:19:30 INFO 건물 벽면 10240/12327  132s  (남은 시간 약 27s)
+16:19:32 INFO 건물 벽면 10496/12327  134s  (남은 시간 약 23s)
+16:19:33 INFO 건물 벽면 10752/12327  134s  (남은 시간 약 20s)
+16:19:33 INFO 건물 벽면 11008/12327  135s  (남은 시간 약 16s)
+16:19:34 INFO 건물 벽면 11264/12327  136s  (남은 시간 약 13s)
+16:19:35 INFO 건물 벽면 11520/12327  136s  (남은 시간 약 10s)
+16:19:35 INFO 건물 벽면 11776/12327  137s  (남은 시간 약 6s)
+16:19:36 INFO 건물 벽면 12032/12327  137s  (남은 시간 약 3s)
+16:19:36 INFO 건물 벽면 12288/12327  138s  (남은 시간 약 0s)
+16:19:37 INFO 건물 벽면 12327/12327  138s  (남은 시간 약 0s)
+16:19:37 INFO 점 수음점 2/2  0s  (남은 시간 약 0s)
+16:19:37 INFO 구간 길이 진단(l ≤ s/2, 결과값 불변): {'grid_h4': {'receivers': 25719, 'violating': 12908, 'violating_pct': np.float64(50.19), 'violating_via_main': 4025, 'min_s_over_l': 0.691935082797502}, 'facade': {'receivers': 12327, 'violating': 3185, 'violating_pct': np.float64(25.84), 'violating_via_main': 9, 'min_s_over_l': 0.44776036165408506}}
+16:19:37 INFO 계산 완료: {'grid_h4': {'LrT': [35.66747464759911, 84.47096325330187], 'LrN': [30.831494599040468, 80.64834595445802]}, 'facade': {'LrT': [38.3642043546963, 79.31356990028405], 'LrN': [33.82986031219262, 75.46321956347617]}, 'points': {'LrT': [78.29224622352103, 79.660536391828], 'LrN': [74.46624106378026, 75.83327825113824]}}
+  $ python -m noisemap plot -c config.yaml (in AVG)
+16:19:38 INFO 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
+16:19:38 INFO NumExpr defaulting to 8 threads.
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/grid_LrT_h4m_grid.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/grid_LrT_h4m_isophone.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/grid_LrN_h4m_grid.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/grid_LrN_h4m_isophone.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/facade_plan_LrT.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/facade_plan_LrN.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/facade_3d_LrT.png
+16:19:42 INFO 그림: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/facade_3d_LrN.png
+16:19:42 WARNING findfont: Failed to find font weight bold, now using 400.
+16:19:43 WARNING findfont: Failed to find font weight bold, now using 400.
+16:19:43 WARNING findfont: Failed to find font weight bold, now using 400.
+16:19:43 WARNING findfont: Failed to find font weight bold, now using 400.
+16:19:43 WARNING findfont: Failed to find font weight bold, now using 400.
+/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/noisemap/maps_hq.py:265: UserWarning: Glyph 8722 (\N{MINUS SIGN}) missing from font(s) AppleGothic.
+  fig.savefig(png, dpi=300); fig.savefig(pdf)
+16:19:47 WARNING findfont: Failed to find font weight bold, now using 400.
+/Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/noisemap/maps_hq.py:265: UserWarning: Glyph 8722 (\N{MINUS SIGN}) missing from font(s) AppleGothic.
+  fig.savefig(png, dpi=300); fig.savefig(pdf)
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_grid_LrT_h4m.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_grid_LrT_h4m.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_exceed_LrT_h4m.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_exceed_LrT_h4m.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_facade_LrT.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_facade_LrT.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_building_LrT.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_building_LrT.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_grid_LrN_h4m.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_grid_LrN_h4m.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_exceed_LrN_h4m.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_exceed_LrN_h4m.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_facade_LrN.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_facade_LrN.pdf
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_building_LrN.png
+16:19:54 INFO 고품질 지도: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/HQ_building_LrN.pdf
+16:19:54 INFO 3D 뷰어: /Users/gustnbijou_/Downloads/3-2/소음진동설계/noisemap_rls19_iso9613/field_measurement/2026-10-22/model/AVG/output/noise3d.html

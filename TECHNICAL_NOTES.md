@@ -334,6 +334,10 @@ RLS-19 3.2, 3.3.1(원문 `fgsv_052_korrektur_04032020.pdf`)과 ISO 9613-2 4절�
 
 ## 6. 검증 (`python -m pytest -q tests`)
 
+> 2026-11-13(측면 회절 뒤): **400 통과, 1 skipped, 1 xfailed** — `test_lateral.py`(8)·`test_lateral_proto.py`(3) 추가. 측면 회절 `sori/lateral.py`(ISO 식 13, `propagation.lateral.enabled`, **기본 켬** — 같은 날 사용자 결정, 결과 바뀜, 기준 사례 기준값 다시 만듦), 설명은 Technical Manual ‘측면 회절’ 절·`validation/lateral_diffraction/README.md`.
+>
+> 2026-11-13: **389 통과, 1 skipped, 1 xfailed**. 보완 사항 반영으로 시험 파일 `test_barriers.py`(방음벽·경로 보기 직접 ~ 3차), `test_high_order.py`(반사 4–6차 해석값), `test_summary.py`(건물 단위 표·용도지역·성분·차종 변환·측정 − 계산) 추가. 새 모듈 `sori/compare.py`(두 결과 차이), `sori/paths.py`(경로 보기), `sori/summary.py`(요약·입력 도우미). 계산 커널: `solver.compute_b`(방음벽 `bars`, 7개 반환 — `E4` = 4차 이상), `_order_n`(4–6차·경로 기록), `geometry.path_geometry_b`(방음벽 교점 모서리). 이전 이름은 같은 결과를 내는 감싼 함수로 남김. 설명은 정식본 Technical Manual 6.2·방음벽 절.
+
 | 시험 | 비교 대상 | 허용오차 | 결과 |
 |---|---|---|---|
 | LW0, LW′, D_K, D_refl, D_LN, D_SD, 올림 | 원문 식 재계산 — 같은 저자가 같은 식을 다시 계산한 자기 일관성 확인(원문 수치표 대조 아님) | 1e-9 | 통과 |

@@ -3,6 +3,8 @@
 수음점별 에너지 합산.  Lr = 10 lg Σ_i Σ_b w_b · 10^0.1(LW_i − (A − Dc)_ib)   (ISO 9613-2 식 3·5 / RLS-19 식 2)
   - 직접음 + 1차·2차·3차 반사(허상음원, ISO 9613-2 7.5 / RLS-19 3.6). 3차는 국내 「소음지도의 작성방법」
     별표 2 제8호(반사차수 3차 이상 원칙) — RLS-19 3.6(1·2차)을 넘는 조건
+  - 4차 이상(최대 MAXO 차, _order_n): 3차와 같은 이웃 목록·조건을 차수만 늘린 일반 탐색. 차수가 하나 늘 때마다
+    탐색량이 이웃 면 수만큼 곱해짐. 4차 이상 성분은 E4(7번째 반환값)에 합침
   - 2·3차 탐색 제한(계산량, 프로젝트 설정): 마지막 반사면이 수음점 R2 이내, 앞 반사면은 다음 반사면과
     중심 거리 R2 이내이고 서로 마주보는 면. 3차는 Python 에서 만든 이웃 목록(nb_ptr, nb_idx, facade_neighbors) 사용
   - 전파 방법 meth: METH_RLS19(RLS-19 3.5 식 11~17) | METH_ISO(ISO 9613-2 7장) | METH_RLS90(RLS-90 4.4.2 식 19~27).
@@ -21,7 +23,8 @@ import math
 import numpy as np
 
 from . import njit, prange
-from .geometry import NGEOM, G_D, G_SGR, G_HM, G_SHIELD, G_Z, path_geometry
+from .geometry import NGEOM, G_D, G_SGR, G_HM, G_SHIELD, G_Z, MAXO, MAXV, path_geometry_b
+from . import lateral as LAT
 from .iso9613 import atten_iso, terms_iso
 from .rls19_propagation import accept_reflection, atten_rls19, terms_rls19
 from . import rls90_propagation as R90
@@ -34,16 +37,17 @@ METH_RLS90 = 2
 
 @njit(cache=True)
 def _path(meth, vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
-          rbid, refl_bid, skip_r, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, hd, hh, geom, out):
+          rbid, refl_bid, skip_r, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, hd, hh, geom, out, bars,
+          cmet0=0.0):
     """공통 기하 → 방법별 감쇠를 out[b] 에 기록"""
-    path_geometry(vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
-                  rbid, refl_bid, skip_r, hd, hh, geom)
+    path_geometry_b(vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                    rbid, refl_bid, skip_r, hd, hh, geom, bars)
     if meth == METH_RLS19:
         atten_rls19(geom, out)
     elif meth == METH_RLS90:
         R90.atten_rls90(geom, out)
     else:
-        atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out)
+        atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out, cmet0)
 
 
 @njit(cache=True)
@@ -102,24 +106,209 @@ def _beam(qx, qy, ax1, ay1, ax2, ay2, anx, any_, bx1, by1, bx2, by2):
     return tmax >= 0.0 and tmin <= 1.0
 
 
-@njit(parallel=True, cache=True)
+@njit(cache=True)
+def _order_n(n, xr, yr, zr, hr, rbid_r, rfid_r, cand, nc,
+             sx, sy, sz, sg, Pd, Pn, smain,
+             fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+             gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rsm, Rsn, R2, skip_r,
+             bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx,
+             own_all, bars, hd, hh, geom, out, inc, vx, vy, rb, rec_j, rec_f, rec_p, rec_n, fatt, cmet0=0.0):
+    """n 차 반사(n ≥ 4) 한 수음점의 에너지 (주간, 야간).
+      rec_*: 경로 기록(경로 보기용, sori/paths.py). rec_j.shape[0] = 0 이면 기록하지 않음(계산 커널).
+      기록하면 경로마다 음원 rec_j, 에너지 계수 rec_f(대역 가중·반사 이득·감쇠 포함, 음원 파워에 곱함),
+      반사점 rec_p[k, 2i:2i+2](음원 쪽부터), 개수 rec_n[0]. 자리가 모자라면 기록만 멈춤(합은 그대로)"" 3차와 같은 규칙을 차수 n 으로 일반화:
+      면 사슬 cf[0](수음점 쪽, 후보 면·수음점 R2 이내) ← cf[1] ← … ← cf[n−1](음원 쪽), 이웃은 facade_neighbors
+      거울상 q[0] = R 의 cf[0] 거울상, q[i] = q[i−1] 의 cf[i] 거울상. 반사점은 음원에서 q[n−1] 쪽으로 차례로 작도"""
+    NS = sx.shape[0]; NB = bands.shape[0]
+    cf = np.empty(MAXO, dtype=np.int64); it = np.empty(MAXO, dtype=np.int64)
+    qx = np.empty(MAXO); qy = np.empty(MAXO); dq = np.empty(MAXO)
+    px = np.empty(MAXO); py = np.empty(MAXO); sl = np.empty(MAXO + 1); cs = np.empty(MAXO)
+    gain = 1.0
+    for _ in range(n):
+        gain *= rho
+    ed = 0.0; en = 0.0
+    for ci in range(nc):
+        f0 = cand[ci]
+        ex = fx2[f0] - fx1[f0]; ey = fy2[f0] - fy1[f0]
+        L2 = ex * ex + ey * ey
+        dr = (xr - fx1[f0]) * fnx[f0] + (yr - fy1[f0]) * fny[f0]
+        t0 = ((xr - fx1[f0]) * ex + (yr - fy1[f0]) * ey) / L2
+        t0 = min(1.0, max(0.0, t0))
+        wx = fx1[f0] + t0 * ex - xr; wy = fy1[f0] + t0 * ey - yr
+        if wx * wx + wy * wy > R2 * R2:
+            continue
+        cf[0] = f0; dq[0] = dr
+        qx[0] = xr - 2 * dr * fnx[f0]; qy[0] = yr - 2 * dr * fny[f0]
+        depth = 1
+        it[1] = nb_ptr[f0]
+        while depth >= 1:
+            if depth < n:                               # 사슬에 면 하나 더
+                p = cf[depth - 1]
+                if it[depth] >= nb_ptr[p + 1]:
+                    depth -= 1
+                    continue
+                g = nb_idx[it[depth]]
+                it[depth] += 1
+                if own_all and g == rfid_r:
+                    continue
+                d = (qx[depth - 1] - fx1[g]) * fnx[g] + (qy[depth - 1] - fy1[g]) * fny[g]
+                if d <= 0.05:
+                    continue
+                if not _beam(qx[depth - 1], qy[depth - 1], fx1[p], fy1[p], fx2[p], fy2[p], fnx[p], fny[p],
+                             fx1[g], fy1[g], fx2[g], fy2[g]):
+                    continue
+                cf[depth] = g; dq[depth] = d
+                qx[depth] = qx[depth - 1] - 2 * d * fnx[g]; qy[depth] = qy[depth - 1] - 2 * d * fny[g]
+                depth += 1
+                if depth < n:
+                    it[depth] = nb_ptr[g]
+                continue
+            # 사슬 완성: 음원마다 반사점 작도
+            for j in range(NS):
+                dx = sx[j] - xr; dy = sy[j] - yr
+                R = Rsm if smain[j] else Rsn
+                if dx * dx + dy * dy > R * R:
+                    continue
+                ax = sx[j]; ay = sy[j]
+                ok = True
+                Lt = 0.0
+                for k in range(n):                      # k 번째 반사(음원 쪽부터): 면 cf[n−1−k], 목표 거울상 q[n−1−k]
+                    m = n - 1 - k
+                    f = cf[m]
+                    ds = (ax - fx1[f]) * fnx[f] + (ay - fy1[f]) * fny[f]
+                    if ds <= 0.05:
+                        ok = False
+                        break
+                    u = ds / (ds + dq[m])
+                    bx = ax + u * (qx[m] - ax); by = ay + u * (qy[m] - ay)
+                    fex = fx2[f] - fx1[f]; fey = fy2[f] - fy1[f]
+                    tt = ((bx - fx1[f]) * fex + (by - fy1[f]) * fey) / (fex * fex + fey * fey)
+                    if tt < 0.0 or tt > 1.0:
+                        ok = False
+                        break
+                    seg = math.sqrt((bx - ax) ** 2 + (by - ay) ** 2)
+                    if seg < 0.1:
+                        ok = False
+                        break
+                    px[k] = bx; py[k] = by; sl[k] = seg; cs[k] = ds / seg
+                    Lt += seg
+                    ax = bx; ay = by
+                if not ok:
+                    continue
+                seg = math.sqrt((xr - ax) ** 2 + (yr - ay) ** 2)
+                if seg < 0.1:
+                    continue
+                sl[n] = seg; Lt += seg
+                acc = 0.0
+                for k in range(n):                      # 반사점 높이가 면 높이 범위 안인지
+                    acc += sl[k]
+                    f = cf[n - 1 - k]
+                    zp = sz[j] + (zr - sz[j]) * acc / Lt
+                    if zp > fzt[f] or zp < fz0[f]:
+                        ok = False
+                        break
+                if not ok:
+                    continue
+                for b in range(NB):
+                    inc[b] = True
+                acc = 0.0
+                for k in range(n):
+                    acc += sl[k]
+                    f = cf[n - 1 - k]
+                    hF = fzt[f] - fz0[f]
+                    if not _accept(meth, lams, min(fL[f], hF), cs[k], acc, Lt - acc, inc, hF):
+                        ok = False
+                        break
+                if not ok:
+                    continue
+                vx[0] = sx[j]; vy[0] = sy[j]
+                for k in range(n):
+                    vx[k + 1] = px[k]; vy[k + 1] = py[k]; rb[k] = fbid[cf[n - 1 - k]]
+                vx[n + 1] = xr; vy[n + 1] = yr
+                _path(meth, vx, vy, n + 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
+                      x0, y0, res, nx, ny, step, rbid_r, rb, skip_r,
+                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out, bars, cmet0)
+                ga = gain
+                for k in range(n):                       # 반사면별 추가 계수(방음벽 반사 저감, 건물 = 1)
+                    ga *= fatt[cf[k]]
+                F = _band_factor(out, wts, inc, ga)
+                ed += Pd[j] * F; en += Pn[j] * F
+                if rec_j.shape[0] > 0 and rec_n[0] < rec_j.shape[0]:
+                    q = rec_n[0]
+                    rec_j[q] = j; rec_f[q] = F
+                    for k in range(n):
+                        rec_p[q, 2 * k] = px[k]; rec_p[q, 2 * k + 1] = py[k]
+                    rec_n[0] = q + 1
+            depth -= 1
+    return ed, en
+
+
+@njit(cache=True)
 def compute(rx, ry, rz, rg, rbid, rfid, order,
             sx, sy, sz, sg, Pd, Pn, smain,
             fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
             gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
             Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
             bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all):
+    """방음벽 없는 계산(이전 호출 형식 유지) — compute_b 에 빈 방음벽 배열을 넘김"""
+    o = compute_b(rx, ry, rz, rg, rbid, rfid, order, sx, sy, sz, sg, Pd, Pn, smain,
+                  fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+                  gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
+                  bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all,
+                  np.zeros((0, 5)))
+    return o[0], o[1], o[2], o[3], o[4], o[5]
+
+
+@njit(cache=True)
+def compute_b(rx, ry, rz, rg, rbid, rfid, order,
+              sx, sy, sz, sg, Pd, Pn, smain,
+              fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+              gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+              Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
+              bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars):
+    """측면 회절 없는 계산(이전 호출 형식 유지). 반환 (Ed, En, Edir, E1, E2, E3, E4)"""
+    o = compute_l(rx, ry, rz, rg, rbid, rfid, order, sx, sy, sz, sg, Pd, Pn, smain,
+                  fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+                  gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
+                  bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars,
+                  False, 0, np.zeros(bars.shape[0], np.int64), np.zeros((0, 2)), np.zeros(1, np.int64),
+                  np.ones(fx1.shape[0]))
+    return o[0], o[1], o[2], o[3], o[4], o[5], o[6]
+
+
+@njit(parallel=True, cache=True)
+def compute_l(rx, ry, rz, rg, rbid, rfid, order,
+              sx, sy, sz, sg, Pd, Pn, smain,
+              fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+              gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+              Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
+              bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars,
+              lat_on, lat_grow, bgid, bxy, bptr, fatt, cmet0=0.0):
+    """bars[n, 5] = 방음벽 선분 x1, y1, x2, y2, 지면 위 높이(geometry.path_geometry_b), bgid = 조각별 방음벽 번호.
+    lat_on: 측면 회절(lateral.lateral_factor, ISO 방법만), bxy·bptr = 건물 외곽선(건물 번호 = bid).
+    cmet0 = ISO 9613-2 식 (22) C0(dB, 0 = 기상 보정 없음 L_AT(DW), ISO 방법만).
+    fatt[NF] = 반사면별 추가 이득 계수(방음벽 반사 저감: 표 8·표 7 값 / 기본 이득, 건물·반사형 = 1).
+    반환 (Ed, En, Edir, E1, E2, E3, E4, Elat): E4 = 4차 이상 반사, Elat = 측면 회절로 더해진 에너지(주간)"""
     NR = rx.shape[0]; NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
     Ed = np.zeros(NR); En = np.zeros(NR)
-    Edir = np.zeros(NR); E1 = np.zeros(NR); E2 = np.zeros(NR); E3 = np.zeros(NR)
+    Edir = np.zeros(NR); E1 = np.zeros(NR); E2 = np.zeros(NR); E3 = np.zeros(NR); E4 = np.zeros(NR)
+    Elat = np.zeros(NR)
     lg_rho = rho
+    nobars = np.zeros((0, 5))
     for r in prange(NR):
         hd = np.empty(HULL_N); hh = np.empty(HULL_N); out = np.empty(NB); geom = np.empty(NGEOM)
         inc = np.ones(NB, dtype=np.bool_)
-        vx = np.empty(5); vy = np.empty(5)
-        rb = np.full(3, -1, dtype=np.int64)
+        vx = np.empty(MAXV); vy = np.empty(MAXV)
+        rb = np.full(MAXO, -1, dtype=np.int64)
         xr = rx[r]; yr = ry[r]; zr = rz[r]; hr = zr - rg[r]
-        ed = 0.0; en = 0.0; e_dir = 0.0; e1 = 0.0; e2 = 0.0; e3 = 0.0
+        ed = 0.0; en = 0.0; e_dir = 0.0; e1 = 0.0; e2 = 0.0; e3 = 0.0; e4 = 0.0; elat = 0.0
+        np_ = LAT.MAXP if lat_on else 1
+        nx_ = LAT.MAXX if lat_on else 1
+        lpx = np.empty(np_); lpy = np.empty(np_); lord = np.empty(np_, np.int64); lH = np.empty(2 * np_, np.int64)
+        lcx = np.empty(np_); lcy = np.empty(np_)
+        lXb = np.empty(nx_, np.int64); lXg = np.empty(nx_, np.int64)
+        lXb2 = np.empty(nx_, np.int64); lXg2 = np.empty(nx_, np.int64)
+        gfree = np.empty(NGEOM); ofree = np.empty(NB)
         # ---------------- 직접음
         for j in range(NS):
             dx = sx[j] - xr; dy = sy[j] - yr
@@ -129,11 +318,30 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
             vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = xr; vy[1] = yr
             _path(meth, vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                       x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
+                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out, bars, cmet0)
             for b in range(NB):
                 inc[b] = True
             F = _band_factor(out, wts, inc, 1.0)
             ed += Pd[j] * F; en += Pn[j] * F; e_dir += Pd[j] * F
+            if lat_on and meth == METH_ISO and geom[G_SHIELD] > 0.5:
+                # 지형만의 단면(건물·방음벽 없음): 지형이 막으면 측면 회절 없음, 아니면 이 값이 상한(TR 17534-3 5.6)
+                path_geometry_b(vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, gnd, bid, Gmap, x0, y0, res, nx, ny,
+                                step, rbid[r], rb, skip_r, hd, hh, gfree, nobars)
+                if gfree[G_SHIELD] < 0.5:
+                    atten_iso(gfree, bands, lams, alphas, ground_alt, C2, dz1, dz2, ofree, cmet0)
+                    Ffree = _band_factor(ofree, wts, inc, 1.0)
+                    Fl = LAT.lateral_factor(sx[j], sy[j], sz[j], sz[j] - sg[j], xr, yr, zr, hr, rbid[r],
+                                            gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, skip_r,
+                                            bars, bgid, bxy, bptr, bands, lams, alphas, wts, ground_alt,
+                                            C2, dz1, dz2, lat_grow, lpx, lpy, lord, lH, lcx, lcy,
+                                            lXb, lXg, lXb2, lXg2, cmet0)
+                    if Fl > 0.0:
+                        cap = Ffree if Ffree > F else F
+                        add = F + Fl
+                        if add > cap:
+                            add = cap
+                        add -= F
+                        ed += Pd[j] * add; en += Pn[j] * add; elat += Pd[j] * add
         if order >= 1 and NF > 0:
             # 후보 반사면: 수음점 앞쪽, 거리 Rf 이내, 수음점 자신의 파사드 제외
             cand = np.empty(NF, dtype=np.int64); nc = 0
@@ -187,8 +395,8 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                     rb[0] = fbid[f]; rb[1] = -1
                     _path(meth, vx, vy, 3, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                               x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                              bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
-                    F = _band_factor(out, wts, inc, lg_rho)
+                              bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out, bars, cmet0)
+                    F = _band_factor(out, wts, inc, lg_rho * fatt[f])
                     ed += Pd[j] * F; en += Pn[j] * F; e1 += Pd[j] * F
             # ---------------- 2차 반사: S → P1(f1) → P2(f2) → R
             if order >= 2:
@@ -265,8 +473,8 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                             rb[0] = fbid[f1]; rb[1] = fbid[f2]
                             _path(meth, vx, vy, 4, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                                       x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
-                            F = _band_factor(out, wts, inc, lg_rho * lg_rho)
+                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out, bars, cmet0)
+                            F = _band_factor(out, wts, inc, lg_rho * lg_rho * fatt[f1] * fatt[f2])
                             ed += Pd[j] * F; en += Pn[j] * F; e2 += Pd[j] * F
             # ---------------- 3차 반사: S → P1(f1) → P2(f2) → P3(f3) → R  (f1 = f3 허용: 마주보는 두 벽 사이 왕복)
             if order >= 3:
@@ -365,11 +573,23 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
                                 rb[0] = fbid[f1]; rb[1] = fbid[f2]; rb[2] = fbid[f3]
                                 _path(meth, vx, vy, 5, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap,
                                       x0, y0, res, nx, ny, step, rbid[r], rb, skip_r,
-                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out)
-                                F = _band_factor(out, wts, inc, lg_rho * lg_rho * lg_rho)
+                                      bands, lams, alphas, ground_alt, C2, dz1, dz2, hd, hh, geom, out, bars, cmet0)
+                                F = _band_factor(out, wts, inc, lg_rho * lg_rho * lg_rho * fatt[f1] * fatt[f2] * fatt[f3])
                                 ed += Pd[j] * F; en += Pn[j] * F; e3 += Pd[j] * F
-        Ed[r] = ed; En[r] = en; Edir[r] = e_dir; E1[r] = e1; E2[r] = e2; E3[r] = e3
-    return Ed, En, Edir, E1, E2, E3
+            # ---------------- 4차 이상 반사(일반 탐색)
+            if order >= 4:
+                for n in range(4, min(order, MAXO) + 1):
+                    a_d, a_n = _order_n(n, xr, yr, zr, hr, rbid[r], rfid[r], cand, nc,
+                                        sx, sy, sz, sg, Pd, Pn, smain,
+                                        fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+                                        gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rsm, Rsn, R2, skip_r,
+                                        bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx,
+                                        own_all, bars, hd, hh, geom, out, inc, vx, vy, rb,
+                                        np.zeros(0, np.int64), np.zeros(0), np.zeros((0, 2 * MAXO)),
+                                        np.zeros(1, np.int64), fatt, cmet0)
+                    ed += a_d; en += a_n; e4 += a_d
+        Ed[r] = ed; En[r] = en; Edir[r] = e_dir; E1[r] = e1; E2[r] = e2; E3[r] = e3; E4[r] = e4; Elat[r] = elat
+    return Ed, En, Edir, E1, E2, E3, E4, Elat
 
 
 def facade_neighbors(fx1, fy1, fx2, fy2, fnx, fny, R2):
@@ -415,14 +635,28 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
                 gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
                 Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
                 bands, lams, alphas, ground_alt, C2, dz1, dz2, meth):
+    """방음벽 없는 경우(이전 호출 형식 유지)"""
+    return point_paths_b(xr, yr, zr, zgr, rbidr, rfidr, order, sx, sy, sz, sg, smain,
+                         fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+                         gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
+                         bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, np.zeros((0, 5)), np.ones(fx1.shape[0]))
+
+
+@njit(cache=True)
+def point_paths_b(xr, yr, zr, zgr, rbidr, rfidr, order,
+                  sx, sy, sz, sg, smain,
+                  fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
+                  gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                  Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
+                  bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, bars, fatt, cmet0=0.0):
     """수음점 1개의 직접음·1차 반사 경로별 기하와 감쇠항(대역별). compute 의 직접음·1차 반사와 같은 조건.
     반환 (info[n, NPINFO], terms[n, NTERM], band[n]). terms 열: RLS-19 = rls19_propagation.TERM_NAMES,
     ISO = iso9613.TERM_NAMES (RLS-19 는 앞 5칸만 사용). 2·3차 반사 경로는 넣지 않음"""
     NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
     hd = np.empty(HULL_N); hh = np.empty(HULL_N); geom = np.empty(NGEOM); t = np.zeros(NTERM)
     inc = np.ones(NB, dtype=np.bool_)
-    vx = np.empty(5); vy = np.empty(5)
-    rb = np.full(3, -1, dtype=np.int64)
+    vx = np.empty(MAXV); vy = np.empty(MAXV)
+    rb = np.full(MAXO, -1, dtype=np.int64)
     hr = zr - zgr
     cap = NS * (1 + (NF if order >= 1 else 0)) * NB
     cap = min(cap, 2000000)
@@ -434,8 +668,8 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
         if dx * dx + dy * dy > R * R:
             continue
         vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = xr; vy[1] = yr
-        path_geometry(vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
-                      rbidr, rb, skip_r, hd, hh, geom)
+        path_geometry_b(vx, vy, 2, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                        rbidr, rb, skip_r, hd, hh, geom, bars)
         for b in range(NB):
             if n >= cap:
                 break
@@ -444,7 +678,7 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
             elif meth == METH_RLS90:
                 R90.terms_rls90(geom, t)
             else:
-                terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t)
+                terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t, cmet0)
             info[n, P_J] = j; info[n, P_ORDER] = 0; info[n, P_FACE] = -1
             info[n, P_PX] = np.nan; info[n, P_PY] = np.nan
             info[n, P_D] = geom[G_D]; info[n, P_SGR] = geom[G_SGR]; info[n, P_HM] = geom[G_HM]
@@ -496,8 +730,8 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
                     continue
                 vx[0] = sx[j]; vy[0] = sy[j]; vx[1] = px; vy[1] = py; vx[2] = xr; vy[2] = yr
                 rb[0] = fbid[f]; rb[1] = -1
-                path_geometry(vx, vy, 3, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny,
-                              step, rbidr, rb, skip_r, hd, hh, geom)
+                path_geometry_b(vx, vy, 3, sz[j], zr, sz[j] - sg[j], hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny,
+                                step, rbidr, rb, skip_r, hd, hh, geom, bars)
                 for b in range(NB):
                     if not inc[b] or n >= cap:
                         continue
@@ -506,12 +740,12 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
                     elif meth == METH_RLS90:
                         R90.terms_rls90(geom, t)
                     else:
-                        terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t)
+                        terms_iso(geom, bands[b], lams[b], alphas[b], ground_alt, C2, dz1, dz2, t, cmet0)
                     info[n, P_J] = j; info[n, P_ORDER] = 1; info[n, P_FACE] = f
                     info[n, P_PX] = px; info[n, P_PY] = py
                     info[n, P_D] = geom[G_D]; info[n, P_SGR] = geom[G_SGR]; info[n, P_HM] = geom[G_HM]
                     info[n, P_Z] = geom[G_Z] if geom[G_SHIELD] > 0.5 else 0.0
-                    info[n, P_GAIN] = rho
+                    info[n, P_GAIN] = rho * fatt[f]
                     for q in range(NTERM):
                         terms[n, q] = t[q]
                     band[n] = b; n += 1

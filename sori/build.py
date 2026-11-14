@@ -667,6 +667,58 @@ def facade_receivers(cfg, F, bld):
     return pd.DataFrame(rows)
 
 
+def barrier_pieces(cfg, gnd, rast):
+    """방음벽 선을 piece(m) 이하 조각으로 나눈 표: barrier_id, x1, y1, x2, y2, h, kind, loss, z0, ztop, L.
+    z0 = 조각 양 끝 지면고의 낮은 값(반사면 높이 범위용). 차폐는 경로와 만나는 점의 지면고 + h 를 씀(geometry)"""
+    rows = []
+    piece = float((cfg["input"].get("barriers") or {}).get("piece", 10.0))
+    for b in I.load_barriers(cfg):
+        for (xa, ya), (xb, yb) in zip(b["pts"][:-1], b["pts"][1:]):
+            L = math.hypot(xb - xa, yb - ya)
+            if L < 0.05:
+                continue
+            k = max(1, int(math.ceil(L / piece)))
+            for q in range(k):
+                x1 = xa + (xb - xa) * q / k; y1 = ya + (yb - ya) * q / k
+                x2 = xa + (xb - xa) * (q + 1) / k; y2 = ya + (yb - ya) * (q + 1) / k
+                z0 = float(np.min(rast.sample(gnd, [x1, x2], [y1, y2])))
+                rows.append(dict(barrier_id=b["id"], x1=x1, y1=y1, x2=x2, y2=y2, h=b["h"],
+                                 kind=b["kind"], loss=np.nan if b["loss"] is None else float(b["loss"]),
+                                 z0=z0, ztop=z0 + b["h"], L=L / k))
+    return pd.DataFrame(rows, columns=["barrier_id", "x1", "y1", "x2", "y2", "h", "kind", "loss", "z0", "ztop", "L"])
+
+
+def barrier_faces(B, min_len=2.0):
+    """방음벽의 양면 반사면(facades.csv 형식, bid = −1: 건물 아님, refl_kind·refl_db = 반사 종류·직접 지정 손실).
+    반사 없음(none)·min_len 미만 조각은 만들지 않음. 반사 손실은 run.face_factors 가 방법별로 적용"""
+    rows = []
+    for b in B.itertuples():
+        if b.kind == "none" or b.L < min_len:
+            continue
+        nx_, ny_ = (b.y2 - b.y1) / b.L, -(b.x2 - b.x1) / b.L
+        for sgn, (xa, ya, xb, yb) in ((1.0, (b.x1, b.y1, b.x2, b.y2)), (-1.0, (b.x2, b.y2, b.x1, b.y1))):
+            rows.append(dict(x1=xa, y1=ya, x2=xb, y2=yb, nx=sgn * nx_, ny=sgn * ny_, L=b.L, bid=-1,
+                             z0=b.z0, ztop=b.ztop, H=b.h, floors=0, kind="방음벽", refl_kind=b.kind, refl_db=b.loss))
+    return pd.DataFrame(rows)
+
+
+def building_outlines(bld):
+    """건물 외곽선 배열(측면 회절, sori/lateral.py): bxy[n, 2] = 고리마다 닫힌 좌표, 고리 사이 NaN 줄,
+    bptr[건물 번호 + 1] = 건물별 시작 위치(건물 번호 = bid = 행 순서)"""
+    rows, ptr = [], [0]
+    for g in bld.geometry:
+        k = 0
+        for part in getattr(g, "geoms", [g]):
+            for ring in [part.exterior] + list(part.interiors):
+                c = np.asarray(ring.coords)[:, :2]
+                if k:
+                    rows.append(np.full((1, 2), np.nan))
+                rows.append(c)
+                k += len(c) + (1 if k else 0)
+        ptr.append(ptr[-1] + k)
+    return (np.vstack(rows) if rows else np.zeros((0, 2))), np.asarray(ptr, np.int64)
+
+
 # ====================================================================== 메인
 def main(cfg):
     out = cfg["project"]["output_dir"]
@@ -696,8 +748,21 @@ def main(cfg):
     S, T, Ln = build_sources(cfg, road, gnd, rast, F, J, reach)
     xs, ys, gz, inside = grid_receivers(cfg, gnd, bidr, rast)
     FR = facade_receivers(cfg, F, bld) if cfg["receivers"]["facade"]["enabled"] else pd.DataFrame()
+    BR = barrier_pieces(cfg, gnd, rast)                # 방음벽(선택 입력). 없으면 아래 파일·기록은 이전과 같음
+    extra = {}
+    bpath = os.path.join(out, "barriers_used.csv")
+    if len(BR):
+        BF = barrier_faces(BR)                         # 건물 반사면 뒤에 붙임(fid 유지). 음원 쪽 D_refl(협곡) 판정에는 안 씀
+        if len(BF):
+            F = pd.concat([F, BF], ignore_index=True)
+        extra["bars"] = BR[["x1", "y1", "x2", "y2", "h"]].values.astype(np.float64)
+        extra["bars_gid"] = pd.factorize(BR.barrier_id)[0].astype(np.int64)     # 조각 → 방음벽 번호(측면 회절)
+        BR.to_csv(bpath, index=False, encoding="utf-8-sig")
+    elif os.path.exists(bpath):                        # 방음벽을 뺀 뒤 다시 만들 때 이전 기록이 남지 않게
+        os.remove(bpath)
+    extra["bxy"], extra["bptr"] = building_outlines(bld)          # 측면 회절용 건물 외곽선(계산에 쓰지 않으면 무시)
     np.savez_compressed(os.path.join(out, "model_rasters.npz"), gnd=gnd, dsm=dsm, bid=bidr, G=Gm,
-                        x0=rast.x0, y0=rast.y0, res=rast.res, gx=xs, gy=ys, gz=gz, ginside=inside)
+                        x0=rast.x0, y0=rast.y0, res=rast.res, gx=xs, gy=ys, gz=gz, ginside=inside, **extra)
     S.to_csv(os.path.join(out, "sources.csv"), index=False, encoding="utf-8-sig")
     T.drop(columns=["_key"], errors="ignore").to_csv(os.path.join(out, "traffic_used.csv"), index=False,
                                                      encoding="utf-8-sig")
@@ -737,6 +802,15 @@ def main(cfg):
         info["roads_oneway_name_fallback"] = int((T.traffic_src == "fallback_oneway").sum())
     if rsinfo is not None:                         # 옵션을 켠 경우에만 기록
         info["road_surface"] = rsinfo
+    if len(BR):                                    # 방음벽을 넣은 경우에만 기록
+        g = BR.groupby("barrier_id", sort=False)
+        info["barriers"] = {"count": int(g.ngroups), "length_m": round(float(BR.L.sum()), 1),
+                            "height_m": [float(BR.h.min()), float(BR.h.max())],
+                            "types": {k: int(v) for k, v in g.kind.first().value_counts().items()},
+                            "reflecting_faces": int((F.bid == -1).sum()),
+                            "note": "두께 없는 회절 모서리(경로와 만나는 점의 지면 + 높이). 반사 손실: 반사형 = 건물 외벽, 반사 저감형·"
+                                    "강한 반사 저감형 = RLS-19 표 8(3·5 dB)·RLS-90 표 7(−4·−8 dB), ISO 는 RLS-19 값을 ρ 로(프로젝트 선택), "
+                                    "none = 반사 없음. 음원 쪽 다중 반사 가산값(D_refl) 판정에는 넣지 않음"}
     if ov is not None:                             # 확인값 파일을 지정한 경우에만 기록(기본 출력은 그대로)
         cols = ["fid", "ufid", "rname", "lanes", "oneway", "lanes_fwd", "lanes_bwd", "lanes_src", "lanes_basis",
                 "oneway_dir", "oneway_dir_src", "oneway_dir_basis", "override_note"]

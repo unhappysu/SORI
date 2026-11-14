@@ -76,6 +76,15 @@ DEFAULTS = {
             "soft_polygons": None,                 # 녹지 등 다공성 지면 폴리곤(SHP/GPKG)
             "soft_G": 1.0,
         },
+        "barriers": {
+            "path": None,                          # 방음벽 CSV: barrier_id, height(지면 위 m), type(reflect/absorb/high/none), refl_loss(dB, 선택), coords("x y; x y; …")
+            "piece": 10.0,                         # 반사면·지면고를 나누는 조각 길이(m)
+        },
+        "zones": {
+            "path": None,                          # 용도지역 다각형(SHP/GPKG) — 건물별 도로교통소음 관리기준 대조(summary.py)
+            "field": "zone",                       # 용도지역 이름 열(값: A/B, 가/나 또는 '제2종일반주거지역'·'일반상업지역' 등)
+            "default": "A",                        # 파일이 없거나 다각형 밖 건물: A = 가 지역(주거 등 68/58), B = 나 지역(상업·공업 등 73/63)
+        },
         "road_alias": {},                          # 같은 도로축의 이름 변경 구간 {"전농로25길": "전농로"}
         "surface_map": {"아스팔트": "ref", "아스팔트콘크리트": "ref", "콘크리트": "ref",
                         "블록": "pflaster_other", "소형고압블록": "pflaster_other",
@@ -121,12 +130,20 @@ DEFAULTS = {
                        "D_RV": 0.5,                # rls19: 반사 손실 dB/회 (RLS-19 표 8, 건물 외벽·반사성 방음벽)
                        "D_E": -1.0,                # rls90: 반사 보정 dB/회 (RLS-90 표 7: 매끈한 외벽 −1, 요철 외벽 −2)
                        # 반사 차수: 「소음지도의 작성방법」 별표 2 제8호 "3차 이상" 원칙(RLS-19 3.6 은 1·2차)
+                       # 0 ~ 6. 4차 이상은 3차와 같은 탐색 규칙의 일반화(solver._order_n) — 계산 시간이 차수마다 크게 늘어남
                        "max_order_grid": 3, "max_order_facade": 3, "max_order_point": 3,
                        # 수음점이 놓인 외벽의 반사 제외: last = 마지막 반사만(RLS-19 1장 Immissionsort 주석, 기본)
                        # all = 모든 반사 순서(2026-10-29 이전 동작, 원래 코드 기준선 비교용)
                        "own_facade": "last",
                        "r_facade": 100.0, "r_source_main": 200.0, "r_source_minor": 50.0,
                        "r_second": 50.0},
+        "lateral": {                               # 측면 회절(ISO 9613-2 식 13, sori/lateral.py) — iso9613_2 방법에만 적용
+            "enabled": True,                       # 기본 켬(2026-11-13 사용자 결정): 건물·방음벽에 막힌 직접음 경로에 좌우 측면 경로를
+                                                   # 더함. rls19·rls90 방법은 켜 있어도 적용하지 않음(원문 규정). false = 2026-11-13 이전 동작
+            "max_grow": 6,                         # 측면 경로를 다른 건물이 막을 때 그 건물까지 감싸 다시 돌아가는 횟수
+        },
+        "cmet_C0": 0.0,                            # ISO 9613-2 8절 기상 보정 C0(dB, 식 22) — 0 = 순풍 조건 L_AT(DW)(기본, 이전과 같음).
+                                                   # 0 초과면 장기 평균 L_AT(LT) = L_AT(DW) − C_met. iso9613_2 방법만(지역 기상 통계로 정함, 보통 0~5)
         "skip_radius": 1.5,                        # 래스터 이산화 오차 보정 반경(m)
         "segment_check": True,                     # RLS-19 3.2 주석 l ≤ s/2 진단(결과값 불변) → segment_check.csv
         "terms_csv": False,                        # 점 수음점의 감쇠항별 중간값 → path_terms.csv (직접음·1차 반사, terms.py)
@@ -136,7 +153,10 @@ DEFAULTS = {
         "grid": {"enabled": True, "bbox": None, "size": [480.0, 520.0], "step": 5.0, "heights": [4.0]},
         "facade": {"enabled": True, "radius": 230.0, "piece": 10.0, "z_in_floor": 2.8, "offset": 0.05},
         "points": {"path": None,                   # 점 수음점 CSV: point_id, x, y, h(지면 위 높이 m) — 현장 측정점 비교용
-                   "default_height": None},        # h 가 빈 행에 쓸 높이(m). None 이면 그 행은 건너뜀
+                   "default_height": None,         # h 가 빈 행에 쓸 높이(m). None 이면 그 행은 건너뜀
+                   "road_contrib": True,           # 점마다 도로별 기여 → point_road_contrib.csv(경로 보기와 같은 계산, 반사 3차까지)
+                   "measured": None},              # 측정값 CSV(측정−계산 차이, summary.measured_compare):
+                                                   #   point_id, period(day/night), Leq  또는  point_id, LrT_meas, LrN_meas
     },
     "plots": {"font": None, "dpi": 130, "targets_3d": None, "radius_3d": 105.0,
               "limits": None,                       # 기준 초과 지도: {LrT: 68, LrN: 58, label: "..."}
@@ -179,10 +199,12 @@ def load(path):
 
     m = c["input"]["map"]
     m["folders"] = [rp(f) for f in m["folders"]]
-    for k in ("dem", "traffic", "junctions", "road_override"):
+    for k in ("dem", "traffic", "junctions", "road_override", "barriers"):
         c["input"][k]["path"] = rp(c["input"][k]["path"])
     c["input"]["ground"]["soft_polygons"] = rp(c["input"]["ground"]["soft_polygons"])
+    c["input"]["zones"]["path"] = rp(c["input"]["zones"]["path"])
     c["receivers"]["points"]["path"] = rp(c["receivers"]["points"]["path"])
+    c["receivers"]["points"]["measured"] = rp(c["receivers"]["points"].get("measured"))
     c["project"]["output_dir"] = rp(c["project"]["output_dir"])
     c["input"]["traffic"]["fallback_dtv_by_lanes"] = {
         int(k): float(v) for k, v in c["input"]["traffic"]["fallback_dtv_by_lanes"].items()}
@@ -205,6 +227,15 @@ def _validate(c):
         raise ValueError(f"propagation_method: {meth} 는 A 가중 단일값 계산 — bands_hz 를 여러 개 지정할 수 없음")
     if float(p["reflection"].get("D_E", -1.0)) > 0.0:
         raise ValueError("RLS-90 표 7: reflection.D_E 는 0 이하(dB, 예: −1)")
+    from .geometry import MAXO
+    for k in ("max_order_grid", "max_order_facade", "max_order_point"):
+        if not 0 <= int(p["reflection"][k]) <= MAXO:
+            raise ValueError(f"propagation.reflection.{k} 는 0 ~ {MAXO} (4차 이상은 계산 시간이 차수마다 크게 늘어남)")
+    lat = p.get("lateral") or {}                  # rls19·rls90 은 켜 있어도 적용 안 함(run.lateral_on) — 기본 켬이라 오류로 막지 않음
+    if not 0.0 <= float(p.get("cmet_C0", 0.0) or 0.0) <= 10.0:
+        raise ValueError("propagation.cmet_C0 는 0 ~ 10 dB (ISO 9613-2 비고 22: 실제 값은 보통 0 ~ 5 dB)")
+    if not 0 <= int(lat.get("max_grow", 6)) <= 20:
+        raise ValueError("propagation.lateral.max_grow 는 0 ~ 20")
     if p["reflection"].get("own_facade", "last") not in ("last", "all"):
         raise ValueError("propagation.reflection.own_facade 는 last 또는 all")
     if float(p["reflection"]["D_RV"]) < 0.0:

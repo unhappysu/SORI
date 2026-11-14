@@ -41,9 +41,10 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # 웹 화면(Streamlit)·테스트 도구는 앱에 넣지 않음. 화면은 PySide6 하나만(PyQt 제외, Qt WebEngine 미사용)
+    # 웹 화면(Streamlit)·테스트 도구는 앱에 넣지 않음. 화면은 PySide6 하나만(PyQt 제외).
+    # Qt WebEngine 은 앱 안 3D 보기(noise3d.html)에 씀(2026-11-13) — QtQuick 은 WebEngine 이 필요로 하므로 빼지 않음
     excludes=["streamlit", "streamlit_folium", "folium", "pytest", "IPython", "PyQt5", "PyQt6",
-              "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore", "PySide6.QtQuick"],
+              "PySide6.Qt3DCore"],
     noarchive=False,
     optimize=0,
     # numba 의 cache=True 는 원본 .py 파일이 있어야 동작함 → sori 는 .py 원본째 넣음(계산 코드 변경 없이 해결)

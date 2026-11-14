@@ -21,7 +21,7 @@ EMISSION_LABEL = {"rls19": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
                   "rls90": "RLS-90 (Ausgabe 1990) L_m,E 식 (6)~(9) → 등가 L_W′ = L_m,E + 11,2 + 10 lg 2π"}
 
 # 이번 판에서 계산하지 않는 항목(두 방법 공통)
-_COMMON_NOT_IMPLEMENTED = ["section(단면) 소음지도", "4차 이상 반사"]
+_COMMON_NOT_IMPLEMENTED = ["section(단면) 소음지도", "7차 이상 반사"]
 # D_refl(다중 반사 가산값)과 허상음원 반사의 조합 — 2026-11-11 원문 대조:
 #   RLS-19: 3.3.8 식 (9) + 3.6 "1차 및 2차 반사". 공식 시험과제 TEST-20 v2.1 K2 가 직접음 + 1차 + 2차 반사에
 #           식 (9)를 함께 적용(12·23쪽) → D_refl + 2차까지가 표준 절차. 3차 이상은 표준 밖
@@ -71,6 +71,9 @@ def standard_deviations(name, cfg):
         out.append("RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 구성. RLS-19 전파와 같은 값은 "
                    "가까운 거리(지면 감쇠 0)뿐이고, 포장 지면(G = 0)·차폐 없는 먼 거리에서는 RLS-19 보다 높게 나옴"
                    "(평지 100 m 에서 약 +4 ~ +6 dB: RLS-19 식 14 의 지면·기상 감쇠가 ISO 일반법 G = 0 에는 없음)")
+    if name == "iso9613_2" and (cfg["propagation"].get("lateral") or {}).get("enabled"):
+        out.append("측면 회절(ISO 9613-2 식 13)을 도로 음원 조각에 적용 — CNOSSOS-EU 는 실제 점음원에만 허용. "
+                   "측면 경로를 막는 건물은 감싸 돌아감(프로젝트 해석, sori/lateral.py)")
     if cfg["model"].get("source_lines", "direction") == "lane" and name != "rls90":
         out.append("음원선을 차로마다 둠(model.source_lines: lane) — RLS-19 Bild 6 은 주행방향마다 1개선")
     return out
@@ -154,15 +157,28 @@ class ISO9613Propagation(PropagationModel):
                 + ["식 (12) A_bar = D_z − A_gr", "식 (14)~(18) D_z·C3·z·K_met, 상한 20/25 dB",
                    "7.5 식 (19) 반사 크기 조건", "식 (20) L_W,im = L_W + 10 lg ρ"])
 
+    def _c0(self, cfg):
+        return float(cfg["propagation"].get("cmet_C0", 0.0) or 0.0)
+
+    def _lat(self, cfg):
+        return bool((cfg["propagation"].get("lateral") or {}).get("enabled"))
+
     def not_implemented(self, cfg):
-        return ["측면 회절(ISO 9613-2 식 13)", "음(−)의 z(가시선 위 장애물)", "A_misc(부속서 A)",
-                "차폐 대상 조건(7.4 면밀도·수평 치수) 검사", "C_met(식 21·22) — L_AT(DW)로 계산",
+        return [*([] if self._lat(cfg) else ["측면 회절(ISO 9613-2 식 13) — propagation.lateral.enabled 로 켬"]),
+                *(["측면 회절: 반사 경로·점 수음점 감쇠항 표(path_terms)·경로 보기에는 없음"] if self._lat(cfg) else []),
+                "음(−)의 z(가시선 위 장애물)", "A_misc(부속서 A)",
+                "차폐 대상 조건(7.4 면밀도·수평 치수) 검사",
+                *([] if self._c0(cfg) > 0 else ["C_met(식 21·22) — L_AT(DW)로 계산(propagation.cmet_C0 로 켬)"]),
                 *(["옥타브 대역 스펙트럼(출처 미확보 — 1대역 사용)"]
                   if len(cfg["propagation"]["bands_hz"]) == 1 else []),
                 *_COMMON_NOT_IMPLEMENTED]
 
     def lateral(self, cfg):
-        return "미구현(ISO 9613-2 식 13)"
+        if not self._lat(cfg):
+            return "끔(ISO 9613-2 식 13, propagation.lateral.enabled)"
+        g = int(cfg["propagation"]["lateral"].get("max_grow", 6))
+        return ("켬 — ISO 9613-2 식 (13) A_bar = D_z(K_met = 1), 건물·방음벽에 막힌 직접음 경로에 좌우 측면 경로 최대 2개"
+                f"(평면 볼록 껍질, 막는 건물은 감싸 돌아감 최대 {g}번), 차폐 없을 때 값을 넘지 않음(ISO/TR 17534-3 5.6)")
 
     def label(self, cfg):
         b = cfg["propagation"]["bands_hz"]
@@ -182,7 +198,9 @@ class ISO9613Propagation(PropagationModel):
                 "representative_frequency_hz": float(b[0]) if len(b) == 1 else None,
                 "representative_frequency_basis": "ISO 9613-2 1절 비고 1(A 가중 L_W 만 알면 500 Hz 감쇠항)"
                 if len(b) == 1 else "옥타브 대역(spectrum_dBA)",
-                "meteorology": "L_AT(DW) 순풍 조건(ISO 9613-2 식 3·5), C_met 미적용",
+                "meteorology": ("L_AT(DW) 순풍 조건(ISO 9613-2 식 3·5), C_met 미적용" if self._c0(cfg) <= 0 else
+                                f"장기 평균 L_AT(LT) = L_AT(DW) − C_met (ISO 9613-2 식 6·21·22, C0 = {self._c0(cfg):g} dB, "
+                                "d_p = 경로 수평 길이 — 반사·측면 경로는 펼친 길이·직선 거리)"),
                 "reflection_loss": f"ρ = {float(cfg['propagation']['reflection']['rho']):g} (ISO 9613-2 식 20)",
                 "hybrid_note": ("RLS-19 의 L_W 는 반공간(2π) 기준. ISO 일반법 G = 0·근거리(q = 0)에서만 A_gr = −3 dB 로 "
                                 "RLS-19 전파와 같은 값. 먼 거리는 A_gr = −3 − 3q(더 큰 음수)이고 RLS-19 식 (14)의 "

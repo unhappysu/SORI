@@ -657,6 +657,11 @@ def test_traffic_summary_no_back_calculation():
     old = T.drop(columns=["DTV_in", "traffic_basis", "M_day_from", "M_night_from"]).iloc[[1]]   # S1 이전 서식
     txt_old, _ = traffic_summary(old)
     assert "DTV" not in txt_old and "M_T 2,588" in txt_old and "출처 미기재" in txt_old
+    assert "km/h" not in txt                                                  # 방향별 속도 열 없음 → 속도 표기 없음
+    V = T.assign(v_pkw_fwd=[50.0, 50.0, 50.0, 50.0, 30.0, 30.0], v_pkw_bwd=[50.0, 30.0, 50.0, 50.0, 30.0, 30.0])
+    part = {s.split(" ")[0]: s for s in traffic_summary(V)[0].split(", ")}
+    assert "속도 50/30 km/h(방향별)" in part["사가정로"]                     # 방향별로 다른 도로만
+    assert "km/h" not in part["전농로"] and "km/h" not in part["서울시립대로"]
 
 
 def test_missing_m_config_validation(tmp_path):

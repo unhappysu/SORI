@@ -533,6 +533,96 @@ def load_junctions(cfg):
     return df
 
 
+BARRIER_COLS = ["barrier_id", "height", "type", "refl_loss", "coords", "note"]
+# 방음벽 반사 종류(RLS-19 1.x 반사 저감 분류, 표 8 / RLS-90 표 7). none = 반사면을 만들지 않음(반사 손실 무한대 근사)
+BARRIER_TYPES = {"reflect": "반사형", "absorb": "반사 저감형", "high": "강한 반사 저감형", "none": "반사 없음"}
+BARRIER_LOSS = {"rls19": {"absorb": 3.0, "high": 5.0},        # RLS-19 표 8 D_RV (반사형 = 건물 외벽 0.5)
+                "rls90": {"absorb": 4.0, "high": 8.0}}        # RLS-90 표 7 −D_E (absorbierend −4, hochabsorbierend −8)
+_TYPE_WORDS = {"reflect": "reflect", "반사": "reflect", "반사형": "reflect", "0": "reflect", "": "reflect",
+               "false": "reflect", "absorb": "absorb", "반사 저감형": "absorb", "반사저감": "absorb", "흡음": "absorb",
+               "1": "absorb", "true": "absorb", "y": "absorb", "yes": "absorb",
+               "high": "high", "강한 반사 저감형": "high", "고흡음": "high", "2": "high",
+               "none": "none", "반사 없음": "none", "없음": "none"}
+
+
+def barrier_type(text):
+    t = str(text if text is not None else "").strip().lower()
+    if t == "nan":
+        t = ""
+    if t not in _TYPE_WORDS:
+        raise ValueError(f"방음벽 type 은 {', '.join(BARRIER_TYPES)} 중 하나(입력 '{text}')")
+    return _TYPE_WORDS[t]
+
+
+def parse_coords(text):
+    """'x y; x y; …' → [(x, y), …]"""
+    pts = []
+    for part in str(text).replace("\n", ";").split(";"):
+        v = part.replace(",", " ").split()
+        if not v:
+            continue
+        if len(v) != 2:
+            raise ValueError(f"좌표는 'x y; x y; …' 형식: '{part.strip()}'")
+        pts.append((float(v[0]), float(v[1])))
+    return pts
+
+
+def format_coords(pts):
+    return "; ".join(f"{x:.2f} {y:.2f}" for x, y in pts)
+
+
+def load_barriers(cfg):
+    """방음벽 목록 [{id, h, kind, loss, pts, note}] (없으면 빈 목록). 좌표계는 계산 좌표계(cfg crs).
+    height = 지면 위 높이(m). type(kind): reflect 반사형(건물 외벽과 같은 반사) / absorb 반사 저감형(RLS-19 표 8 3 dB,
+    RLS-90 표 7 −4 dB) / high 강한 반사 저감형(5 dB / −8 dB) / none 반사 없음. refl_loss(dB, 선택) = 반사 손실 직접 지정.
+    이전 형식의 absorbing 열(0/1)도 읽음: 1 → absorb(2026-11-13 이전에는 반사 없음이었음)"""
+    p = (cfg["input"].get("barriers") or {}).get("path")
+    if not p:
+        return []
+    if not os.path.exists(p):
+        raise RuntimeError(f"방음벽 파일 없음: {p}")
+    df = read_csv_any(p)
+    for c in ("barrier_id", "height", "coords"):
+        if c not in df.columns:
+            raise RuntimeError("방음벽 파일 열: barrier_id, height, type, refl_loss, coords('x y; x y; …'), note")
+    out = []
+    for i, r in df.iterrows():
+        bid = str(r["barrier_id"]).strip() or f"B{i + 1}"
+        if not str(r["coords"]).strip():
+            continue
+        try:
+            h = float(r["height"]); pts = parse_coords(r["coords"])
+        except ValueError as e:
+            raise RuntimeError(f"방음벽 '{bid}': {e}") from e
+        if not 0.0 < h <= 30.0:
+            raise RuntimeError(f"방음벽 '{bid}': height 는 0 초과 30 m 이하(입력 {h:g})")
+        if len(pts) < 2:
+            raise RuntimeError(f"방음벽 '{bid}': 좌표가 2점 이상이어야 함")
+        try:
+            kind = barrier_type(r["type"] if "type" in df.columns else r.get("absorbing", ""))
+            ls = str(r.get("refl_loss", "")).strip()
+            loss = float(ls) if ls and ls.lower() != "nan" else None
+        except ValueError as e:
+            raise RuntimeError(f"방음벽 '{bid}': {e}") from e
+        if loss is not None and not 0.0 <= loss <= 30.0:
+            raise RuntimeError(f"방음벽 '{bid}': refl_loss 는 0 ~ 30 dB(입력 {loss:g})")
+        out.append(dict(id=bid, h=h, kind=kind, loss=loss, pts=pts, note=str(r.get("note", ""))))
+    ids = [b["id"] for b in out]
+    if len(set(ids)) != len(ids):
+        raise RuntimeError(f"방음벽 barrier_id 중복: {sorted({i for i in ids if ids.count(i) > 1})}")
+    return out
+
+
+def save_barriers(path, bars):
+    """load_barriers 형식의 목록을 CSV 로 저장"""
+    df = pd.DataFrame([dict(barrier_id=b["id"], height=b["h"], type=b.get("kind", "reflect"),
+                            refl_loss="" if b.get("loss") is None else b["loss"],
+                            coords=format_coords(b["pts"]), note=b.get("note", "")) for b in bars],
+                      columns=BARRIER_COLS)
+    df.to_csv(path, index=False, encoding="utf-8-sig")
+    return path
+
+
 def load_soft_ground(cfg):
     p = cfg["input"]["ground"]["soft_polygons"]
     if not p:

@@ -6,6 +6,7 @@
   python -m sori run           -c config.yaml [--grid] [--facade]
   python -m sori plot          -c config.yaml
   python -m sori all           -c config.yaml    build → run → plot
+  python -m sori diff          -c config.yaml --base 기준결과폴더   두 결과의 차이(config 의 결과 폴더 − 기준) 표·지도
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
 import argparse
 import logging
@@ -21,12 +22,13 @@ from .resources import resource_path
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="sori", description=f"SORI v{__version__} (Simulation of Outdoor Road-noise Impact) — RLS-19 + ISO 9613-2 도로교통소음 예측. {AI_NOTICE}")
-    ap.add_argument("cmd", choices=["init", "template", "build", "run", "plot", "all"])
+    ap.add_argument("cmd", choices=["init", "template", "build", "run", "plot", "all", "diff"])
     ap.add_argument("folder", nargs="?", default=".")
     ap.add_argument("-c", "--config", default="config.yaml")
     ap.add_argument("--grid", action="store_true")
     ap.add_argument("--facade", action="store_true")
     ap.add_argument("--points", action="store_true", help="점 수음점만(receivers.points.path)")
+    ap.add_argument("--base", help="diff: 기준 결과 폴더(대책 전)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -50,6 +52,20 @@ def main(argv=None):
         out = os.path.join(os.path.dirname(cfg["_config_path"]), "traffic_template.csv")
         p1, p2 = build.template(cfg, out)
         log.info("교통량 서식: %s\n자동 교차로 목록: %s (필요시 type 수정 후 input.junctions.path 로 지정)", p1, p2)
+        return 0
+    if a.cmd == "diff":
+        from . import compare
+        if not a.base:
+            ap.error("diff 는 --base 기준결과폴더 가 필요함")
+        info = compare.write(a.base, cfg["project"]["output_dir"])
+        for k in ("LrT", "LrN"):
+            for line in compare.summary_lines(info, k):
+                log.info("차이(비교 − 기준) %s", line)
+            if info.get("grid"):
+                for h in cfg["receivers"]["grid"]["heights"]:
+                    if f"h{h:g}" in info["grid"]:
+                        for f in compare.diff_map(cfg, a.base, k, h):
+                            log.info("차이 지도: %s", f)
         return 0
     if a.cmd in ("build", "all"):
         from . import build

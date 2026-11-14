@@ -16,7 +16,7 @@ import pandas as pd
 
 from . import iso9613, rls19_propagation, rls90_propagation
 from .propagation import get_model
-from .solver import (P_J, P_ORDER, P_FACE, P_PX, P_PY, P_D, P_SGR, P_HM, P_Z, P_GAIN, point_paths)
+from .solver import (P_J, P_ORDER, P_FACE, P_PX, P_PY, P_D, P_SGR, P_HM, P_Z, P_GAIN, point_paths_b)
 
 
 def path_terms(cfg, d, S, F, P):
@@ -39,9 +39,12 @@ def path_terms(cfg, d, S, F, P):
     if model.name == "rls90":
         from .run import junction_K
         Kp = dict(zip(P.point_id, junction_K(cfg["project"]["output_dir"], P.x.values, P.y.values)))
+    from .run import model_bars, face_factors, cmet_c0
+    bars = model_bars(d)
+    fatt = face_factors(cfg, F)
     frames = []
     for r in P.itertuples():
-        info, terms, band = point_paths(
+        info, terms, band = point_paths_b(
             float(r.x), float(r.y), float(r.z), float(r.zg), -1, -1, order,
             S.x.values, S.y.values, S.z.values, S.zg.values, S.main.values.astype(np.bool_), *fa, gain,
             d["gnd"].astype(np.float64), d["dsm"].astype(np.float64), d["bid"].astype(np.int64),
@@ -49,13 +52,13 @@ def path_terms(cfg, d, S, F, P):
             float(p["profile_step"]), float(p["max_dist_main"]), float(p["max_dist_minor"]),
             float(rf["r_facade"]), float(rf["r_source_main"]), float(rf["r_source_minor"]), float(p["skip_radius"]),
             bands, lams, alphas, cfg["input"]["ground"]["method"] == "alternative",
-            float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code)
+            float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, bars, fatt, cmet_c0(cfg))
         if not len(info):
             continue
         j = info[:, P_J].astype(int)
         fi = info[:, P_FACE].astype(int)
         D = pd.DataFrame({"point_id": r.point_id, "propagation_method": model.name,
-                          "source": j, "road_fid": S.fid.values[j], "order": info[:, P_ORDER].astype(int),
+                          "source": j, "road_fid": S.fid.values[j] if "fid" in S else j, "order": info[:, P_ORDER].astype(int),
                           "facade_fid": np.where(fi >= 0, fids[np.maximum(fi, 0)] if len(fids) else -1, -1),
                           "refl_x": info[:, P_PX], "refl_y": info[:, P_PY],
                           "d_m": info[:, P_D], "s_gr_m": info[:, P_SGR], "h_m": info[:, P_HM], "z_m": info[:, P_Z],

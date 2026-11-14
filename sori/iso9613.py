@@ -103,12 +103,23 @@ def D_z(z, dss, dsr, d, e, lam, C2, double, dzmax1, dzmax2):
     return v if v < cap else cap
 
 
+# ------------------------------------------------------------------ 8 기상 보정
+@njit(cache=True)
+def C_met(C0, hs, hr, dp):
+    """식 (21)(22): d_p ≤ 10(h_s + h_r) 이면 0, 아니면 C0·[1 − 10(h_s + h_r)/d_p]. C0 = 지역 기상 통계 계수(dB)"""
+    lim = 10.0 * (hs + hr)
+    if C0 <= 0.0 or dp <= lim:
+        return 0.0
+    return C0 * (1.0 - lim / dp)
+
+
 # ------------------------------------------------------------------ 경로 감쇠
 @njit(cache=True)
-def atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out):
+def atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out, cmet0=0.0):
     """geometry.path_geometry 의 기하로 대역별 순감쇠 (A − Dc) 를 out[b] 에 기록.
       - 지면: 일반법(Gs/Gr/Gm은 경로를 따라 G 래스터 평균) 또는 대안법(hm=F/s_gr, Dc = DΩ)
-      - 차폐: 식 (12) Abar = Dz − Agr > 0, 단일/이중 회절(C3)"""
+      - 차폐: 식 (12) Abar = Dz − Agr > 0, 단일/이중 회절(C3)
+      - cmet0 > 0 이면 장기 평균 L_AT(LT) = L_AT(DW) − C_met(식 6·21·22, d_p = 경로 수평 길이)를 감쇠에 더함"""
     d = geom[G_D]; sgr = geom[G_SGR]; hs = geom[G_HS]; hr = geom[G_HR]
     shielded = geom[G_SHIELD] > 0.5
     double = geom[G_DOUBLE] > 0.5
@@ -127,7 +138,7 @@ def atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out):
             abar = dz - agr                          # 식 (12)
             if abar > 0.0:
                 A += abar
-        out[b] = A - dc
+        out[b] = A - dc + C_met(cmet0, hs, hr, sgr)
 
 
 @njit(cache=True)
@@ -150,7 +161,7 @@ TERM_NAMES = ("A_div", "A_atm", "A_gr", "D_Omega", "D_z", "A_bar", "A_net")
 
 
 @njit(cache=True)
-def terms_iso(geom, f, lam, alpha, ground_alt, C2, dzmax1, dzmax2, t):
+def terms_iso(geom, f, lam, alpha, ground_alt, C2, dzmax1, dzmax2, t, cmet0=0.0):
     """대역 f 의 감쇠항별 중간값 [dB] 을 t 에 기록: A_div 식(7), A_atm 식(8), A_gr 식(9) 또는 (10),
     D_Ω 식(11)(대안법만, 아니면 0), D_z 식(14)(차폐 없으면 0), A_bar 식(12)(>0 일 때만, 아니면 0),
     A_net = A − D_c (atten_iso 와 같은 순서로 계산)"""
@@ -171,4 +182,4 @@ def terms_iso(geom, f, lam, alpha, ground_alt, C2, dzmax1, dzmax2, t):
         if abar > 0.0:
             t[T_ABAR] = abar
             A += abar
-    t[T_NET] = A - t[T_DOMEGA]
+    t[T_NET] = A - t[T_DOMEGA] + C_met(cmet0, geom[G_HS], geom[G_HR], sgr)   # A_net 에 C_met 포함(켰을 때)

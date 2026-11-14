@@ -1,0 +1,25 @@
+# AI(Claude)를 활용하여 제작하였음. SoundPLAN 9.1 RLS-90 과의 비교용 설정(2026-11-05).
+# rls19_dir_lane_r*_ref 와 같은 비교 설정(RLS-19, 서 30·동 50 km/h, 사가정로 3+2차로 차로별 음원선, SoundPLAN 격자점·수음점을 점 수음점으로)
+# 2026-11-12 사가정로만 음원: 실측 교통량은 사가정로만, 그 밖의 도로 객체는 교통량 0(사용자 지시). SoundPLAN 모델에 사가정로만 있는 것과 맞춤
+# 입력은 field_measurement/2026-10-22/model/AVG_v30 과 같음(사가정로 현장 계수 교통량, 30 km/h, 노면 AC11).
+# 바꾼 것: 계산 기준 RLS-90, 반사 1차(RLS-90 4.6), 격자를 측정점 주변 사가정로 구간으로 좁힘, 벽면 수음점 끔.
+# 같은 조건을 SoundPLAN 에 넣으려면: python tools/export_soundplan.py validation/soundplan/config.yaml
+project: {name: "사가정로_SP비교_사가정로만_r2_ref", scenario: "현황", output_dir: "output"}
+crs: 5186
+model: {source_lines: lane}   # 차로마다 음원선(SoundPLAN 비교 모델과 같게)
+propagation_method: rls19
+input:
+  map: {folders: ["/Users/gustnbijou_/Downloads/3-2/소음진동설계/전농사거리_수치지도"]}
+  traffic: {path: "../traffic.csv"}   # 사가정로만 실측 교통량, 나머지 도로 0 (2026-11-12)
+  road_override: {path: "../../roads_override_3_2.csv"}   # 사가정로 서쪽 방향 3 · 동쪽 방향 2차로
+  road_alias: {"전농로25길": "전농로"}
+  surface_map: {"아스팔트": "ref", "아스팔트콘크리트": "ref"}   # SoundPLAN 기본 노면 가정(기준 노면, D_SD = 0)
+receivers:
+  center: [205210.0, 553128.0]
+  grid: {enabled: false, size: [240.0, 160.0], step: 2.5, heights: [4.0]}
+  facade: {enabled: false}
+  points: {path: "../../points_sp.csv"}
+propagation:
+  reflection: {D_E: -1.0, max_order_grid: 2, max_order_facade: 2, max_order_point: 2}
+  terms_csv: true
+plots: {limits: {LrT: 68, LrN: 58, label: "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"}}

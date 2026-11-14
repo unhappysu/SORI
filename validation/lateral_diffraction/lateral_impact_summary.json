@@ -1,0 +1,83 @@
+{
+  "격자 무작위": {
+    "dLrT_A": {
+      "mean": 1.36,
+      "median": 0.79,
+      "p90": 3.67,
+      "max": 6.74
+    },
+    "dLrT_B": {
+      "mean": 0.53,
+      "median": 0.24,
+      "p90": 1.47,
+      "max": 4.03
+    },
+    "dLrT_C": {
+      "mean": 0.84,
+      "median": 0.53,
+      "p90": 2.23,
+      "max": 5.23
+    },
+    "dL_direct_A": {
+      "mean": 2.21,
+      "median": 1.33,
+      "p90": 5.54,
+      "max": 9.19
+    },
+    "dL_direct_B": {
+      "mean": 0.92,
+      "median": 0.38,
+      "p90": 2.57,
+      "max": 8.21
+    },
+    "dL_direct_C": {
+      "mean": 1.45,
+      "median": 0.95,
+      "p90": 3.48,
+      "max": 8.47
+    },
+    "n": 150,
+    "t_s_mean": 3.07
+  },
+  "높고 좁은 건물 뒤": {
+    "dLrT_A": {
+      "mean": 3.6,
+      "median": 3.34,
+      "p90": 7.13,
+      "max": 7.56
+    },
+    "dLrT_B": {
+      "mean": 2.03,
+      "median": 2.09,
+      "p90": 4.71,
+      "max": 5.78
+    },
+    "dLrT_C": {
+      "mean": 2.57,
+      "median": 2.64,
+      "p90": 5.52,
+      "max": 7.01
+    },
+    "dL_direct_A": {
+      "mean": 5.74,
+      "median": 6.33,
+      "p90": 9.91,
+      "max": 10.37
+    },
+    "dL_direct_B": {
+      "mean": 3.56,
+      "median": 3.65,
+      "p90": 7.94,
+      "max": 8.39
+    },
+    "dL_direct_C": {
+      "mean": 4.33,
+      "median": 5.09,
+      "p90": 9.04,
+      "max": 9.09
+    },
+    "n": 7,
+    "t_s_mean": 1.43
+  },
+  "direct_check_max_abs_dB": 9.20489519273815e-07
+}

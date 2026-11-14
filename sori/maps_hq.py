@@ -44,6 +44,35 @@ DIN_COLS = ["#c8e6a0",  # ≤35 hellgrün
             "#8c1e6e",  # 70–75 lilarot
             "#283cb4",  # 75–80 blau
             "#141464"]  # >80 dunkelblau
+# 앱 화면용 단순 색표(2026-11-14 사용자: "모든 색이 들어가서 별로, 색을 줄여줘"): 노랑 → 주황 → 빨강 한 계열 7단계,
+# 50 dB 이하는 한 칸(옅은 회녹색). 경계 55·60·65·70 은 국내 도로교통소음 기준(가 58/68·나 63/73 dB) 주변을 5 dB 로 가름
+PALETTES = {
+    "din": ([35, 40, 45, 50, 55, 60, 65, 70, 75, 80], list(DIN_COLS)),
+    "simple": ([50, 55, 60, 65, 70, 75],
+               ["#e6ecdf",   # ≤50
+                "#fff2b3",   # 50–55
+                "#fdd27a",   # 55–60
+                "#f99b4c",   # 60–65
+                "#e8542f",   # 65–70
+                "#b5172b",   # 70–75
+                "#640d26"]),  # >75
+}
+
+
+def set_palette(name):
+    """색표 바꾸기("din" = DIN 45682 11색, 보고서 그림 기본 / "simple" = 앱 화면 7색). DIN_EDGES·DIN_COLS 목록을
+    제자리에서 바꾸므로 이 목록을 가져다 쓰는 곳(viewer3d 등)도 함께 바뀜. 반환: 이전 색표 이름"""
+    if name not in PALETTES:
+        raise ValueError(f"색표는 {sorted(PALETTES)} 중 하나")
+    prev = palette_name()
+    e, c = PALETTES[name]
+    DIN_EDGES[:] = e
+    DIN_COLS[:] = c
+    return prev
+
+
+def palette_name():
+    return next((k for k, (e, c) in PALETTES.items() if e == DIN_EDGES and c == DIN_COLS), "din")
 EXC_EDGES = [0, 3, 6, 10]
 EXC_COLS = ["#e9ede6", "#ffd84d", "#ff8a1f", "#d7261e", "#7a0a2a"]
 ROAD_FC = "#d9d9d9"
@@ -76,7 +105,8 @@ def traffic_summary(T):
     """traffic_used.csv(T) → (정보란 교통량 문구, 가정값 도로 객체 수). 순수 함수.
     도로명(axis)별로 입력 DTV(DTV_in)가 있으면 "DTV n 대/일", 없으면 "M_T n / M_N n 대/h".
     M 에서 DTV 를 역산하지 않음. 출처(traffic_basis)는 실측/가정/출처 미기재, 추정 보충이면 "주간·야간 추정".
-    한 axis 안에 값이 다르면 "여러 값". S1 이전 서식(출처 열 없음)은 M 값과 "출처 미기재"로 표시."""
+    한 axis 안에 값이 다르면 "여러 값". S1 이전 서식(출처 열 없음)은 M 값과 "출처 미기재"로 표시.
+    방향별 승용차 속도(v_pkw_fwd ≠ v_pkw_bwd, 5a-17)가 있는 도로만 "속도 정/역 km/h(방향별)"을 붙임(2026-11-14)"""
     src = T["traffic_src"].astype(str)
     fb = int(src.str.startswith("fallback").sum())
     u = T[src == "user"]
@@ -92,6 +122,14 @@ def traffic_summary(T):
         else:
             _, md, mn = next(iter(vals))
             txt = f"{ax} M_T {md:,.0f} / M_N {mn:,.0f} 대/h"
+        if {"v_pkw_fwd", "v_pkw_bwd"} <= set(g.columns):
+            vf, vb = pd.to_numeric(g["v_pkw_fwd"], errors="coerce"), pd.to_numeric(g["v_pkw_bwd"], errors="coerce")
+            dif = {(float(a), float(b)) for a, b in zip(vf, vb) if pd.notna(a) and pd.notna(b) and a != b}
+            if len(dif) == 1:
+                a, b = next(iter(dif))
+                txt += f" · 속도 {a:g}/{b:g} km/h(방향별)"
+            elif dif:
+                txt += " · 방향별 속도 여러 값"
         basis = g["traffic_basis"] if "traffic_basis" in g else pd.Series("unspecified", index=g.index)
         tags = list(dict.fromkeys(BASIS_KO.get(str(b), str(b)) for b in basis.fillna("unspecified")))
         for col, lab in (("M_day_from", "주간 추정"), ("M_night_from", "야간 추정")):
@@ -248,6 +286,9 @@ def legend_classes(side, y_top, title, edges, cols, unit="dB(A)", labels=None):
     return y - n * hgt - 0.02
 
 
+WARN_RESERVE = 0.10      # 정보란 맨 아래 경고 상자(warn_box) 자리(정보란 높이 비율)
+
+
 def info_block(side, y_top, C, lines_extra):
     cfg = C.cfg
     tr, fb = C.traffic_text()
@@ -265,26 +306,36 @@ def info_block(side, y_top, C, lines_extra):
     nx = int((C.T["traffic_src"].astype(str) == "excluded_minor").sum())
     if nx:
         rows.append(("", f"교통량 자료 없는 골목길(1차로) {nx}개 객체는 음원에서 제외"))
-    rows = lines_extra + rows
-    side.text(0.0, y_top, "계산 조건", fontsize=12, weight="bold", va="top", transform=side.transAxes)
-    y = y_top - 0.045
-    for k, v in rows:
+    raw = lines_extra + rows
+    # 정보란 아래 끝(0)을 넘지 않게: 줄이 많아 넘치면 글자·줄 간격을 같이 줄이고, 글자가 작아진 만큼 한 줄에 더 넣음
+    # (아래 경고 상자 자리 WARN_RESERVE 남김). 2026-11-12: 골목길 제외 줄이 붙으며 마지막 줄이 정보란 밖으로 나가
+    # 아래 고지 글과 겹치고 경고 상자가 잘리던 문제
+    for s in np.arange(1.0, 0.54, -0.025):
+        rows = [(k, wrap_info(v, int(30 / s))) for k, v in raw]
+        if (0.045 + sum(0.022 * len(w) + 0.008 for _, w in rows)) * s <= y_top - WARN_RESERVE:
+            break
+    s = float(s)
+    side._sori_scale = s
+    side.text(0.0, y_top, "계산 조건", fontsize=12 * max(s, 0.8), weight="bold", va="top", transform=side.transAxes)
+    y = y_top - 0.045 * s
+    for k, wrapped in rows:
         if k:
-            side.text(0.0, y, k, fontsize=9, weight="bold", va="top", transform=side.transAxes)
-        wrapped = wrap_info(v, 30)
+            side.text(0.0, y, k, fontsize=9 * s, weight="bold", va="top", transform=side.transAxes)
         for i, w in enumerate(wrapped):
-            side.text(0.25, y - i * 0.022, w, fontsize=9, va="top", transform=side.transAxes)
-        y -= 0.022 * len(wrapped) + 0.008
+            side.text(0.25, y - i * 0.022 * s, w, fontsize=9 * s, va="top", transform=side.transAxes)
+        y -= (0.022 * len(wrapped) + 0.008) * s
     return y
 
 
 def warn_box(side, y, text):
     import textwrap
-    lines = textwrap.wrap(text, 38)
-    hh = 0.022 * len(lines) + 0.02
+    s = getattr(side, "_sori_scale", 1.0)               # info_block 이 줄인 비율을 같이 씀
+    lines = textwrap.wrap(text, int(38 / max(s, 0.7)))
+    hh = (0.022 * len(lines) + 0.02) * s
     side.add_patch(Rectangle((0, y - hh), 1.0, hh, fc="#fff4e5", ec="#e08a00", lw=0.8, transform=side.transAxes))
     for i, l in enumerate(lines):
-        side.text(0.03, y - 0.012 - i * 0.022, l, fontsize=8.8, va="top", color="#6a3d00", transform=side.transAxes)
+        side.text(0.03, y - (0.012 + i * 0.022) * s, l, fontsize=8.8 * s, va="top", color="#6a3d00",
+                  transform=side.transAxes)
     return y - hh - 0.02
 
 
@@ -300,21 +351,55 @@ def save(fig, out, name, cfg=None, rule=None):
 
 
 # ------------------------------------------------------------------ 격자 배열
-def grid_array(C, key, h):
-    G = pd.read_csv(os.path.join(C.out, "grid_result.csv"))
+DISPLAY_STEP = 1.25       # 등음선을 그릴 때의 표시 간격 상한(m). 계산 격자가 이보다 성기면 격자점 사이를 보간해 그림
+                          # (2026-11-14: 2.5 → 1.25 m — 2.5 m 격자도 2배로 보간해 확대했을 때 각진 등음선 완화, 계산값 불변)
+
+
+def grid_array(C, key, h, bbox=None, G=None):
+    """격자 결과 → 등음선용 배열. 반환 (gx, gy, step, Am, A):
+      A  = 계산한 격자점 값 그대로(건물 안 NaN) — 결과 범위·통계는 이 값으로
+      Am = 그리기용(gx, gy 는 Am 의 좌표). 계산값은 바꾸지 않고 표시만 다듬음:
+           ① 건물 경계 2칸을 최근접값으로 메움(등음선이 벽까지 닿도록, 건물 안쪽은 가림 유지)
+           ② 계산 격자가 DISPLAY_STEP 보다 성기면 격자점 사이를 3차 보간(각진 등음선 완화, 둘러싼 격자점 4개 값 범위 안으로 제한)
+           ③ bbox 를 주면 지도 테두리까지 가장자리 값으로 채움(격자점은 테두리에서 반 칸 안쪽이라 흰 띠가 생김)
+      step = 계산 격자 간격(표시 간격 아님)
+    G: 격자 표(x, y, h, key 열)를 직접 줄 때(차이 지도 등). 기본은 결과 폴더의 grid_result.csv"""
+    if G is None:
+        G = pd.read_csv(os.path.join(C.out, "grid_result.csv"))
     d = np.load(os.path.join(C.out, "model_rasters.npz"))
     gx, gy = d["gx"], d["gy"]
     step = float(gx[1] - gx[0])
     Gh = G[np.isclose(G.h, h)]
     A = np.full((len(gy), len(gx)), np.nan)
     A[np.round((Gh.y - gy[0]) / step).astype(int), np.round((Gh.x - gx[0]) / step).astype(int)] = Gh[key].values
-    # 건물 경계 1칸만 최근접값으로 보완(등음선이 벽까지 닿도록), 건물 내부는 마스크 유지
-    from scipy.ndimage import distance_transform_edt, binary_dilation
+    from scipy.ndimage import distance_transform_edt, binary_dilation, map_coordinates
     nan = np.isnan(A)
+    if nan.all():
+        return gx, gy, step, np.ma.masked_invalid(A), A
     idx = distance_transform_edt(nan, return_distances=False, return_indices=True)
-    near = binary_dilation(~nan, iterations=2) & nan
-    A2 = A.copy(); A2[near] = A[tuple(idx)][near]
-    return gx, gy, step, np.ma.masked_invalid(A2), A
+    full = A[tuple(idx)]                                   # 빈 칸을 모두 최근접값으로(보간 입력)
+    hide = nan & ~binary_dilation(~nan, iterations=2)      # 가릴 칸: 건물 안쪽(경계 2칸 밖)
+    n = max(1, int(round(step / DISPLAY_STEP)))
+    fs = step / n
+    x0, x1, y0, y1 = gx[0], gx[-1], gy[0], gy[-1]
+    if bbox is not None:                                   # 테두리까지(격자 밖은 가장자리 값)
+        x0, y0 = min(x0, bbox[0]), min(y0, bbox[1])
+        x1, y1 = max(x1, bbox[2]), max(y1, bbox[3])
+    if n == 1 and (x0, x1, y0, y1) == (gx[0], gx[-1], gy[0], gy[-1]):
+        return gx, gy, step, np.ma.masked_where(hide, full), A
+    fx = np.r_[x0, np.arange(gx[0] + fs * np.ceil((x0 - gx[0]) / fs - 1e-9), x1 - 1e-9, fs), x1]
+    fy = np.r_[y0, np.arange(gy[0] + fs * np.ceil((y0 - gy[0]) / fs - 1e-9), y1 - 1e-9, fs), y1]
+    fx, fy = np.unique(np.round(fx, 6)), np.unique(np.round(fy, 6))
+    cx, cy = (fx - gx[0]) / step, (fy - gy[0]) / step      # 계산 격자 색인 좌표
+    YY, XX = np.meshgrid(cy, cx, indexing="ij")
+    F = map_coordinates(full, [YY, XX], order=3 if n > 1 else 1, mode="nearest")
+    # 3차 보간의 넘침 방지: 각 표시점을 둘러싼 격자점 4개 값의 범위 안으로 제한(격자점에 없는 봉우리·골을 만들지 않음)
+    iy = np.clip(np.floor(YY).astype(int), 0, full.shape[0] - 1); jx = np.clip(np.floor(XX).astype(int), 0, full.shape[1] - 1)
+    iy1 = np.minimum(iy + 1, full.shape[0] - 1); jx1 = np.minimum(jx + 1, full.shape[1] - 1)
+    q = np.stack([full[iy, jx], full[iy, jx1], full[iy1, jx], full[iy1, jx1]])
+    F = np.clip(F, q.min(axis=0), q.max(axis=0))
+    H = map_coordinates(hide.astype(float), [YY, XX], order=0, mode="nearest") > 0.5
+    return fx, fy, step, np.ma.masked_where(H, F), A
 
 
 # ------------------------------------------------------------------ 1) 격자 소음지도
@@ -330,8 +415,8 @@ def grid_map(cfg, key="LrT", h=None):
 def draw_grid(fig, C, cfg, key, h):
     """보고서 수준 격자 소음지도를 fig 에 그림(그림 파일 grid_map 과 데스크톱 화면 sori_qt 가 같이 씀).
     반환: 지도 축(ax) — 화면에서 클릭·단면 선 긋기에 씀"""
-    gx, gy, step, Am, A = grid_array(C, key, h)
     bbox = grid_bbox(cfg)
+    gx, gy, step, Am, A = grid_array(C, key, h, bbox)
     ax, side = layout(fig, f"{cfg['project']['name']} 도로교통소음 지도 — {KEYNAME[key]}",
                       f"격자 소음지도 · 수음 높이 {h:g} m · 격자 간격 {step:g} m · 등음선 5 dB")
     cmap, norm = din_cmap()
@@ -354,15 +439,15 @@ def draw_grid(fig, C, cfg, key, h):
     return ax
 
 
-def draw_grid_compact(fig, C, cfg, key, h):
+def draw_grid_compact(fig, C, cfg, key, h, G=None, note=""):
     """좁은 창(데스크톱 화면의 격자 + 3D 나란히 보기)용 지도만 크게: draw_grid 와 같은 지도 레이어(등음선 채움·
-    건물·간선 노면·신호교차로·도로명·방위표·축척)에 범례만 지도 안 작은 상자로. 정보란·계산 조건은 없음
+    건물·간선 노면·신호교차로·도로명·방위표·축척)에 범례는 제목 아래 가로 띠로(지도를 가리지 않게). 정보란·계산 조건은 없음
     (보고서 그림·지도 저장은 draw_grid). 반환: 지도 축(ax)"""
-    gx, gy, step, Am, A = grid_array(C, key, h)
     bbox = grid_bbox(cfg)
-    ax = fig.add_axes([0.005, 0.005, 0.99, 0.945])
-    fig.text(0.01, 0.975, f"격자 소음지도 · {KEYNAME[key]} · 높이 {h:g} m · 간격 {step:g} m",
-             fontsize=10, weight="bold", va="center")
+    gx, gy, step, Am, A = grid_array(C, key, h, bbox, G=G)       # G: 화면에서 조건을 걸어 다시 합친 표(성분 고르기)
+    ax = fig.add_axes([0.005, 0.005, 0.99, 0.905])
+    fig.text(0.01, 0.975, f"격자 소음지도 · {KEYNAME[key]} · 높이 {h:g} m · 간격 {step:g} m{note}",
+             fontsize=11, weight="bold", va="center", color="#222222")
     cmap, norm = din_cmap()
     ax.contourf(gx, gy, Am, levels=[-200] + DIN_EDGES + [200], cmap=cmap, norm=norm, zorder=1, antialiased=True)
     ax.contour(gx, gy, Am, levels=DIN_EDGES, colors="#333", linewidths=0.25, alpha=0.6, zorder=2)
@@ -371,19 +456,27 @@ def draw_grid_compact(fig, C, cfg, key, h):
     ax.scatter(sig.x, sig.y, marker="o", s=50, fc="white", ec="k", lw=1.1, zorder=35)
     road_labels(ax, C, bbox)
     frame(ax, bbox); north_scale(ax, bbox)
+    ax.set_anchor("N")                                                # 세로로 긴 창에서 지도를 위쪽에 붙임
     ax.set_xticklabels([]); ax.set_yticklabels([])                    # 좁은 창에서는 좌표 글자를 뺌
-    # 범례: 지도 오른쪽 아래 작은 상자(등급 11칸)
-    lg = ax.inset_axes([0.80, 0.015, 0.185, 0.43], zorder=50)
-    n = len(DIN_COLS)
-    lg.set_xlim(0, 1); lg.set_ylim(0, n + 1.6); lg.axis("off")
-    lg.add_patch(Rectangle((0, 0), 1, n + 1.6, fc="white", ec="0.3", lw=0.6, alpha=0.93))
-    lg.text(0.08, n + 0.8, f"{key} dB(A)", fontsize=8, weight="bold", va="center")
-    labs = [f"≤ {DIN_EDGES[0]}"] + [f"{a} – {b}" for a, b in zip(DIN_EDGES[:-1], DIN_EDGES[1:])] + [f"> {DIN_EDGES[-1]}"]
-    for i, (c, t) in enumerate(zip(DIN_COLS, labs)):
-        y = n - 1 - i + 0.15
-        lg.add_patch(Rectangle((0.08, y), 0.28, 0.7, fc=c, ec="none"))
-        lg.text(0.42, y + 0.35, t, fontsize=7, va="center")
+    ax.set_xlabel(""); ax.set_ylabel("")                            # geopandas 가 붙이는 좌표축 이름 지움
+    legend_strip(fig, [0.01, 0.915, 0.98, 0.04])                     # 범례: 제목 아래 가로 띠(지도를 가리지 않게)
     return ax
+
+
+def legend_strip(fig, rect, road=True):
+    """가로 범례 띠(DIN 5 dB 등급 11칸, 칸 사이에 경계값). 데스크톱 화면의 격자·3D 파사드가 같은 색표를 씀"""
+    lg = fig.add_axes(rect)
+    n = len(DIN_COLS)
+    lg.set_xlim(-1.6, n + 0.1); lg.set_ylim(0, 1); lg.axis("off")
+    lg.text(-1.55, 0.72, "dB(A)", fontsize=7.5, weight="bold", va="center")
+    for i, c in enumerate(DIN_COLS):
+        lg.add_patch(Rectangle((i, 0.45), 1, 0.55, fc=c, ec="white", lw=0.4))
+    for i, e in enumerate(DIN_EDGES):
+        lg.text(i + 1, 0.18, f"{e}", fontsize=7, ha="center", va="center")
+    if road:
+        lg.add_patch(Rectangle((-1.55, 0.02), 0.5, 0.3, fc=ROAD_FC, ec="0.5", lw=0.4))
+        lg.text(-0.95, 0.17, "노면", fontsize=6.5, va="center")
+    return lg
 
 
 # ------------------------------------------------------------------ 2) 기준 초과 지도
@@ -392,8 +485,8 @@ def exceed_map(cfg, key="LrT", h=None, limits=None):
     lim = dict(DEFAULT_LIMITS, **(limits or cfg.get("plots", {}).get("limits") or {}))
     L = float(lim[key])
     h = h if h is not None else cfg["receivers"]["grid"]["heights"][0]
-    gx, gy, step, Am, A = grid_array(C, key, h)
     bbox = grid_bbox(cfg)
+    gx, gy, step, Am, A = grid_array(C, key, h, bbox)
     fig, ax, side = setup_fig(f"{cfg['project']['name']} 기준 초과 지도 — {KEYNAME[key]}",
                               f"기준값 {L:g} dB(A) 대비 초과량 · 수음 높이 {h:g} m · 격자 {step:g} m")
     E = Am - L

@@ -208,40 +208,77 @@ def facade_plan(cfg):
     return files
 
 
-def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids=None):
+def bid_label_points(B, focus, n, gap=9.0):
+    """건물 번호를 붙일 건물(앱 3D 파사드와 격자 지도가 같이 씀): 대상 focus + 대상에서 가까운 순 n 개,
+    평면에서 gap(m) 안에 이미 번호가 있으면 뺌. B: 보이는 범위 안 건물(bid, ztop, geometry).
+    반환 [(bid, x, y, ztop, 대상 여부)] — 대상이 B 에 없으면 빈 목록"""
+    if focus is None or not (B.bid == focus).any():
+        return []
+    fb = B[B.bid == focus].iloc[0]
+    fc = fb.geometry.representative_point()
+    out = [(int(focus), fc.x, fc.y, float(fb.ztop), True)]
+    P = B.geometry.representative_point()
+    d = np.hypot(P.x.values - fc.x, P.y.values - fc.y)
+    for k in np.argsort(d):
+        if len(out) > int(n):
+            break
+        b, p = B.iloc[k], P.iloc[k]
+        if int(b.bid) == int(focus) or any(np.hypot(p.x - o[1], p.y - o[2]) < gap for o in out):
+            continue
+        out.append((int(b.bid), p.x, p.y, float(b.ztop), False))
+    return out
+
+
+def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids=None, colors=None,
+                   focus=None, bid_labels=0, ghost=False, label_box=False, label_gap=18.0):
     """3D 파사드 소음지도 그리기(그림 파일 facade_3d 와 데스크톱 화면 sori_qt 가 같이 씀)
     T: 층별 색을 칠할 건물 번호 집합, label_bids: 층별 값 글자를 붙일 건물(None 이면 T 전체)
-    view: 보이는 범위(shapely 도형), fh: 층고(m), elev·azim: 시점(도). 계산 없이 결과 표만 그림."""
+    view: 보이는 범위(shapely 도형), fh: 층고(m), elev·azim: 시점(도). 계산 없이 결과 표만 그림.
+    colors: 둘레 색 {wall, roof, ground, sky} 바꾸기(앱 화면은 회색 계열, 기본값은 보고서 그림 색)
+    앱 화면용(기본값이면 보고서 그림과 같음, 2026-11-14):
+      focus: 확인 대상 건물 번호 — 지붕 위 번호를 빨간 상자로
+      bid_labels: 지붕 위 건물 번호를 붙일 주변 건물 수(focus 에서 가까운 순, 0 = 번호 없음)
+      ghost: focus 밖 건물을 투명하게(옅은 윤곽선만, 벽면 색 없음) — 대상 건물만 보기
+      label_box: 층별 값 글자에 흰 바탕 상자, label_gap: 값 글자 열 사이 최소 거리(m)"""
+    C = {**dict(wall="#cfd0f7", roof="#f7c97f", ground="#9ac09a", sky="#8fd3fe"), **(colors or {})}
     B = bld[bld.intersects(view)]
+    if ghost and focus is not None:                  # 주변 건물은 색 없이 윤곽만 → 층별 색은 대상 건물만
+        T = {b for b in T if b == focus}
     lab_set = T if label_bids is None else set(label_bids)
     az, el = np.radians(azim), np.radians(elev)
     cam = np.array([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az)])
     polys, cols = [], []
+    gpolys = []                                      # 투명하게 그릴 주변 건물 면
     ax.set_autoscale_on(False)                       # 범위는 아래에서 직접 정함(자동 범위가 NaN·Inf 로 튀어 화면이 꺼지는 일 방지)
     z0min = B.z0.min(); g = view.bounds
     ground = Poly3DCollection([[(g[0], g[1], z0min - 0.2), (g[2], g[1], z0min - 0.2), (g[2], g[3], z0min - 0.2),
-                                (g[0], g[3], z0min - 0.2)]], facecolors="#9ac09a", edgecolors="none", zorder=0)
+                                (g[0], g[3], z0min - 0.2)]], facecolors=C["ground"], edgecolors="none", zorder=0)
     ax.add_collection3d(ground, autolim=False)                      # 지면은 항상 맨 뒤(깊이 정렬 오류 방지)
     for b in B.itertuples():
         if b.bid in T:
             continue
         c = list(orient(b.geometry, 1.0).exterior.coords)
+        out = gpolys if ghost and b.bid != focus else polys
         for (x1, y1), (x2, y2) in zip(c[:-1], c[1:]):
-            polys.append([(x1, y1, b.z0), (x2, y2, b.z0), (x2, y2, b.ztop), (x1, y1, b.ztop)]); cols.append("#cfd0f7")
-        polys.append([(x, y, b.ztop) for x, y in c[:-1]]); cols.append("#f7c97f")
+            out.append([(x1, y1, b.z0), (x2, y2, b.z0), (x2, y2, b.ztop), (x1, y1, b.ztop)])
+            if out is polys:
+                cols.append(C["wall"])
+        out.append([(x, y, b.ztop) for x, y in c[:-1]])
+        if out is polys:
+            cols.append(C["roof"])
     lab_cols = []                                    # 라벨 열 위치(겹침 방지)
     labels3d = []
     for bid in T:
         b = bld[bld.bid == bid].iloc[0]
         polys.append([(x, y, b.ztop) for x, y in list(orient(b.geometry, 1.0).exterior.coords)[:-1]])
-        cols.append("#f7c97f")
+        cols.append(C["roof"])
         sub = FR[FR.bid == bid]
         cand = F.loc[sub.fid.unique()]
         score = (cand.nx * cam[0] + cand.ny * cam[1]) * np.minimum(cand.L, 25)
         for fid in (score[score > 2.4].sort_values(ascending=False).index if bid in lab_set else []):
             f = F.loc[fid]
             mx, my = (f.x1 + f.x2) / 2, (f.y1 + f.y2) / 2
-            if all(np.hypot(mx - a, my - c_) > 18 for a, c_ in lab_cols):
+            if all(np.hypot(mx - a, my - c_) > label_gap for a, c_ in lab_cols):
                 lab_cols.append((mx, my))
                 grp = sub[sub.fid == fid]
                 pmid = grp.piece.unique()[len(grp.piece.unique()) // 2]
@@ -249,6 +286,8 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
                     xa = f.x1 + (rr.a + rr.b) / 2 * (f.x2 - f.x1); ya = f.y1 + (rr.a + rr.b) / 2 * (f.y2 - f.y1)
                     labels3d.append((xa + 0.8 * f.nx, ya + 0.8 * f.ny, b.z0 + (rr.floor - 0.5) * fh,
                                      f"{rr[key]:.1f}"))
+                if label_box:                        # 앱: 보이는 벽마다 한 열(대상 건물을 둘러 가며 값)
+                    continue
                 break
         for _, rr in sub.iterrows():
             f = F.loc[rr.fid]
@@ -257,17 +296,29 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
             za = b.z0 + (rr.floor - 1) * fh; zb = za + fh
             polys.append([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)])
             cols.append(cmap(norm(rr[key])))
+    if gpolys:                                       # 주변 건물: 거의 투명한 면 + 옅은 윤곽선(대상 건물보다 먼저)
+        ax.add_collection3d(Poly3DCollection(gpolys, facecolors=(0.85, 0.85, 0.88, 0.06),
+                                             edgecolors=(0.35, 0.35, 0.40, 0.35), linewidths=0.4, zorder=1),
+                            autolim=False)
     ax.add_collection3d(Poly3DCollection(polys, facecolors=cols, edgecolors=(0.3, 0.3, 0.5, 0.25),
-                                         linewidths=0.2, zorder=1), autolim=False)
+                                         linewidths=0.2, zorder=2), autolim=False)
+    box = dict(boxstyle="round,pad=0.1", fc="white", ec="none", alpha=0.65) if label_box else None
     for x, y, z, t in labels3d:
-        ax.text(x, y, z, t, fontsize=7, ha="center", va="center", zorder=100)
+        ax.text(x, y, z, t, fontsize=7, ha="center", va="center", zorder=100, bbox=box,
+                weight="bold" if label_box else "normal")
+    for b_, x, y, zt, me in (bid_label_points(B, focus, bid_labels) if bid_labels or focus is not None else []):
+        if me:                                       # 건물 번호: 대상은 빨간 상자, 주변은 가까운 순 bid_labels 개
+            ax.text(x, y, zt + 1.5, str(b_), fontsize=9, weight="bold", color="white", ha="center", va="bottom",
+                    zorder=102, bbox=dict(boxstyle="round,pad=0.2", fc="#d00000", ec="white", lw=0.8))
+        else:
+            ax.text(x, y, zt + 1.0, str(b_), fontsize=6.5, color="#333333", ha="center", va="bottom", zorder=101,
+                    bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="#888888", lw=0.4, alpha=0.85))
     ax.set_xlim(g[0], g[2]); ax.set_ylim(g[1], g[3])
     zr = max(B.ztop.max() - z0min + 5, 40)
     ax.set_zlim(z0min, z0min + zr)
     ax.set_box_aspect((1, 1, zr / (g[2] - g[0])), zoom=1.45)
     ax.view_init(elev=elev, azim=azim); ax.set_axis_off()
-    ax.set_facecolor("#8fd3fe")
-
+    ax.set_facecolor(C["sky"])
 
 def facade_3d(cfg, key="LrN"):
     out = cfg["project"]["output_dir"]; pc = cfg["plots"]; mc = cfg["model"]

@@ -14,3 +14,4 @@ streamlit>=1.40          # 웹 화면
 streamlit-folium>=0.20   # 웹 화면 지도
 folium>=0.17
 PySide6-Essentials>=6.6   # 데스크톱 화면(Qt, LGPLv3). 없으면 tkinter 화면으로 실행
+PySide6-WebEngine>=6.12  # 앱 안 3D 보기(Qt WebEngine, LGPLv3). 없으면 3D 는 브라우저로 엶

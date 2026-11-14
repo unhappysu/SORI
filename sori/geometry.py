@@ -11,6 +11,9 @@
   - 지면계수 Gs/Gr/Gm: 경로를 따라 G 래스터 평균(ISO 7.3.1 영역 구분)
   - 래스터 이산화 보정: 음원 1.5 m 이내 건물, 수음점 소속 건물의 수음점 1.5 m 이내,
     반사 건물의 반사점 1.5 m 이내 표본은 지면 높이로 대체
+  - 방음벽(bars[n, 5] = x1, y1, x2, y2, 지면 위 높이): 래스터가 아니라 선분 교차로 정확한 위치에 두께 없는 회절
+    모서리 1개를 넣음(윗모서리 = 교차점 지면 + 높이). 구간 양 끝 0.1 m 이내 교차는 뺌(방음벽 면에서 반사한 경로의
+    반사점). 방음벽이 없으면(n = 0) 이전과 같은 계산 — path_geometry 는 빈 배열로 path_geometry_b 를 부름
 결과는 길이 NGEOM 배열 geom 에 기록(아래 색인).
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
@@ -23,6 +26,23 @@ from . import njit
 # geom 색인
 G_D, G_SGR, G_HM, G_HS, G_HR, G_GS, G_GR, G_GM, G_SHIELD, G_DOUBLE, G_Z, G_DSS, G_DSR, G_E = range(14)
 NGEOM = 14
+MAXCR = 32                                           # 한 경로가 넘는 방음벽 교차점 최대 수
+MAXO = 6                                             # 반사 차수 한도(4차 이상은 solver._order_n)
+MAXV = MAXO + 2                                      # 경로 꼭짓점 수 한도(음원 + 반사점 + 수음점)
+
+
+@njit(cache=True)
+def _hull_push(hd, hh, k, dd, h):
+    """상부 볼록 껍질에 점 (dd, h) 추가(표본 순서 = dd 오름차순). 새 k 반환"""
+    while k >= 2:
+        ax = hd[k - 1] - hd[k - 2]; ay = hh[k - 1] - hh[k - 2]
+        bx = dd - hd[k - 2]; by = h - hh[k - 2]
+        if ax * by - ay * bx >= 0.0:
+            k -= 1
+        else:
+            break
+    hd[k] = dd; hh[k] = h
+    return k + 1
 
 
 @njit(cache=True)
@@ -38,11 +58,20 @@ def _cell(x0, y0, res, nx, ny, x, y):
 def path_geometry(vx, vy, nv, zs, zr, hs, hr,
                   gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
                   rbid, refl_bid, skip_r, hd, hh, geom):
+    """방음벽 없는 경우(이전 호출 형식 유지)"""
+    return path_geometry_b(vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                           rbid, refl_bid, skip_r, hd, hh, geom, np.zeros((0, 5)))
+
+
+@njit(cache=True)
+def path_geometry_b(vx, vy, nv, zs, zr, hs, hr,
+                    gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
+                    rbid, refl_bid, skip_r, hd, hh, geom, bars):
     """기하량을 geom 에 기록. 반환값: 3D 전파거리 d (= RLS-19 s)"""
     # 각 구간 길이(수평)
     cum0 = 0.0
-    legs = np.empty(5)                               # 최대 3차 반사: 꼭짓점 5개, 구간 4개
-    cum = np.empty(5)
+    legs = np.empty(MAXV)                            # 구간 길이(꼭짓점 nv 개 → 구간 nv − 1 개)
+    cum = np.empty(MAXV)
     cum[0] = 0.0
     for k in range(nv - 1):
         legs[k] = math.sqrt((vx[k + 1] - vx[k]) ** 2 + (vy[k + 1] - vy[k]) ** 2)
@@ -63,9 +92,51 @@ def path_geometry(vx, vy, nv, zs, zr, hs, hr,
     Gm_sum = 0.0; Gm_n = 0
     lim_s = 30.0 * hs
     lim_r = 30.0 * hr
+    # 방음벽 교차점(가시선보다 높은 것만, 거리 오름차순)
+    ncr = 0; icr = 0
+    nbar = bars.shape[0]
+    co = hd.shape[0] - MAXCR                         # 교차점은 껍질 버퍼의 끝 칸에 둠(따로 할당하지 않음)
+    if nbar > 0:
+        for q in range(nv - 1):
+            if legs[q] < 0.2:
+                continue
+            ldx = vx[q + 1] - vx[q]; ldy = vy[q + 1] - vy[q]
+            for w in range(nbar):
+                bex = bars[w, 2] - bars[w, 0]; bey = bars[w, 3] - bars[w, 1]
+                den = ldx * bey - ldy * bex
+                if abs(den) < 1e-12:
+                    continue
+                wx = bars[w, 0] - vx[q]; wy = bars[w, 1] - vy[q]
+                u = (wx * ldy - wy * ldx) / den
+                if u < 0.0 or u > 1.0:
+                    continue
+                dl = (wx * bey - wy * bex) / den * legs[q]
+                if dl < 0.1 or dl > legs[q] - 0.1:
+                    continue
+                cd = cum[q] + dl
+                idx = _cell(x0, y0, res, nx, ny, vx[q] + dl / legs[q] * ldx, vy[q] + dl / legs[q] * ldy)
+                if idx < 0:
+                    continue
+                ch = gnd.flat[idx] + bars[w, 4]
+                if ch <= zs + (zr - zs) * cd / sgr or ncr >= MAXCR:
+                    continue
+                m = ncr
+                dup = False
+                for c in range(ncr):
+                    if abs(hd[co + c] - cd) < 1e-6:           # 이어진 두 선분의 공유 꼭짓점
+                        dup = True
+                        if ch > hh[co + c]:
+                            hh[co + c] = ch
+                if dup:
+                    continue
+                while m > 0 and hd[co + m - 1] > cd:
+                    hd[co + m] = hd[co + m - 1]; hh[co + m] = hh[co + m - 1]; m -= 1
+                hd[co + m] = cd; hh[co + m] = ch; ncr += 1
     leg = 0
     for t in range(n):
         dd = (t + 0.5) * step
+        while icr < ncr and hd[co + icr] < dd:
+            k = _hull_push(hd, hh, k, hd[co + icr], hh[co + icr]); icr += 1
         if dd > sgr - 0.25:
             break
         while leg < nv - 2 and dd > cum[leg + 1]:
@@ -109,6 +180,8 @@ def path_geometry(vx, vy, nv, zs, zr, hs, hr,
                 else:
                     break
             hd[k] = dd; hh[k] = h; k += 1
+    while icr < ncr:
+        k = _hull_push(hd, hh, k, hd[co + icr], hh[co + icr]); icr += 1
     while k >= 2:
         ax = hd[k - 1] - hd[k - 2]; ay = hh[k - 1] - hh[k - 2]
         bx = sgr - hd[k - 2]; by = zr - hh[k - 2]

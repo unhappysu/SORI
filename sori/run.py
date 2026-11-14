@@ -13,7 +13,7 @@ from . import AI_NOTICE, __version__, HAVE_NUMBA
 from . import naming, rls19, rls90
 from .propagation import get_model, EMISSION_LABEL
 from .provenance import environment
-from .solver import compute, facade_neighbors, to_db
+from .solver import compute_l, facade_neighbors, to_db
 
 log = logging.getLogger("sori")
 
@@ -32,6 +32,71 @@ def load_model(out):
     return d, S, F, FR
 
 
+def model_bars(d):
+    """모델 파일의 방음벽 선분 배열 [n, 5] (없으면 빈 배열 — 방음벽 기능 이전 모델 파일 포함)"""
+    try:
+        if "bars" in d:
+            return np.ascontiguousarray(d["bars"], dtype=np.float64).reshape(-1, 5)
+    except (KeyError, TypeError):
+        pass
+    return np.zeros((0, 5))
+
+
+def lateral_on(cfg):
+    return bool((cfg["propagation"].get("lateral") or {}).get("enabled")) and get_model(cfg).name == "iso9613_2"
+
+
+def lateral_active(cfg, d):
+    """이번 계산에 측면 회절을 실제로 쓰는지: 설정이 켜져 있고(ISO 방법) 모델 파일에 건물 외곽선이 있을 때.
+    외곽선이 없는 이전 판 모델(2026-11-13 이전 build)이면 경고하고 측면 회절 없이 계산"""
+    if not lateral_on(cfg):
+        return False
+    if "bptr" in d and len(d["bptr"]) > 1:
+        return True
+    if not getattr(lateral_active, "_warned", False):
+        log.warning("측면 회절: 모델 파일에 건물 외곽선이 없음(2026-11-13 이전 build) — 측면 회절 없이 계산. "
+                    "넣으려면 모델부터 다시 만들기(build)")
+        lateral_active._warned = True
+    return False
+
+
+def cmet_c0(cfg):
+    """ISO 9613-2 기상 보정 C0(dB). ISO 방법이 아니면 0(RLS-19·RLS-90 은 자체 기상 항)"""
+    return float(cfg["propagation"].get("cmet_C0", 0.0) or 0.0) if get_model(cfg).name == "iso9613_2" else 0.0
+
+
+def face_factors(cfg, F):
+    """반사면별 추가 이득 계수 fatt(solver.compute_l): 건물 외벽·반사형 방음벽 = 1, 반사 저감형 방음벽 =
+    목표 이득 / 기본 이득. 목표 이득: RLS-19·ISO = 10^(−0.1·손실 dB)(RLS-19 표 8 3·5 dB, ISO 는 같은 값을 ρ 로 —
+    프로젝트 선택), RLS-90 = 10^(0.1·D_E)(표 7 −4·−8 dB). refl_db(직접 지정)가 있으면 그 손실 dB"""
+    from .inputs import BARRIER_LOSS
+    f = np.ones(len(F))
+    if not len(F) or "refl_kind" not in F:
+        return f
+    model = get_model(cfg)
+    base = float(model.reflection_gain(cfg))
+    tab = BARRIER_LOSS["rls90" if model.name == "rls90" else "rls19"]
+    kind = F["refl_kind"].astype(str).values
+    db = F["refl_db"].values.astype(float) if "refl_db" in F else np.full(len(F), np.nan)
+    for i in range(len(F)):
+        if kind[i] in ("nan", "", "reflect", "None") and not np.isfinite(db[i]):
+            continue
+        loss = db[i] if np.isfinite(db[i]) else tab.get(kind[i])
+        if loss is None:
+            continue
+        f[i] = 10.0 ** (-0.1 * float(loss)) / base
+    return f
+
+
+def model_outlines(d):
+    """측면 회절용 (bgid, bxy, bptr). 방음벽이 없거나 이전 모델 파일이면 빈 값"""
+    nbar = model_bars(d).shape[0]
+    bgid = np.asarray(d["bars_gid"], np.int64) if "bars_gid" in d else np.arange(nbar, dtype=np.int64)
+    if "bxy" in d:
+        return bgid, np.asarray(d["bxy"], np.float64), np.asarray(d["bptr"], np.int64)
+    return bgid, np.zeros((0, 2)), np.zeros(1, np.int64)
+
+
 def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, progress=None):
     p = cfg["propagation"]; rf = p["reflection"]; br = p["barrier"]
     model = get_model(cfg)
@@ -48,12 +113,16 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
     else:
         nb = (np.zeros(len(F) + 1, np.int64), np.zeros(0, np.int64))
     ny, nx = d["gnd"].shape
+    bars = model_bars(d)
+    bgid, bxy, bptr = model_outlines(d)
+    lat = lateral_active(cfg, d)
+    fatt = face_factors(cfg, F)
     n = len(rx)
-    res = [np.empty(n) for _ in range(6)]
+    res = [np.empty(n) for _ in range(8)]
     t0 = time.time()
     for a in range(0, n, chunk):
         b = min(a + chunk, n)
-        o = compute(rx[a:b], ry[a:b], rz[a:b], rg[a:b], rbid[a:b], rfid[a:b], order,
+        o = compute_l(rx[a:b], ry[a:b], rz[a:b], rg[a:b], rbid[a:b], rfid[a:b], order,
                     *args_s, *args_f, model.reflection_gain(cfg),
                     d["gnd"].astype(np.float64), d["dsm"].astype(np.float64), d["bid"].astype(np.int64),
                     d["G"].astype(np.float64), float(d["x0"]), float(d["y0"]), float(d["res"]), nx, ny,
@@ -62,17 +131,22 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
                     float(rf["r_second"]), float(p["skip_radius"]),
                     bands, lams, alphas, wts, cfg["input"]["ground"]["method"] == "alternative",
                     float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, *nb,
-                    rf.get("own_facade", "last") == "all")
-        for k in range(6):
+                    rf.get("own_facade", "last") == "all", bars,
+                    lat, int((cfg["propagation"].get("lateral") or {}).get("max_grow", 6)), bgid, bxy, bptr, fatt, cmet_c0(cfg))
+        for k in range(8):
             res[k][a:b] = o[k]
         el = time.time() - t0
         log.info("%s %d/%d  %.0fs  (남은 시간 약 %.0fs)", label, b, n, el, el / b * (n - b))
         if progress is not None:
             progress(label, b, n, el / b * (n - b))
-    Ed, En, Edir, E1, E2, E3 = res
+    Ed, En, Edir, E1, E2, E3, E4, Elat = res
     r = dict(LrT=to_db(Ed), LrN=to_db(En), LrT_direct=to_db(Edir), LrT_refl1=to_db(E1), LrT_refl2=to_db(E2))
     if order >= 3:                                      # 3차 성분 열은 3차를 계산할 때만(2차 이하 결과 파일 형식 유지)
         r["LrT_refl3"] = to_db(E3)
+    if order >= 4:                                      # 4차 이상 성분 합(4차 이상을 계산할 때만)
+        r["LrT_refl4p"] = to_db(E4)
+    if lat:                                             # 측면 회절로 더해진 성분(켰을 때만)
+        r["LrT_lateral"] = to_db(Elat)
     return r
 
 
@@ -91,6 +165,14 @@ def junction_K(out, x, y):
     from scipy.spatial import cKDTree
     d, _ = cKDTree(J[["x", "y"]].values).query(np.c_[x, y])
     return np.array([rls90.K_signal(v) for v in d])
+
+
+def _build_info(out):
+    p = os.path.join(out, "build_info.json")
+    try:
+        return json.load(open(p, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
 def _emission_key(out):
@@ -298,6 +380,8 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         ok = (P.note == "").values
         keys = ("LrT", "LrN", "LrT_direct", "LrT_refl1", "LrT_refl2") \
             + (("LrT_refl3",) if int(cfg["propagation"]["reflection"]["max_order_point"]) >= 3 else ()) \
+            + (("LrT_refl4p",) if int(cfg["propagation"]["reflection"]["max_order_point"]) >= 4 else ()) \
+            + (("LrT_lateral",) if lateral_active(cfg, d) else ()) \
             + (("K",) if is90 else ())
         for k in keys:
             P[k] = np.nan
@@ -318,6 +402,15 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
             T = path_terms(cfg, d, S, F, P[ok])
             T.to_csv(os.path.join(out, "path_terms.csv"), index=False, encoding="utf-8-sig")
             log.info("감쇠항별 중간값: path_terms.csv (%d 경로, 직접음·1차 반사)", len(T))
+        if cfg["receivers"]["points"].get("road_contrib", True) and ok.any():   # 점마다 도로별 기여(paths.py)
+            from .paths import road_contrib_table
+            try:                                        # 보조 출력 — 실패해도 계산 결과는 그대로 저장
+                RC_ = road_contrib_table(cfg, P[ok].assign(h=P.h[ok]), model=(d, S, F, FR))
+                RC_.to_csv(os.path.join(out, "point_road_contrib.csv"), index=False, encoding="utf-8-sig")
+                log.info("점 수음점 도로별 기여: point_road_contrib.csv (%d점, 직접음 + 반사 %d차까지 — 측면 회절·고차 반사 제외)",
+                         RC_.point_id.nunique(), min(int(cfg["propagation"]["reflection"]["max_order_point"]), 3))
+            except Exception as e:
+                log.warning("점 수음점 도로별 기여를 만들지 못함(계산 결과는 그대로): %s", e)
         outputs["points"] = model.name
         # field_survey/scripts/process_measurements.py --model 입력 형식(point_id, period, Leq_calc)
         cmp = pd.concat([pd.DataFrame(dict(point_id=P.point_id, period=per, Leq_calc=P[k].round(1),
@@ -337,11 +430,14 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
     info = {"software": f"SORI v{__version__}", "notice": AI_NOTICE, "numba": HAVE_NUMBA,
             "emission": EMISSION_LABEL["rls90" if is90 else "rls19"], "propagation": model.label(cfg),
             **model.info(cfg), "outputs": outputs,
+            **({} if lateral_active(cfg, d) or not lateral_on(cfg) else
+               {"lateral_diffraction": "설정은 켬이나 모델 파일에 건물 외곽선이 없어 적용 안 함(이전 판 모델)"}),
             "file_naming": ({"rule": "{프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}[부가]",
                              "files": [os.path.basename(f) for f in named if f]} if naming.enabled(cfg) else None),
             "ground_method": cfg["input"]["ground"]["method"], "bands_hz": list(bands),
             "alpha_dB_per_km": [round(a, 3) for a in alphas], "weights": list(np.round(wts, 4)),
             "reflection": cfg["propagation"]["reflection"], "results_range": summary,
+            "barriers": _build_info(out).get("barriers"),
             "segment_check": ({"rule": "RLS-19 3.2 주석 l_i <= s_i/2 (경험칙, 진단만·결과값 불변). "
                                        "s = 직접 경로 3D 거리", **seg_sum} if do_seg else None),
             "config": cfg["_config_path"],

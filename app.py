@@ -391,15 +391,33 @@ def _prefill(R):
 
 
 def save_traffic(df):
+    """화면 표 → traffic.csv. 화면에 없는 열(basis, dir_split_fwd·dir_basis, M_day·M_night, 방향별 속도 v_*_fwd/bwd 등)과
+    화면 밖 도로의 행은 이전 파일 값을 그대로 둠(2026-11-14: 예전에는 저장할 때마다 지워짐). 야간 % · 화물차 속도는
+    이전 파일에서 주간 값·승용차 속도와 달랐으면 그대로 두고, 같거나 비었으면 화면 값으로"""
+    from sori.inputs import read_csv_any
+    t = pdir() / "traffic.csv"
+    old = read_csv_any(t).fillna("").astype(str) if t.exists() else pd.DataFrame(columns=["key"])
+    prev = {k: r.to_dict() for k, r in old.set_index("key", drop=False).iterrows()}
     rows = []
     g = lambda v: "" if pd.isna(v) else f"{float(v):g}"
+    keep = lambda o, k, base: o.get(k, "") not in ("", o.get(base, ""))   # noqa: E731  이전 파일에서 따로 넣은 값
     for _, r in df.iterrows():
         p1, p2, v = g(r["중형 트럭 %"]), g(r["대형 트럭·버스 %"]), g(r["제한속도(km/h)"])
-        rows.append(dict(key=r["_key"], key_type=r["_type"], road_type=ROAD_TYPES[r["도로 종류"]],
-                         DTV=g(r["하루 통행량(대)"]), M_day="", M_night="",
-                         p1_day=p1, p2_day=p2, p1_night=p1, p2_night=p2, v_pkw=v, v_lkw=v,
-                         surface=SURFACES[r["노면"]], note=r["자료 출처·메모"] or ""))
-    pd.DataFrame(rows).to_csv(pdir() / "traffic.csv", index=False, encoding="utf-8-sig")
+        o = prev.pop(r["_key"], {})
+        row = dict(o)
+        row.update(key=r["_key"], key_type=r["_type"], road_type=ROAD_TYPES[r["도로 종류"]],
+                   DTV=g(r["하루 통행량(대)"]), M_day=o.get("M_day", ""), M_night=o.get("M_night", ""),
+                   p1_day=p1, p2_day=p2, v_pkw=v, surface=SURFACES[r["노면"]], note=r["자료 출처·메모"] or "")
+        row["p1_night"] = o["p1_night"] if keep(o, "p1_night", "p1_day") else p1
+        row["p2_night"] = o["p2_night"] if keep(o, "p2_night", "p2_day") else p2
+        row["v_lkw"] = o["v_lkw"] if keep(o, "v_lkw", "v_pkw") else v
+        if o and row["DTV"] != g(pd.to_numeric(o.get("DTV", ""), errors="coerce")):
+            row.update(M_day="", M_night="", basis="")     # 화면에서 통행량을 바꿈 → 이전 M(우선 적용)·출처는 맞지 않음
+        rows.append(row)
+    rows += list(prev.values())                           # 화면 표에 없는 도로(계산 범위 밖 등)
+    cols = list(dict.fromkeys(["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "p2_day",
+                               "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "note"] + list(old.columns)))
+    pd.DataFrame(rows).reindex(columns=cols).fillna("").to_csv(t, index=False, encoding="utf-8-sig")
 
 
 def step3():

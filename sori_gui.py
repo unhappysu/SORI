@@ -15,6 +15,7 @@ SORI 데스크톱 실행 화면 — 더블클릭 앱(SORI.app / SORI.exe)의 진
 """
 import datetime as dt
 import json
+import math
 import logging
 import os
 import platform
@@ -66,9 +67,13 @@ def save_settings(**kv):
 
 # ================================================================ 계산 작업(화면과 무관)
 def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True, period="LrT", progress=None,
-            method=None):
+            method=None, barriers=None, extra_heights=None, compare_base=None, scenario=None, preset=None):
     """설정 파일로 build → run → (그림) 실행. 결과·사용 설정·계산 조건은 out_dir 에 저장.
-    method(iso9613_2 | rls19 | rls90)를 주면 설정 파일의 propagation_method 대신 씀(설정 파일은 그대로, 사본에 기록)"""
+    method(iso9613_2 | rls19 | rls90)를 주면 설정 파일의 propagation_method 대신 씀(설정 파일은 그대로, 사본에 기록)
+    아래도 설정 파일은 그대로 두고 이번 계산에만 씀(사본 config_used.yaml 끝에 기록):
+      barriers = 방음벽 CSV 경로(input.barriers.path), extra_heights = 격자 높이 추가(예: [1.5]), scenario = 시나리오 이름
+      compare_base = 기준 결과 폴더 → 계산 뒤 차이 표(diff_*.csv, compare.write)를 만듦
+      preset = "fast": 빠른 미리보기(격자 간격 2배, 벽면 수음점 간격 2배, 반사 1차까지) — 결과가 설정값 계산과 다름"""
     from sori import config as C, build, run
     cfg_path = Path(cfg_path).resolve()
     out = Path(out_dir).resolve()
@@ -83,6 +88,35 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
         get_model(cfg)                                  # 잘못된 이름이면 여기서 오류
         _set_method_in_copy(out / "config_used.yaml", method, m0)
         log.info("전파 방법: %s (설정 파일 값 %s 대신 화면에서 고름)", method, m0)
+    over = {}
+    if barriers:
+        cfg["input"]["barriers"]["path"] = str(Path(barriers).resolve())
+        over["input.barriers.path"] = cfg["input"]["barriers"]["path"]
+    if extra_heights:
+        hs = cfg["receivers"]["grid"]["heights"]
+        new = sorted({round(float(h), 3) for h in list(hs) + list(extra_heights)})
+        if new != [round(float(h), 3) for h in hs]:
+            cfg["receivers"]["grid"]["heights"] = new
+            over["receivers.grid.heights"] = new
+    if preset == "fast":
+        g, f, rf = cfg["receivers"]["grid"], cfg["receivers"]["facade"], cfg["propagation"]["reflection"]
+        g["step"] = float(g["step"]) * 2.0
+        f["piece"] = float(f["piece"]) * 2.0
+        over.update({"receivers.grid.step": g["step"], "receivers.facade.piece": f["piece"]})
+        for k in ("max_order_grid", "max_order_facade", "max_order_point"):
+            rf[k] = min(int(rf[k]), 1)
+            over[f"propagation.reflection.{k}"] = rf[k]
+    elif preset:
+        raise ValueError(f"모르는 preset: {preset}")
+    if scenario:
+        cfg["project"]["scenario"] = scenario
+        over["project.scenario"] = scenario
+    if over:
+        with open(out / "config_used.yaml", "a", encoding="utf-8") as f:
+            f.write("\n# ── 앱에서 이번 계산에만 바꾼 값(원래 설정 파일에는 없음). 같은 계산을 다시 하려면 위 설정에 반영 ──\n")
+            for k, v in over.items():
+                f.write(f"# {k}: {json.dumps(v, ensure_ascii=False)}\n")
+        log.info("이번 계산에만 바꾼 설정: %s", over)
     cond = {
         "software": f"SORI v{__version__}",
         "notice": AI_NOTICE,
@@ -95,6 +129,8 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
         "summary_period": period,
         "propagation_method": cfg.get("propagation_method") or "iso9613_2",
         "propagation_method_override": bool(method and method != m0),
+        "overrides": over,
+        "compare_base": str(Path(compare_base).resolve()) if compare_base else None,
         "app": {"frozen": is_frozen(), "python": platform.python_version(),
                 "os": platform.platform(), "machine": platform.machine()},
         "status": "running",
@@ -115,6 +151,11 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
             files += maps_hq.main(cfg)
             if (out / "facade_result.csv").exists() and (out / "grid_result.csv").exists():
                 files.append(viewer3d.main(cfg))
+        if compare_base:
+            from sori import compare
+            cond["diff"] = compare.write(Path(compare_base).resolve(), out)
+            for line in compare.summary_lines(cond["diff"], period):
+                log.info("차이(비교 − 기준) %s", line)
         summary = summarize(out, period)
         for line in summary:
             log.info("요약 %s", line)
@@ -126,6 +167,52 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
         raise
     finally:
         cpath.write_text(json.dumps(cond, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def barrier_height_study(cfg_path, base_out, barriers, heights, which=("grid",), method=None, preset=None,
+                         progress=None):
+    """방음벽 높이 비교(보완 사항 12 후보 4): barriers(목록, inputs.load_barriers 형식)의 높이를 heights 의 값으로 모두
+    바꿔 가며 계산하고(run_job, 결과 폴더 '{기준}_방음벽{h}m'), 기준(설치 전) 대비 차이를 한 표로.
+    반환 DataFrame(높이·면적·격자/벽면 차이 통계) — '{기준}_방음벽_높이비교.csv' 로도 저장. 설정 파일은 바꾸지 않음
+    progress(i, n, h): 높이 하나를 시작할 때"""
+    import pandas as pd
+    from sori import compare, inputs as I
+    base = Path(base_out).resolve()
+    try:
+        xh = [float(h) for h in pd.read_csv(base / "grid_result.csv", usecols=["h"]).h.unique()]
+    except (OSError, ValueError):
+        xh = None
+    rows = []
+    for i, h in enumerate(heights):
+        h = float(h)
+        if progress is not None:
+            progress(i, len(heights), h)
+        out = base.with_name(f"{base.name}_방음벽{h:g}m")
+        out.mkdir(parents=True, exist_ok=True)
+        bp = out / "barriers_study.csv"
+        I.save_barriers(bp, [dict(b, h=h) for b in barriers])
+        log.info("방음벽 높이 비교 %d/%d: %g m → %s", i + 1, len(heights), h, out)
+        r = run_job(cfg_path, out, which, False, method=method, barriers=bp, extra_heights=xh,
+                    compare_base=base, scenario=f"방음벽{h:g}m", preset=preset)
+        info = r.get("diff") or {}
+        row = {"height_m": h, "length_m": round(sum(sum(math.hypot(x2 - x1, y2 - y1) for (x1, y1), (x2, y2)
+                                                         in zip(b["pts"][:-1], b["pts"][1:])) for b in barriers), 1),
+               "out": str(out), "elapsed_s": r.get("elapsed_s")}
+        row["area_m2"] = round(row["length_m"] * h, 1)
+        for hk, st in (info.get("grid") or {}).items():
+            s = st.get("LrT") or {}
+            for k in ("mean", "min", "lower_1dB", "lower_3dB", "lower_5dB", "higher_1dB", "n"):
+                row[f"grid_{hk}_{k}"] = s.get(k)
+        s = (info.get("facade") or {}).get("LrT") or {}
+        for k in ("mean", "min", "lower_3dB", "lower_5dB", "higher_1dB", "n"):
+            row[f"facade_{k}"] = s.get(k)
+        D = compare.diff_facade(base, out)
+        if D is not None and len(D):                      # 벽면이 3 dB 넘게 낮아진 건물 수(건물별 최대 저감)
+            row["facade_bld_lower_3dB"] = int((D.groupby("bid").dLrT.min() < -3.0).sum())
+        rows.append(row)
+    T = pd.DataFrame(rows)
+    T.to_csv(base.with_name(f"{base.name}_방음벽_높이비교.csv"), index=False, encoding="utf-8-sig")
+    return T
 
 
 def _set_method_in_copy(path, method, original):
