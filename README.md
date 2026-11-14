@@ -1,6 +1,6 @@
 # SORI — RLS-19 + ISO 9613-2 도로교통소음 3D 소음지도(SORI Map)
 
-**SORI** (Simulation of Outdoor Road-noise Impact) v0.2 — 도로교통소음 예측 소프트웨어(판 번호 규칙·변경은 9절). 소음지도 기능·결과물은 **SORI Map** 이라 부른다. Python 패키지·명령은 `sori` (`python -m sori …`).
+**SORI** (Simulation of Outdoor Road-noise Impact) v0.3 — 도로교통소음 예측 소프트웨어(판 번호 규칙·변경은 9절). 소음지도 기능·결과물은 **SORI Map** 이라 부른다. Python 패키지·명령은 `sori` (`python -m sori …`).
 
 > ※ 본 소프트웨어와 문서는 Claude(Anthropic의 AI)를 활용하여 제작하였음. 계산 결과의 검토·검증 책임은 사용자에게 있음.
 
@@ -224,3 +224,4 @@ python -m pytest -q tests        # 330개 시험(2026-11-11 v0.2: 329 통과, RL
 |---|---|---|
 | v0.1 | 2026-11-04 | 첫 배포(태그 `v0.1`, 공개 안 함) — `docs/release/v0.1.md` |
 | v0.2 | 2026-11-10 | RLS-90 추가, 차도 면 보정 기본 flatten, 교통량 빈칸 독일 기준표, 골목길 제외 기본(**결과 바뀜**), 홈·입력값 화면, 나란히 보기, 격자 위 벽면 값 — `docs/release/v0.2.md`. 태그 전 |
+| v0.3 | 2026-11-14 | 측면 회절 기본 켬(**결과 바뀜**), 방음벽 시뮬레이션·전후 차이, 경로 보기, 반사 4–6차, 건물별 표·용도지역 기준, 화면 개편(홈·3D 파사드 번호·7색 색표) — `docs/release/v0.3.md`. 태그 전 |
