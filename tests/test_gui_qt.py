@@ -751,6 +751,11 @@ def test_3d_viewer_has_no_exceedance(tmp_path):
     assert "초과" not in html and '"xstat"' not in html and "LrT_x" not in html
     assert "주간 LrT" in html and "야간 LrN" in html
     assert viewer3d.file_version(out / "noise3d.html") == viewer3d.VIEWER_VERSION
+    # 2026-11-14(뷰어 판 3): 벽면 방향별 명암(0.80–1.0)·건물 윤곽선
+    D = viewer3d.build_data(cfg)
+    assert len(D["fac"]["s"]) == len(D["fac"]["T"]) and 80 <= min(D["fac"]["s"]) <= max(D["fac"]["s"]) <= 100
+    assert max(D["fac"]["s"]) - min(D["fac"]["s"]) >= 10                     # 방향이 다른 벽은 밝기가 다름
+    assert "EdgesGeometry" in html and "edgesO.visible" in html
 
 
 def test_old_3d_viewer_rebuilt_automatically(tmp_path, monkeypatch):

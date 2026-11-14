@@ -27,7 +27,7 @@ from .resources import resource_path
 
 # 뷰어 판(파일 머리 <meta name="sori-viewer">). 화면 구성이 바뀌면 올림 — 앱은 판이 다르거나 없는 파일을 자동으로 다시 만듦
 #   2 = 2026-11-13 기준 초과 단추·색 삭제
-VIEWER_VERSION = 2
+VIEWER_VERSION = 3        # 3(2026-11-14): 벽면 방향별 명암(fac.s)·건물 윤곽선
 GROUND_BG = (226, 230, 222)
 ROAD_RGB = (150, 150, 150)
 MINOR_RGB = (190, 190, 190)
@@ -129,7 +129,12 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
     y2 = f.y1.values + FR.b.values * (f.y2.values - f.y1.values) + off * f.ny.values - cy
     za = f.z0.values + (FR.floor.values - 1) * fh - zref
     quads = np.c_[x1, y1, x2, y2, za, za + fh].round(2)
-    fac = {"q": quads.ravel().tolist(), "T": np.round(FR.LrT.values * 10).astype(int).tolist(),
+    # 벽면 방향별 명암(2026-11-14): 벽면 색은 조명을 받지 않는 재질이라 모든 벽이 같은 밝기로 납작해 보였음 →
+    # 장면의 해(sun.position −300, 500, 200 — 평면 방향 (−300, −200))를 향한 정도로 밝기 0.80–1.0(등급 색을 헷갈리지 않게 약하게)
+    L = np.array([-300.0, -200.0]) / np.hypot(300.0, 200.0)
+    shade = 0.80 + 0.20 * (0.5 + 0.5 * (f.nx.values * L[0] + f.ny.values * L[1]))
+    fac = {"q": quads.ravel().tolist(), "s": np.round(shade * 100).astype(int).tolist(),
+           "T": np.round(FR.LrT.values * 10).astype(int).tolist(),
            "N": np.round(FR.LrN.values * 10).astype(int).tolist(), "b": FR.bid.astype(int).tolist(),
            "fl": FR.floor.astype(int).tolist()}
     # ---- 도로명 라벨
@@ -265,8 +270,12 @@ function bgeom(list){const P=[];for(const b of list){const z0=b.z[0],z1=b.z[1];
 const mainB=D.bld.filter(b=>b.c),otherB=D.bld.filter(b=>!b.c);
 const bmatA=new THREE.MeshLambertMaterial({color:0xe9e4da,side:THREE.DoubleSide});
 const bmatO=new THREE.MeshLambertMaterial({color:0xd9dde3,side:THREE.DoubleSide,transparent:true,opacity:0.92});
-scene.add(new THREE.Mesh(bgeom(mainB),bmatA));
+const mainMesh=new THREE.Mesh(bgeom(mainB),bmatA);scene.add(mainMesh);
 const others=new THREE.Mesh(bgeom(otherB),bmatO);scene.add(others);
+// 건물 윤곽선(모서리 25° 넘게 꺾이는 곳) — 형태가 또렷하게(2026-11-14)
+const emat=new THREE.LineBasicMaterial({color:0x2b2b2b,transparent:true,opacity:0.38});
+const edgesO=new THREE.LineSegments(new THREE.EdgesGeometry(others.geometry,25),emat);
+scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(mainMesh.geometry,25),emat));scene.add(edgesO);
 // facade quads
 const q=D.fac.q,nq=q.length/6;const FP=new Float32Array(nq*18),FC=new Float32Array(nq*18);
 for(let i=0;i<nq;i++){const x1=q[i*6],y1=q[i*6+1],x2=q[i*6+2],y2=q[i*6+3],z0=q[i*6+4],z1=q[i*6+5];
@@ -279,8 +288,8 @@ const fmesh=new THREE.Mesh(fg,fmat);scene.add(fmesh);
 const LP=[];for(let i=0;i<nq;i++){const x1=q[i*6],y1=q[i*6+1],x2=q[i*6+2],y2=q[i*6+3],z0=q[i*6+4];LP.push(x1,z0+0.02,-y1,x2,z0+0.02,-y2)}
 const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(LP,3));
 scene.add(new THREE.LineSegments(lg,new THREE.LineBasicMaterial({color:0x000000,transparent:true,opacity:0.18})));
-function paint(){const A=key==='T'?D.fac.T:D.fac.N;for(let i=0;i<nq;i++){const c=colOf(A[i]/10);
- for(let k=0;k<6;k++){FC[i*18+k*3]=c.r;FC[i*18+k*3+1]=c.g;FC[i*18+k*3+2]=c.b}}fg.attributes.color.needsUpdate=true;
+function paint(){const A=key==='T'?D.fac.T:D.fac.N,S=D.fac.s;for(let i=0;i<nq;i++){const c=colOf(A[i]/10),k_=S?S[i]/100:1;
+ for(let k=0;k<6;k++){FC[i*18+k*3]=c.r*k_;FC[i*18+k*3+1]=c.g*k_;FC[i*18+k*3+2]=c.b*k_}}fg.attributes.color.needsUpdate=true;
  if(groundOn)gmat.map=tex[key==='T'?'LrT':'LrN'];gmat.needsUpdate=true;legend();if(sel>=0)showInfo(sel)}
 let groundOn=true;
 // labels
@@ -311,7 +320,7 @@ const $=id=>document.getElementById(id);
 $('bT').onclick=()=>{key='T';$('bT').classList.add('on');$('bN').classList.remove('on');paint()};
 $('bN').onclick=()=>{key='N';$('bN').classList.add('on');$('bT').classList.remove('on');paint()};
 $('bG').onclick=()=>{groundOn=!groundOn;$('bG').classList.toggle('on',groundOn);ground.material=groundOn?gmat:plain;paint()};
-$('bO').onclick=()=>{others.visible=!others.visible;$('bO').classList.toggle('on',others.visible)};
+$('bO').onclick=()=>{others.visible=!others.visible;edgesO.visible=others.visible;$('bO').classList.toggle('on',others.visible)};
 $('bR').onclick=home;
 paint();
 function resize(){const w=wrap.clientWidth,h=wrap.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
