@@ -257,7 +257,8 @@ class Worker(QtCore.QThread):
                 from sori import section
                 def prog(label, done, total, eta):
                     self.b.prog.emit(done / max(total, 1), f"단면 계산 {done:,}/{total:,} 점 · 남은 시간 약 {fmt_dur(eta)}")
-                D, info, fn = section.main(self.kw["cfg"], self.kw["p1"], self.kw["p2"], progress=prog)
+                D, info, fn = section.main(self.kw["cfg"], self.kw["p1"], self.kw["p2"], self.kw.get("ds"),
+                                           self.kw.get("dz"), progress=prog)
                 self.b.done.emit("section", (D, info, fn))
             elif self.kind == "study":
                 hs = self.kw["heights"]
@@ -321,6 +322,75 @@ class MapNav(NavigationToolbar2QT):
                            f"QToolButton:checked {{ background: #fdecec; color: {RED}; }}")
 
 
+def section_display(D, key, info, fine=0.5, max_cells=1_500_000):
+    """단면 결과 → 그리기 배열(fs, fz, 가림 배열). 계산값은 그대로, 표시만 다듬음(격자 지도 maps_hq.grid_array 와 같은 방식):
+    빈 칸(건물 안·지면 아래)을 최근접값으로 메운 뒤 fine(m) 간격으로 3차 보간(둘러싼 계산점 4개 값 범위 안으로 제한),
+    가림은 계단 모양 계산점 대신 0.5 m 지형·지붕 단면(info.profile)으로 — 지면 아래·건물 안"""
+    from scipy.ndimage import distance_transform_edt, map_coordinates
+    ss, zs = np.sort(D.s.unique()), np.sort(D.z.unique())
+    A = np.full((len(zs), len(ss)), np.nan)
+    A[np.searchsorted(zs, D.z), np.searchsorted(ss, D.s)] = D[key].values
+    ds = float(ss[1] - ss[0]) if len(ss) > 1 else 1.0
+    dz = float(zs[1] - zs[0]) if len(zs) > 1 else 1.0
+    nan = np.isnan(A)
+    if nan.all():
+        return ss, zs, np.ma.masked_invalid(A)
+    idx = distance_transform_edt(nan, return_distances=False, return_indices=True)
+    full = A[tuple(idx)]
+    L, lo, hi = float(info["length_m"]), zs[0] - dz / 2, zs[-1] + dz / 2
+    step = fine
+    while (L / step) * ((hi - lo) / step) > max_cells:         # 아주 긴 단면은 표시 간격을 늘림
+        step *= 1.5
+    fs, fz = np.arange(0.0, L + step / 2, step), np.arange(lo, hi + step / 2, step)
+    FS, FZ = np.meshgrid(fs, fz)
+    ci, cj = (FZ - zs[0]) / dz, (FS - ss[0]) / ds              # 계산점 색인 좌표
+    F = map_coordinates(full, [ci, cj], order=3, mode="nearest")
+    i0 = np.clip(np.floor(ci).astype(int), 0, full.shape[0] - 1); j0 = np.clip(np.floor(cj).astype(int), 0, full.shape[1] - 1)
+    i1 = np.minimum(i0 + 1, full.shape[0] - 1); j1 = np.minimum(j0 + 1, full.shape[1] - 1)
+    q = np.stack([full[i0, j0], full[i0, j1], full[i1, j0], full[i1, j1]])
+    F = np.clip(F, q.min(axis=0), q.max(axis=0))
+    sp, zg, roof = (np.asarray(v, float) for v in info["profile"])
+    zgi = np.interp(fs, sp, zg)
+    rf = np.interp(fs, sp, np.nan_to_num(roof, nan=-1e9))
+    rf[np.interp(fs, sp, np.isnan(roof).astype(float)) > 0.5] = -1e9
+    hide = (FZ < zgi[None, :]) | (FZ <= rf[None, :])
+    return fs, fz, np.ma.masked_where(hide, F)
+
+
+def section_profile(D, key, h):
+    """단면 결과에서 지면 위 h(m) 높이의 거리별 값 → (s, 값). 열(s)마다 계산점 표고 사이를 1차 보간,
+    그 높이가 건물 안이거나 계산점이 모자라면 NaN"""
+    s_out, v_out = [], []
+    for s, g in D.dropna(subset=[key]).groupby("s"):
+        z, v = g.z.values, g[key].values
+        zt = float(g.zg.iloc[0]) + h
+        o = np.argsort(z)
+        z, v = z[o], v[o]
+        s_out.append(s)
+        v_out.append(float(np.interp(zt, z, v)) if z[0] - 1e-6 <= zt <= z[-1] + 1e-6 else np.nan)
+    return np.asarray(s_out), np.asarray(v_out)
+
+
+def section_buildings(B, info):
+    """단면 선 A→B 가 지나는 건물 → [(bid, s 시작, s 끝, 지붕 표고)] (s 순). 지붕 표고는 단면의 그 구간 지붕 최댓값"""
+    from shapely.geometry import LineString, Point
+    (x1, y1), (x2, y2) = info["p1"], info["p2"]
+    line = LineString([(x1, y1), (x2, y2)])
+    sp, _, roof = (np.asarray(v, float) for v in info["profile"])
+    out = []
+    for b in B[B.intersects(line)].itertuples():
+        seg = b.geometry.intersection(line)
+        parts = [g for g in getattr(seg, "geoms", [seg]) if g.length > 0]
+        if not parts:
+            continue
+        s = [line.project(Point(c)) for g in parts for c in g.coords]
+        s0, s1 = min(s), max(s)
+        m = (sp >= s0) & (sp <= s1) & ~np.isnan(roof)
+        if m.any():
+            out.append((int(b.bid), s0, s1, float(np.nanmax(roof[m]))))
+    return sorted(out, key=lambda r: r[1])
+
+
 class MapView(QtWidgets.QWidget):
     clicked = QtCore.Signal(float, float)          # 평면 지도 클릭(EPSG 평면 좌표)
     moved = QtCore.Signal(float, float)
@@ -371,7 +441,7 @@ class MapView(QtWidgets.QWidget):
         self._show_facade_opts(False)
         self.fig.clear()
         self.fig.patch.set_facecolor("white")
-        self.ax = self.ax3d = None
+        self.ax = self.ax3d = self.ax_sec = self.ax_prof = None
         self.hq = hq
         if hq is None:                                   # 일반 화면: 화면 해상도·자동 배치
             self._set_dpi(self._base_dpi)
@@ -607,57 +677,92 @@ class MapView(QtWidgets.QWidget):
         self._notice()
         self.canvas.draw_idle()
 
-    def draw_section(self, D, info, key, grid=None, buildings=None, title=""):
-        """단면 소음지도. 왼쪽: 평면(격자 지도 + 단면 선 A→B), 오른쪽: 선 위 거리 × 표고 단면(지형·건물 단면 포함)"""
-        from sori.plots import classes
-        cmap, norm, labels = classes(30, 5)
+    def draw_section(self, D, info, key, grid=None, buildings=None, title="", plan=True):
+        """단면 소음지도(2026-11-14 다시 그림): 선 위 거리 × 표고 단면을 격자 지도와 같은 색표(maps_hq.din_cmap)로,
+        계산점 사이를 보간해 매끄럽게 칠하고 5 dB 등음선. 지형·건물 단면은 0.5 m 지형 단면(info.profile)으로 또렷하게 가림,
+        단면이 지나는 건물 지붕 위에 건물 번호. plan=True(한 창 보기): 왼쪽에 평면 격자 지도 + 단면 선 A→B,
+        False(나란히 보기 오른쪽 창): 단면만 크게(평면은 왼쪽 격자 지도에 A–B 선)"""
+        from sori.maps_hq import BLD_EC, BLD_FC, DIN_EDGES, din_cmap, legend_strip
+        cmap, norm = din_cmap()
         self._clear()
-        gs = self.fig.add_gridspec(1, 2, width_ratios=[1, 2.3])
-        ax = self.ax = self.fig.add_subplot(gs[0])
-        sx = self.fig.add_subplot(gs[1])
+        self.fig.set_layout_engine(None)
         (x1, y1), (x2, y2) = info["p1"], info["p2"]
-        if grid is not None:
-            A, ext = grid
-            ax.imshow(np.ma.masked_invalid(A), origin="lower", extent=ext, cmap=cmap, norm=norm, interpolation="nearest")
-        if buildings is not None and len(buildings):
-            buildings.plot(ax=ax, facecolor="none", edgecolor="#222", lw=0.4)
-        ax.plot([x1, x2], [y1, y2], "-", color="#1f5fbf", lw=2)
-        for (x, y), t in (((x1, y1), "A"), ((x2, y2), "B")):
-            ax.annotate(t, (x, y), xytext=(4, 4), textcoords="offset points", color="#1f5fbf", fontsize=10, weight="bold")
-        m = max(abs(x2 - x1), abs(y2 - y1)) * 0.25 + 20
-        ax.set_xlim(min(x1, x2) - m, max(x1, x2) + m)
-        ax.set_ylim(min(y1, y2) - m, max(y1, y2) + m)
-        ax.set_aspect("equal")
-        ax.set_title("평면 — 파란 선 A→B: 단면 위치", fontsize=8)
-        ax.set_xlabel("X (m)", fontsize=7)
-        ax.set_ylabel("Y (m)", fontsize=7)
-        ax.tick_params(labelsize=6)
-        ax.ticklabel_format(useOffset=False, style="plain")
-        # 단면: 열 = 선 위 거리 s, 행 = 표고 z
-        ss, zs = np.sort(D.s.unique()), np.sort(D.z.unique())
-        A2 = np.full((len(zs), len(ss)), np.nan)
-        A2[np.searchsorted(zs, D.z), np.searchsorted(ss, D.s)] = D[key]
-        ds, dz, L = info["ds_m"], info["dz_m"], info["length_m"]
-        im = sx.imshow(np.ma.masked_invalid(A2), origin="lower", cmap=cmap, norm=norm, interpolation="nearest",
-                       extent=(0, L, zs[0] - dz / 2, zs[-1] + dz / 2), aspect="auto")
+        if plan:
+            ax = self.ax = self.fig.add_axes([0.01, 0.06, 0.27, 0.80])
+            if grid is not None:
+                A, ext = grid
+                ax.imshow(np.ma.masked_invalid(A), origin="lower", extent=ext, cmap=cmap, norm=norm,
+                          interpolation="bilinear")
+            if buildings is not None and len(buildings):
+                buildings.plot(ax=ax, facecolor=BLD_FC, edgecolor=BLD_EC, lw=0.3)
+            ax.plot([x1, x2], [y1, y2], "-", color="#1f5fbf", lw=2.2)
+            for (x, y), t in (((x1, y1), "A"), ((x2, y2), "B")):
+                ax.annotate(t, (x, y), xytext=(4, 4), textcoords="offset points", color="#1f5fbf", fontsize=10,
+                            weight="bold")
+            m = max(abs(x2 - x1), abs(y2 - y1)) * 0.25 + 20
+            ax.set_xlim(min(x1, x2) - m, max(x1, x2) + m)
+            ax.set_ylim(min(y1, y2) - m, max(y1, y2) + m)
+            ax.set_aspect("equal")
+            ax.set_xticks([]); ax.set_yticks([])
+            ax.set_xlabel(""); ax.set_ylabel("")                     # geopandas 가 붙이는 좌표축 이름 지움
+            ax.set_title("평면 — 파란 선 A→B", fontsize=8)
+            sx = self.fig.add_axes([0.33, 0.37, 0.64, 0.48])
+        else:
+            sx = self.fig.add_axes([0.075, 0.37, 0.91, 0.48])
+        self.ax_sec = sx
+        L = float(info["length_m"])
+        ds, dz = float(info["ds_m"]), float(info["dz_m"])
         sp, zg, roof = (np.asarray(v, float) for v in info["profile"])
-        lo = zs[0] - dz / 2
-        sx.fill_between(sp, lo, zg, color="#8a6f4e", lw=0)                        # 지형
-        sx.fill_between(sp, zg, roof, where=~np.isnan(roof), color="#b9b9c9", lw=0)  # 건물 단면
-        sx.plot(sp, zg, color="#4a3a28", lw=0.8)
+        ss, zs = np.sort(D.s.unique()), np.sort(D.z.unique())
+        lo, hi = zs[0] - dz / 2, zs[-1] + dz / 2
+        fs, fz, F = section_display(D, key, info)
+        sx.contourf(fs, fz, F, levels=[-200] + DIN_EDGES + [200], cmap=cmap, norm=norm, zorder=1, antialiased=True)
+        sx.contour(fs, fz, F, levels=DIN_EDGES, colors="#333333", linewidths=0.3, alpha=0.6, zorder=2)
+        sx.fill_between(sp, zg, roof, where=~np.isnan(roof), color=BLD_FC, ec=BLD_EC, lw=0.5, zorder=3)  # 건물 단면
+        sx.fill_between(sp, lo, zg, color="#a08868", lw=0, zorder=4)                                    # 지형
+        sx.plot(sp, zg, color="#4a3a28", lw=0.9, zorder=5)
+        for b, s0, s1, top in section_buildings(buildings, info) if buildings is not None else []:
+            if s1 - s0 > 0.02 * L:                                   # 단면 폭이 아주 좁은 건물은 번호 생략
+                sx.text((s0 + s1) / 2, min(top + 0.6, hi - 0.5), str(b), ha="center", va="bottom", fontsize=7.5,
+                        color="#333333", zorder=8, clip_on=True,
+                        bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="#888888", lw=0.4, alpha=0.85))
         sx.set_xlim(0, L)
-        sx.set_ylim(lo, zs[-1] + dz / 2)
-        sx.set_box_aspect(min(0.9, max(0.3, 1.6 * (zs[-1] - lo) / L)))
+        sx.set_ylim(lo, hi)
+        H = hi - lo
+        box = min(0.9 if plan else 1.1, max(0.3, 1.6 * H / L))       # 세로 길이 비(그림 칸 높이 / 폭)
+        sx.set_box_aspect(box)
+        sx.set_anchor("N")
+        ex = box * L / H                                              # 세로 과장 배율(1 = 실제 비율)
         sx.text(0, 1.01, "A", transform=sx.transAxes, color="#1f5fbf", weight="bold")
         sx.text(1, 1.01, "B", transform=sx.transAxes, color="#1f5fbf", weight="bold", ha="right")
-        sx.set_xlabel(f"A로부터 거리 (m) — 수음점 간격 가로 {ds:g} m · 세로 {dz:g} m, 반사 {info['reflection_order']}차", fontsize=7)
-        sx.set_ylabel("표고 (m)", fontsize=7)
-        sx.tick_params(labelsize=6)
-        cb = self.fig.colorbar(im, ax=sx, shrink=0.85, pad=0.01)
-        cb.set_ticks([hi for _, hi in labels[:-1]])
-        cb.set_label("dB(A) · 5 dB 등급")
-        self.fig.suptitle(title, fontsize=10)
-        self._notice()
+        sx.set_xlabel(f"A로부터 거리 (m) — 계산점 간격 가로 {ds:g} m · 세로 {dz:g} m, 반사 {info['reflection_order']}차",
+                      fontsize=7.5)
+        # 아래: 지면 위 4 m·1.5 m 높이의 A→B 값(기준선·건물 구간) — 단면과 같은 가로축
+        self.fig.canvas.draw()                                        # 단면 칸 실제 위치(세로 비 적용 뒤)
+        pos = sx.get_position()
+        px = self.ax_prof = self.fig.add_axes([pos.x0, 0.075, pos.width, max(0.12, min(0.22, pos.y0 - 0.17))])
+        for b, s0, s1, _ in (section_buildings(buildings, info) if buildings is not None else []):
+            px.axvspan(s0, s1, color=BLD_FC, alpha=0.55, lw=0, zorder=0)
+        for h, ls, lab in ((4.0, "-", "지면 위 4 m"), (1.5, (0, (4, 2)), "지면 위 1.5 m")):
+            ps, pv = section_profile(D, key, h)
+            if np.isfinite(pv).any():
+                px.plot(ps, pv, ls=ls, color="#222222", lw=1.2, label=lab, zorder=3)
+        lim = {"LrT": 68.0, "LrN": 58.0}.get(key)
+        if lim is not None:
+            px.axhline(lim, color="#d00000", lw=0.9, ls=(0, (2, 2)), zorder=2)
+            px.text(0.005 * L, lim + 0.4, f"기준 {lim:g} dB", color="#d00000", fontsize=7, va="bottom", ha="left")
+        px.set_xlim(0, L)
+        px.grid(axis="y", color="#e6e6e6", lw=0.6)
+        px.set_ylabel(f"{key} dB", fontsize=7.5)
+        px.tick_params(labelsize=7)
+        px.legend(fontsize=7, loc="upper right", framealpha=0.85, ncol=2)
+        px.set_title("높이별 값(회색 띠 = 건물)", fontsize=7.5, loc="left")
+        sx.set_ylabel("표고 (m)" + (f" · 세로 ×{ex:.1f}" if abs(ex - 1) > 0.05 else ""), fontsize=7.5)
+        sx.tick_params(labelsize=7)
+        self.title_text = title
+        self.fig.text(0.01, 0.975, title, fontsize=10.5, weight="bold", va="center", color="#222222")
+        legend_strip(self.fig, [0.01, 0.905, 0.98, 0.04], road=False)
+        self.fig.text(0.995, 0.005, f"※ {AI_NOTICE}", ha="right", va="bottom", fontsize=6, color="0.4")
         self.canvas.draw_idle()
 
     def _click(self, e):
@@ -2276,6 +2381,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.paths = None         # 경로 보기: (경로 표, 수음점 정보) — 마지막으로 고른 수음점
         self._path_name = None    # 경로 보기 수음점이 점 수음점이면 그 이름
         self._split_auto = False  # 경로 보기가 나란히 보기를 켰음(경로 보기를 끄면 다시 끔)
+        self._section_side = False  # 나란히 보기 오른쪽 창에 단면을 그리는 중(왼쪽 격자 지도에는 A–B 선)
+        self._sec_rate = None     # 지난 단면 계산 속도(점/초) — 간격 고르기의 예상 시간
         self._path_art = []
         self.worker = None
         self.bridge = Bridge()
@@ -2920,6 +3027,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_export.setEnabled(out.is_dir() and bool(export_files(out, EXPORT_GROUPS)))
         self.view, self.view_bid = "grid", None
         self.facade_bid = None
+        self._section_side = False
         self.map3d.message(MSG_3D_EMPTY)
         self._fit_split()
         ri = R.get("run_info") or {}
@@ -3218,7 +3326,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._redraw_main()
         if self.paths is not None and self.act_path.isChecked() and self.view == "grid":
             self._show_paths()                            # 시간대를 바꾸면 경로 표·도로별 기여도도 그 시간대로
-        if self.act_split.isChecked() and self.facade_bid is not None and not self._paths_side():
+        if self.act_split.isChecked() and self._section_side and not self._paths_side() and "section" in self.R:
+            self._draw_section(self.map3d)                             # 오른쪽 단면도 시간대에 맞춤
+        elif self.act_split.isChecked() and self.facade_bid is not None and not self._paths_side():
             self._draw_facade(self.facade_bid, self.map3d)            # 오른쪽 3D 도 시간대에 맞춤
 
     def _redraw_main(self):
@@ -3247,6 +3357,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._draw_paths()
         self._draw_pick_box()
         self._draw_measured()
+        self._draw_section_line()
 
     def _facade_overlay(self):
         """격자 지도 위 건물 외벽을 따라 벽면 결과(층별 최댓값)를 색 띠로 겹쳐 그림.
@@ -3513,6 +3624,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lbl_status.setText(f"건물 {bid}: 벽면 계산 결과 없음(벽면 계산 반경 밖이거나 벽면 계산을 하지 않음)")
             return False
         if self.act_split.isChecked():                   # 나란히: 왼쪽 격자는 그대로, 오른쪽에 3D
+            if self._section_side:                       # 오른쪽 창의 단면을 3D 로 바꿈(왼쪽 A–B 선도 지움)
+                self._section_side = False
+                self.facade_bid = None
             prev, self.facade_bid = self.facade_bid, bid
             if prev is None:
                 self._fit_split()                        # 처음 고른 건물: 오른쪽 창을 반으로 넓힘
@@ -3550,6 +3664,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.redraw()
         else:
             bid, self.facade_bid, self._split_auto = self.facade_bid, None, False
+            if self._section_side:                       # 한 창 보기로: 단면은 '마지막 단면 보기'로 다시 봄
+                self._section_side = False
             self.redraw()
             if bid is not None:
                 self.lbl_status.setText(f"한 창 보기 — 건물을 클릭하면 3D 파사드로 바뀜(직전 건물 {bid})")
@@ -3560,7 +3676,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.map3d.isVisibleTo(self):
             return
         W = max(self.split.width(), 600)
-        side = W // 2 if self.facade_bid is not None or self._paths_side() else min(SPLIT_EMPTY_W, W // 4)
+        wide = self.facade_bid is not None or self._paths_side() or self._section_side
+        side = W // 2 if wide else min(SPLIT_EMPTY_W, W // 4)
         self.split.setSizes([W - side, side])
 
     def show_grid(self):
@@ -3568,7 +3685,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.redraw()
 
     def show_section(self):
-        if "section" in self.R:
+        """단면 보기: 나란히 보기면 오른쪽 창(왼쪽 격자 지도에 A–B 선), 한 창 보기면 평면 + 단면 그림"""
+        if "section" not in self.R:
+            return
+        if self.act_split.isChecked():
+            self._section_side = True
+            self.view, self.view_bid = "grid", None
+            self._fit_split()
+            self.redraw()
+        else:
             self.view = "section"
             self.redraw()
 
@@ -3632,26 +3757,85 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sec_pts = []
         self.start_section(p1, p2)
 
+    def _section_spacing(self, p1, p2):
+        """단면 계산점 간격 고르기(2026-11-14): 자동·2·1·0.5 m 마다 계산점 수와 예상 시간(지난 단면 계산 속도,
+        처음이면 지난 격자 계산 속도). 반환 간격(m, None = 자동). 취소하면 False"""
+        from sori import section as SEC
+        from sori import summary as SM
+        try:
+            rows = SEC.estimate(str(Path(self.out).resolve()), p1, p2)
+        except Exception as e:
+            log.warning("단면 점 수 추정 실패 — 자동 간격으로: %s", e)
+            return None
+        rate = self._sec_rate
+        if rate is None:
+            rc = self.R.get("run_conditions") or {}
+            prev = sum(len(self.R[k]) for k in ("grid", "facade") if k in self.R and k in (rc.get("targets") or []))
+            if rc.get("elapsed_s") and prev:
+                rate = prev / float(rc["elapsed_s"])
+        items = []
+        for c, (ds, dz, n) in zip(SEC.SPACING_CHOICES, rows):
+            t = SM.estimate_time(n, rate)
+            lab = (f"자동 — 가로 {ds:g} m · 세로 {dz:g} m" if c is None else f"{c:g} m 간격") + f"  ·  {n:,}점"
+            items.append(lab + (f"  ·  약 {fmt_dur(t)}" if t is not None else ""))
+        it, ok = QtWidgets.QInputDialog.getItem(
+            self, "단면 계산점 간격", "가로·세로 간격을 고르세요(촘촘할수록 매끄럽고 오래 걸림).\n"
+            + ("예상 시간은 지난 단면 계산 속도 기준" if self._sec_rate else "예상 시간은 지난 격자 계산 속도 기준(단면은 보통 더 빠름)"),
+            items, 0, False)
+        if not ok:
+            return False
+        return SEC.SPACING_CHOICES[items.index(it)]
+
     def start_section(self, p1, p2):
         import copy
+        import time
         if self.cfg is None or not self.out or not (Path(self.out) / "model_rasters.npz").exists():
             return self._err("단면은 계산한 결과 폴더(모델 파일 model_rasters.npz 포함)와 설정 파일이 열려 있어야 합니다.")
+        sp = self._section_spacing(p1, p2)
+        if sp is False:
+            self._redraw_main()                          # 그리던 선 지움
+            return self.lbl_status.setText("단면 계산 취소")
+        if self.act_path.isChecked():                    # 오른쪽 창을 단면이 씀
+            self.act_path.setChecked(False)
+            self._toggle_paths(False)
         cfg = copy.deepcopy(self.cfg)
         cfg["project"]["output_dir"] = str(Path(self.out).resolve())
-        self.tabs.setCurrentIndex(1)
-        self._launch(Worker(self.bridge, "section", cfg=cfg, p1=p1, p2=p2),
-                     f"단면 계산 중… A({p1[0]:.0f}, {p1[1]:.0f}) → B({p2[0]:.0f}, {p2[1]:.0f})")
+        self._sec_t0 = time.time()
+        self._launch(Worker(self.bridge, "section", cfg=cfg, p1=p1, p2=p2, ds=sp, dz=sp),
+                     f"단면 계산 중… A({p1[0]:.0f}, {p1[1]:.0f}) → B({p2[0]:.0f}, {p2[1]:.0f})"
+                     + ("" if sp is None else f" · {sp:g} m 간격"))
 
-    def _draw_section(self):
+    def _draw_section_line(self):
+        """나란히 보기 오른쪽 창에 단면을 보일 때 왼쪽 격자 지도에 A–B 선"""
+        ax = self.map.ax
+        if not self._section_side or "section" not in self.R or ax is None or self.view != "grid":
+            return
+        info = self.R["section"][1]
+        (x1, y1), (x2, y2) = info["p1"], info["p2"]
+        xl, yl = ax.get_xlim(), ax.get_ylim()
+        dpi = getattr(self.map.fig, "_original_dpi", None) or self.map.fig.dpi
+        k = 72.0 / dpi
+        ax.plot([x1, x2], [y1, y2], "-", color="white", lw=4.5 * k, zorder=53, gid="section_line")
+        ax.plot([x1, x2], [y1, y2], "-", color="#1f5fbf", lw=2.4 * k, zorder=54, gid="section_line")
+        for (x, y), t in (((x1, y1), "A"), ((x2, y2), "B")):
+            ax.annotate(t, (x, y), xytext=(5, 5), textcoords="offset points", color="#1f5fbf", fontsize=13 * k,
+                        weight="bold", zorder=55, bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="#1f5fbf", lw=0.6))
+        ax.set_xlim(xl); ax.set_ylim(yl)
+        self.map.canvas.draw_idle()
+
+    def _draw_section(self, target=None):
+        """target: 그릴 지도 창(None = 가운데 창 self.map — 평면 + 단면, 나란히 보기면 self.map3d — 단면만)"""
+        side = target is not None
+        target = target or self.map
         D, info = self.R["section"]
         key = self.cb_key.currentData()
         grid = self._grid_array(self.cb_h.currentData(), key)
         L = info["length_m"]
         vals = D[key].dropna()
-        title = (f"단면 소음지도 {KEYS[key]} — A→B {L:.0f} m  (최대 {vals.max():.1f} dB, 계산점 {len(vals):,}개, "
-                 f"{(self.R.get('run_info') or {}).get('outputs', {}).get('grid', '')})")
-        self.map.draw_section(D, info, key, grid, self.R.get("buildings"), title)
-        self._set_back(True)
+        title = f"단면 · A→B {L:.0f} m · {KEYS[key]} · 최대 {vals.max():.1f} dB"   # 자세한 값은 속성 창
+        target.draw_section(D, info, key, grid, self.R.get("buildings"), title, plan=not side)
+        if not side:
+            self._set_back(True)
         h4 = D[(D.h > 3.5) & (D.h <= 4.5)][key].dropna()
         rows = [("단면 길이 m", f"{L:.1f}"), ("A", f"{info['p1'][0]:.1f}, {info['p1'][1]:.1f}"),
                 ("B", f"{info['p2'][0]:.1f}, {info['p2'][1]:.1f}"), ("간격 가로·세로 m", f"{info['ds_m']:g} · {info['dz_m']:g}"),
@@ -3660,7 +3844,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if len(h4):
             rows.append((f"지면 위 4 m 부근 {key} 범위", f"{h4.min():.1f} ~ {h4.max():.1f}"))
         self._show_props(rows)
-        self.lbl_status.setText("단면 소음지도 — '◀ 격자 지도'로 돌아감, 결과 표는 결과 폴더 section_result.csv")
+        self.lbl_status.setText("단면 소음지도(오른쪽) — 왼쪽 파란 선 A–B 가 단면 위치, 건물을 누르면 3D 로 바뀜, "
+                                "결과 표는 결과 폴더 section_result.csv" if side else
+                                "단면 소음지도 — '◀ 격자 지도'로 돌아감, 결과 표는 결과 폴더 section_result.csv")
 
     def _grid_array(self, h, key, Gh=None):
         R = self.R
@@ -3682,7 +3868,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return self._err("저장할 지도가 없습니다. 결과를 먼저 열고" + (" 건물을 클릭하세요." if side else " 여세요."))
         key, h = self.cb_key.currentData(), self.cb_h.currentData()
         kind, extra = (("grid", f"_경로_{self._path_name or 'X{:.0f}_Y{:.0f}'.format(self.paths[1]['x'], self.paths[1]['y'])}")
-                       if self._paths_side() else ("facade", f"_3D_건물{self.facade_bid}")) if side else \
+                       if self._paths_side() else ("section", "") if self._section_side
+                       else ("facade", f"_3D_건물{self.facade_bid}")) if side else \
             {"grid": ("grid", f"_h{h:g}m" if h is not None else ""),
              "facade": ("facade", f"_3D_건물{self.view_bid}"),
              "section": ("section", "")}[self.view]
@@ -5021,10 +5208,14 @@ class MainWindow(QtWidgets.QMainWindow):
             D, info, fn = r
             self.R["section"] = (D, info)
             self.act_last_sec.setEnabled(True)
+            import time
+            if getattr(self, "_sec_t0", None) and info.get("n_calc"):
+                self._sec_rate = info["n_calc"] / max(time.time() - self._sec_t0, 0.1)
             self.show_section()
             log.info("단면 결과 저장: %s", fn)
         elif kind == "paths":
             self.paths = r
+            self._section_side = False
             if not self.act_split.isChecked():           # 경로선은 오른쪽 창에 → 나란히 보기를 켬(다시 그리며 경로도 그림)
                 self._split_auto = True
                 self.act_split.setChecked(True)

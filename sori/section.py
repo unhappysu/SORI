@@ -52,6 +52,19 @@ def receivers(d, p1, p2, ds=None, dz=None, h_above=10.0, max_points=4000):
                 ds=float(ds), dz=float(dz), L=L, profile=(sp, zgp, np.where(inside, dsm, np.nan)))
 
 
+SPACING_CHOICES = (None, 2.0, 1.0, 0.5)              # 앱 간격 고르기: 자동(점 4,000개 안쪽) · 2 · 1 · 0.5 m(가로 = 세로)
+
+
+def estimate(out, p1, p2, choices=SPACING_CHOICES, max_points=4000):
+    """간격별 계산점 수(계산 전, 모델 래스터만 읽음) → [(ds, dz, 계산점 수)]. 자동(None)은 실제로 정해질 간격"""
+    d = np.load(os.path.join(out, "model_rasters.npz"))
+    rows = []
+    for c in choices:
+        R = receivers(d, p1, p2, c, c, max_points=max_points)
+        rows.append((R["ds"], R["dz"], int(R["calc"].sum())))
+    return rows
+
+
 def _sample(A, d, x, y):
     """래스터 셀 값(최근접) — 건물 지붕 높이(dsm)용"""
     x0, y0, res = float(d["x0"]), float(d["y0"]), float(d["res"])

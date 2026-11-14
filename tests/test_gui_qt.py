@@ -302,7 +302,7 @@ def test_split_view_draws_map_only_and_save_keeps_report(tmp_path):
     app.processEvents()
 
 
-def test_section_line_compute_and_show(tmp_path):
+def test_section_line_compute_and_show(tmp_path, monkeypatch):
     """단면 선 긋기(두 점 클릭) → 단면 계산(Worker) → 단면 지도 표시·저장, 결과 파일과 다시 열기"""
     import time
     from PySide6 import QtWidgets
@@ -316,24 +316,45 @@ def test_section_line_compute_and_show(tmp_path):
     assert w.map.hq is not None and w.map.ax.collections                    # 설정+결과 → 보고서 수준 지도(등음선 채움)
     assert w.save_map_to(tmp_path / "grid_hq.pdf").stat().st_size > 1000
     cx, cy = C.center(w.cfg)
+    asked = []
+
+    def pick(parent, title, label, items, cur, editable):                  # 간격 고르기: 자동·2·1·0.5 m + 점 수
+        asked.append(items)
+        return items[1], True                                                # 2 m
+    monkeypatch.setattr(QtWidgets.QInputDialog, "getItem", pick)
+    w.act_split.setChecked(True); w._toggle_split(True)
     w.act_sec.setChecked(True)
     w._toggle_section(True)
     w._on_map_click(cx - 100.0, cy + 40.0)
     w._on_map_click(cx + 100.0, cy + 40.0)
+    assert len(asked[0]) == 4 and asked[0][0].startswith("자동") and "점" in asked[0][1]
     t0 = time.time()
     while w.worker.isRunning() and time.time() - t0 < 300:
         app.processEvents()
         time.sleep(0.05)
     for _ in range(20):
         app.processEvents()
-    assert w.view == "section" and not w.act_sec.isChecked()
+    D, info = w.R["section"]
+    assert info["ds_m"] == info["dz_m"] == 2.0 and w._sec_rate > 0           # 고른 간격으로 계산
+    # 나란히 보기: 오른쪽 창에 단면(격자와 같은 색표, 등음선), 왼쪽 격자 지도에 A–B 선
+    assert w.view == "grid" and w._section_side and not w.act_sec.isChecked()
+    assert w.map3d.ax_sec is not None and w.map3d.ax_sec.collections
+    assert w.map3d.title_text.startswith("단면 · A→B")
+    assert "section_line" in {l.get_gid() for l in w.map.ax.lines}
     for fn in ("section_result.csv", "section_info.json"):
         assert (out / fn).exists()
-    assert w.save_map_to(tmp_path / "section.png").stat().st_size > 1000
+    assert w.save_map_to(tmp_path / "section.png", w.map3d).stat().st_size > 1000
+    Bb = w.R["buildings"]                                                    # 건물을 누르면 오른쪽은 3D, A–B 선 지움
+    bid = int(w.R["facade"].bid.value_counts().index[0])
+    p = Bb[Bb.bid == bid].iloc[0].geometry.representative_point()
+    w._on_map_click(p.x, p.y)
+    assert not w._section_side and w.map3d.ax3d is not None
+    assert "section_line" not in {l.get_gid() for l in w.map.ax.lines}
+    w.act_split.setChecked(False); w._toggle_split(False)                   # 한 창 보기: 평면 + 단면
     w.open_results(out)                                                     # 다시 열면 '마지막 단면 보기' 가능
     assert w.act_last_sec.isEnabled()
     w.show_section()
-    assert w.view == "section"
+    assert w.view == "section" and w.map.ax_sec is not None
     w.close()
     app.processEvents()
 
