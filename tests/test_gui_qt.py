@@ -917,6 +917,21 @@ def test_simple_palette_switch():
     assert M.palette_name() == "din" and len(M.DIN_COLS) == 11 and M.BLD_FC == "#f2f2f2"   # 보고서 그림 색 그대로
 
 
+def test_facade_shade_and_loud_azimuth():
+    """3D 파사드 명암(빛 쪽 벽이 밝고 반대쪽이 어두움, 범위 안)·가장 시끄러운 벽 시점(2026-11-14)"""
+    import numpy as np
+    import pandas as pd
+    from sori.plots import loud_azimuth, wall_shade
+    az = -60.0
+    a = np.radians(az + 40.0)
+    lit, dark = wall_shade(np.cos(a), np.sin(a), az, 0.62, 0.38), wall_shade(-np.cos(a), -np.sin(a), az, 0.62, 0.38)
+    assert lit == pytest.approx(1.0) and dark == pytest.approx(0.62) and 0.62 < wall_shade(0, 1, az, 0.62, 0.38) < 1
+    F = pd.DataFrame({"nx": [1.0, 0.0], "ny": [0.0, 1.0]}, index=pd.Index([10, 11], name="fid"))
+    FR = pd.DataFrame({"bid": [5, 5, 6], "fid": [10, 11, 10], "LrT": [60.0, 72.0, 99.0]})
+    assert loud_azimuth(FR, F, 5, "LrT", offset=0.0) == pytest.approx(90.0)        # 북쪽 벽(72 dB)이 정면
+    assert loud_azimuth(FR, F, 7, "LrT") is None
+
+
 def test_cursor_value_in_status_bar(tmp_path):
     """상태 줄: 마우스 위치 좌표 + 가까운 격자점 값(2026-11-14). 격자 밖은 좌표만, 건물 안은 '건물 안'"""
     from PySide6 import QtWidgets
@@ -966,7 +981,13 @@ def test_facade3d_building_numbers_values_and_ghost(tmp_path):
     assert len(nums) >= 1                                                    # 주변 건물 번호
     # 격자 지도에도 같은 번호(대상 = 빨간 상자) + 3D 범위 점선 원
     g = [t for t in w.map.ax.texts if t.get_gid() == "bid_label"]
-    assert {t.get_text() for t in g} <= {t.get_text() for t in red + nums}   # 화면에서 겹치는 주변 번호는 뺌
+    from sori.plots import bid_label_points, loud_azimuth
+    B = w.R["buildings"]
+    cand = {str(b) for b, *_ in bid_label_points(B[B.intersects(w._facade_view(bid))], bid, w.FACADE_BID_LABELS)}
+    assert {t.get_text() for t in g} <= cand and {t.get_text() for t in red + nums} <= cand   # 같은 후보에서 화면 겹침만 뺌
+    assert str(bid) in {t.get_text() for t in g}
+    az = loud_azimuth(w.R["facade"], w.R["facades"], bid, "LrT")              # 가장 시끄러운 벽이 보이는 시점
+    assert az is not None and abs(((w.map3d.ax3d.azim - az) + 180) % 360 - 180) < 1e-6
     assert [t.get_text() for t in g if mc.to_hex(t.get_bbox_patch().get_facecolor()) == "#d00000"] == [str(bid)]
     assert "facade_view" in {l.get_gid() for l in w.map.ax.lines}
     vals = [t for t in texts() if "." in t.get_text()]

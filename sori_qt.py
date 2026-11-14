@@ -578,7 +578,8 @@ class MapView(QtWidgets.QWidget):
         cmap, norm = din_cmap()                          # 격자 지도와 같은 5 dB 등급 색(보고서 facade_3d 그림은 2 dB 그대로)
         vals, ghost = self.opt_vals.isChecked(), self.opt_ghost.isChecked()
         draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids={bid} if vals else set(),
-                       colors=FACADE3D_COLORS, focus=bid, bid_labels=MainWindow.FACADE_BID_LABELS, ghost=ghost, label_box=True, label_gap=10.0)
+                       colors=FACADE3D_COLORS, focus=bid, bid_labels=MainWindow.FACADE_BID_LABELS, ghost=ghost, label_box=True, label_gap=10.0,
+                       shade=True)
         bb = bld[bld.bid == bid]                         # 고른 건물: 지붕 테두리를 빨간 선으로(격자 지도의 빨간 테두리와 같은 표시)
         if len(bb):
             g = bb.iloc[0]
@@ -3712,8 +3713,10 @@ class MainWindow(QtWidgets.QMainWindow):
         FRb = FR[FR.bid == bid]
         name = f" {b.bname}" if isinstance(b.get("bname"), str) and b.bname else ""
         title = f"3D 파사드 · 건물 {bid}{name} · {int(b.floors)}층 · {KEYS[key]}"   # 한 줄(자세한 값은 속성 창)
+        from sori.plots import loud_azimuth
+        az = loud_azimuth(FR, F, bid, key)                # 가장 시끄러운 벽이 정면에(없으면 설정 azim_3d)
         target.draw_facade3d(B, FR, F, T, bid, key, view, fh, float(pc.get("elev_3d", 28.0)),
-                             float(pc.get("azim_3d", -60.0)), title)
+                             az if az is not None else float(pc.get("azim_3d", -60.0)), title)
         if not side:
             self._set_back(True)
         self.m_facade.set(FRb.sort_values(key, ascending=False).reset_index(drop=True))

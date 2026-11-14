@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
-from matplotlib.colors import ListedColormap, BoundaryNorm
+from matplotlib.colors import ListedColormap, BoundaryNorm, to_rgb
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from shapely.geometry import box, Point
@@ -229,8 +229,27 @@ def bid_label_points(B, focus, n, gap=9.0):
     return out
 
 
+def wall_shade(nx, ny, azim, base, amp):
+    """벽 방향별 밝기 배율(앱 3D 파사드 명암, 2026-11-14). 빛은 그릴 때 카메라 방위 + 40° 쪽에서 — 어느 방향에서
+    그려도 면마다 밝기가 달라 모양이 읽힘(마우스로 돌리는 동안은 고정, 다시 그릴 때 맞춤).
+    base + amp·(0.5 + 0.5·cos(벽 법선, 빛 방향))"""
+    a = np.radians(azim + 40.0)
+    d = np.asarray(nx) * np.cos(a) + np.asarray(ny) * np.sin(a)
+    return base + amp * (0.5 + 0.5 * d)
+
+
+def loud_azimuth(FR, F, bid, key, offset=-30.0):
+    """대상 건물에서 가장 시끄러운 벽(벽면 수음점 값 최댓값)이 정면에 보이는 카메라 방위각(도, matplotlib azim).
+    정면 그대로면 납작하게 보이므로 offset 만큼 비껴 봄. 벽면 결과가 없으면 None"""
+    sub = FR[(FR.bid == bid) & FR[key].notna()]
+    if not len(sub):
+        return None
+    f = F.loc[sub.loc[sub[key].idxmax(), "fid"]]
+    return float(np.degrees(np.arctan2(f.ny, f.nx)) + offset)
+
+
 def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids=None, colors=None,
-                   focus=None, bid_labels=0, ghost=False, label_box=False, label_gap=18.0):
+                   focus=None, bid_labels=0, ghost=False, label_box=False, label_gap=18.0, shade=False):
     """3D 파사드 소음지도 그리기(그림 파일 facade_3d 와 데스크톱 화면 sori_qt 가 같이 씀)
     T: 층별 색을 칠할 건물 번호 집합, label_bids: 층별 값 글자를 붙일 건물(None 이면 T 전체)
     view: 보이는 범위(shapely 도형), fh: 층고(m), elev·azim: 시점(도). 계산 없이 결과 표만 그림.
@@ -239,7 +258,8 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
       focus: 확인 대상 건물 번호 — 지붕 위 번호를 빨간 상자로
       bid_labels: 지붕 위 건물 번호를 붙일 주변 건물 수(focus 에서 가까운 순, 0 = 번호 없음)
       ghost: focus 밖 건물을 투명하게(옅은 윤곽선만, 벽면 색 없음) — 대상 건물만 보기
-      label_box: 층별 값 글자에 흰 바탕 상자, label_gap: 값 글자 열 사이 최소 거리(m)"""
+      label_box: 층별 값 글자에 흰 바탕 상자, label_gap: 값 글자 열 사이 최소 거리(m)
+      shade: 벽 방향별 명암(wall_shade) — 회색 벽은 0.62–1.0, 소음 색 벽은 0.84–1.0(등급 색을 헷갈리지 않게 약하게)"""
     C = {**dict(wall="#cfd0f7", roof="#f7c97f", ground="#9ac09a", sky="#8fd3fe"), **(colors or {})}
     B = bld[bld.intersects(view)]
     if ghost and focus is not None:                  # 주변 건물은 색 없이 윤곽만 → 층별 색은 대상 건물만
@@ -262,7 +282,12 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
         for (x1, y1), (x2, y2) in zip(c[:-1], c[1:]):
             out.append([(x1, y1, b.z0), (x2, y2, b.z0), (x2, y2, b.ztop), (x1, y1, b.ztop)])
             if out is polys:
-                cols.append(C["wall"])
+                if shade:                            # 반시계 외곽선의 바깥 법선 = (dy, −dx)
+                    ln = math.hypot(x2 - x1, y2 - y1) or 1.0
+                    k = float(wall_shade((y2 - y1) / ln, -(x2 - x1) / ln, azim, 0.62, 0.38))
+                    cols.append(tuple(min(1.0, v * k) for v in to_rgb(C["wall"])))
+                else:
+                    cols.append(C["wall"])
         out.append([(x, y, b.ztop) for x, y in c[:-1]])
         if out is polys:
             cols.append(C["roof"])
@@ -278,14 +303,14 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
         for fid in (score[score > 2.4].sort_values(ascending=False).index if bid in lab_set else []):
             f = F.loc[fid]
             mx, my = (f.x1 + f.x2) / 2, (f.y1 + f.y2) / 2
-            if all(np.hypot(mx - a, my - c_) > label_gap for a, c_ in lab_cols):
-                lab_cols.append((mx, my))
+            if all(np.hypot(mx - a, my - c_) > label_gap for a, c_, _ in lab_cols):
+                lab_cols.append((mx, my, (b.z0 + b.ztop) / 2))
                 grp = sub[sub.fid == fid]
                 pmid = grp.piece.unique()[len(grp.piece.unique()) // 2]
                 for _, rr in grp[grp.piece == pmid].iterrows():
                     xa = f.x1 + (rr.a + rr.b) / 2 * (f.x2 - f.x1); ya = f.y1 + (rr.a + rr.b) / 2 * (f.y2 - f.y1)
                     labels3d.append((xa + 0.8 * f.nx, ya + 0.8 * f.ny, b.z0 + (rr.floor - 0.5) * fh,
-                                     f"{rr[key]:.1f}"))
+                                     f"{rr[key]:.1f}", len(lab_cols) - 1))
                 if label_box:                        # 앱: 보이는 벽마다 한 열(대상 건물을 둘러 가며 값)
                     continue
                 break
@@ -295,30 +320,73 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
             xb = f.x1 + rr.b * (f.x2 - f.x1); yb = f.y1 + rr.b * (f.y2 - f.y1)
             za = b.z0 + (rr.floor - 1) * fh; zb = za + fh
             polys.append([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)])
-            cols.append(cmap(norm(rr[key])))
+            c_ = cmap(norm(rr[key]))
+            if shade:
+                k = float(wall_shade(f.nx, f.ny, azim, 0.84, 0.16))
+                c_ = (c_[0] * k, c_[1] * k, c_[2] * k, c_[3])
+            cols.append(c_)
     if gpolys:                                       # 주변 건물: 거의 투명한 면 + 옅은 윤곽선(대상 건물보다 먼저)
         ax.add_collection3d(Poly3DCollection(gpolys, facecolors=(0.85, 0.85, 0.88, 0.06),
                                              edgecolors=(0.35, 0.35, 0.40, 0.35), linewidths=0.4, zorder=1),
                             autolim=False)
     ax.add_collection3d(Poly3DCollection(polys, facecolors=cols, edgecolors=(0.3, 0.3, 0.5, 0.25),
                                          linewidths=0.2, zorder=2), autolim=False)
-    box = dict(boxstyle="round,pad=0.1", fc="white", ec="none", alpha=0.65) if label_box else None
-    for x, y, z, t in labels3d:
-        ax.text(x, y, z, t, fontsize=7, ha="center", va="center", zorder=100, bbox=box,
-                weight="bold" if label_box else "normal")
-    for b_, x, y, zt, me in (bid_label_points(B, focus, bid_labels) if bid_labels or focus is not None else []):
-        if me:                                       # 건물 번호: 대상은 빨간 상자, 주변은 가까운 순 bid_labels 개
-            ax.text(x, y, zt + 1.5, str(b_), fontsize=9, weight="bold", color="white", ha="center", va="bottom",
-                    zorder=102, bbox=dict(boxstyle="round,pad=0.2", fc="#d00000", ec="white", lw=0.8))
-        else:
-            ax.text(x, y, zt + 1.0, str(b_), fontsize=6.5, color="#333333", ha="center", va="bottom", zorder=101,
-                    bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="#888888", lw=0.4, alpha=0.85))
     ax.set_xlim(g[0], g[2]); ax.set_ylim(g[1], g[3])
     zr = max(B.ztop.max() - z0min + 5, 40)
     ax.set_zlim(z0min, z0min + zr)
     ax.set_box_aspect((1, 1, zr / (g[2] - g[0])), zoom=1.45)
     ax.view_init(elev=elev, azim=azim); ax.set_axis_off()
     ax.set_facecolor(C["sky"])
+    bids = bid_label_points(B, focus, bid_labels) if bid_labels or focus is not None else []
+    if label_box:                                    # 앱: 겹침을 화면 좌표로 판단(2026-11-14 — 평면 거리로는 비스듬한 시점에서
+        labels3d, bids = _screen_declutter(ax, labels3d, lab_cols, bids, B, focus)   # 숫자 열·주변 번호가 겹쳤음)
+    box = dict(boxstyle="round,pad=0.1", fc="white", ec="none", alpha=0.65) if label_box else None
+    for x, y, z, t, _ in labels3d:
+        ax.text(x, y, z, t, fontsize=7, ha="center", va="center", zorder=100, bbox=box,
+                weight="bold" if label_box else "normal")
+    for b_, x, y, zt, me in bids:
+        if me:                                       # 건물 번호: 대상은 빨간 상자, 주변은 가까운 순 bid_labels 개
+            ax.text(x, y, zt + 1.5, str(b_), fontsize=9, weight="bold", color="white", ha="center", va="bottom",
+                    zorder=102, bbox=dict(boxstyle="round,pad=0.2", fc="#d00000", ec="white", lw=0.8))
+        else:
+            ax.text(x, y, zt + 1.0, str(b_), fontsize=6.5, color="#333333", ha="center", va="bottom", zorder=101,
+                    bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="#888888", lw=0.4, alpha=0.85))
+
+
+def _screen_declutter(ax, labels3d, lab_cols, bids, B, focus, col_px=40.0, box_px=(30.0, 13.0)):
+    """3D 글자 겹침을 지금 시점의 화면 좌표(px)로 정리: 값 숫자 열은 화면 가로로 col_px 넘게 떨어진 열만,
+    주변 건물 번호는 대상 건물이 화면에서 차지하는 사각형 안이거나 이미 놓인 번호와 겹치면 뺌(대상 번호는 늘)"""
+    from mpl_toolkits.mplot3d import proj3d
+    M = ax.get_proj()
+
+    def px(x, y, z):
+        X, Y, _ = proj3d.proj_transform(np.asarray(x, float), np.asarray(y, float), np.asarray(z, float), M)
+        return ax.transData.transform(np.column_stack([np.atleast_1d(X), np.atleast_1d(Y)]))
+    keep, xs = set(), []
+    for i, (mx, my, zm) in enumerate(lab_cols):
+        p = px(mx, my, zm)[0, 0]
+        if all(abs(p - q) > col_px for q in xs):
+            xs.append(p)
+            keep.add(i)
+    labels3d = [l for l in labels3d if l[4] in keep]
+    if focus is None or not (B.bid == focus).any():
+        return labels3d, bids
+    fb = B[B.bid == focus].iloc[0]
+    cx, cy = np.asarray(fb.geometry.exterior.coords).T
+    P = px(np.r_[cx, cx], np.r_[cy, cy], np.r_[np.full(len(cx), fb.z0), np.full(len(cx), fb.ztop)])
+    x0, y0 = P.min(axis=0) - 4
+    x1, y1 = P.max(axis=0) + 4
+    out, placed = [], []
+    for b_, x, y, zt, me in bids:
+        q = px(x, y, zt + 1.0)[0]
+        if not me:
+            if x0 <= q[0] <= x1 and y0 <= q[1] <= y1:
+                continue
+            if any(abs(q[0] - a) < box_px[0] and abs(q[1] - c) < box_px[1] for a, c in placed):
+                continue
+        placed.append(tuple(q))
+        out.append((b_, x, y, zt, me))
+    return labels3d, out
 
 def facade_3d(cfg, key="LrN"):
     out = cfg["project"]["output_dir"]; pc = cfg["plots"]; mc = cfg["model"]
