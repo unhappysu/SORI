@@ -373,9 +373,13 @@ def grid_array(C, key, h, bbox=None, G=None):
            ② 계산 격자가 DISPLAY_STEP 보다 성기면 격자점 사이를 3차 보간(각진 등음선 완화, 둘러싼 격자점 4개 값 범위 안으로 제한)
            ③ bbox 를 주면 지도 테두리까지 가장자리 값으로 채움(격자점은 테두리에서 반 칸 안쪽이라 흰 띠가 생김)
       step = 계산 격자 간격(표시 간격 아님)
-    G: 격자 표(x, y, h, key 열)를 직접 줄 때(차이 지도 등). 기본은 결과 폴더의 grid_result.csv"""
+    G: 격자 표(x, y, h, key 열)를 직접 줄 때(차이 지도 등). 기본은 결과 폴더의 grid_result.csv.
+    정밀 격자(sori.refine)로 계산한 결과면 Am 은 세분 계산점의 삼각망 배열(grid_fine_h*.npz, 보간·넘침 제한 없음)"""
+    fine = None
     if G is None:
         G = pd.read_csv(os.path.join(C.out, "grid_result.csv"))
+        from .refine import load_fine
+        fine = load_fine(C.out, h)
     d = np.load(os.path.join(C.out, "model_rasters.npz"))
     gx, gy = d["gx"], d["gy"]
     step = float(gx[1] - gx[0])
@@ -386,6 +390,8 @@ def grid_array(C, key, h, bbox=None, G=None):
     nan = np.isnan(A)
     if nan.all():
         return gx, gy, step, np.ma.masked_invalid(A), A
+    if fine is not None and key in fine:
+        return _fine_display(fine, key, bbox, step, A)
     idx = distance_transform_edt(nan, return_distances=False, return_indices=True)
     full = A[tuple(idx)]                                   # 빈 칸을 모두 최근접값으로(보간 입력)
     hide = nan & ~binary_dilation(~nan, iterations=2)      # 가릴 칸: 건물 안쪽(경계 2칸 밖)
@@ -412,6 +418,32 @@ def grid_array(C, key, h, bbox=None, G=None):
     return fx, fy, step, np.ma.masked_where(H, F), A
 
 
+def _fine_display(fine, key, bbox, step, A):
+    """정밀 격자 그리기 배열: 건물 경계 2칸(세밀 간격)은 최근접값으로 메우고 안쪽은 가림, bbox 테두리까지 가장자리 값"""
+    from scipy.ndimage import distance_transform_edt, binary_dilation
+    fx, fy, F = fine["fx"], fine["fy"], fine[key].astype(float)
+    nan = np.isnan(F)
+    full = F[tuple(distance_transform_edt(nan, return_distances=False, return_indices=True))]
+    hide = nan & ~binary_dilation(~nan, iterations=2)
+    if bbox is not None:
+        px0, px1 = int(bbox[0] < fx[0]), int(bbox[2] > fx[-1])
+        py0, py1 = int(bbox[1] < fy[0]), int(bbox[3] > fy[-1])
+        fx = np.r_[[bbox[0]] * px0, fx, [bbox[2]] * px1]
+        fy = np.r_[[bbox[1]] * py0, fy, [bbox[3]] * py1]
+        full = np.pad(full, ((py0, py1), (px0, px1)), mode="edge")
+        hide = np.pad(hide, ((py0, py1), (px0, px1)), mode="edge")
+    return fx, fy, step, np.ma.masked_where(hide, full), A
+
+
+def refine_note(C, h):
+    """지도 제목 덧붙임: 정밀 격자면 ' · 경계 세분 0.625 m'"""
+    from .refine import fine_path
+    p = fine_path(C.out, h)
+    if not os.path.exists(p):
+        return ""
+    return f" · 경계 세분 {float(np.load(p)['fine_step']):g} m"
+
+
 # ------------------------------------------------------------------ 1) 격자 소음지도
 def grid_map(cfg, key="LrT", h=None):
     C = Ctx(cfg)
@@ -428,7 +460,7 @@ def draw_grid(fig, C, cfg, key, h):
     bbox = grid_bbox(cfg)
     gx, gy, step, Am, A = grid_array(C, key, h, bbox)
     ax, side = layout(fig, f"{cfg['project']['name']} 도로교통소음 지도 — {KEYNAME[key]}",
-                      f"격자 소음지도 · 수음 높이 {h:g} m · 격자 간격 {step:g} m · 등음선 5 dB")
+                      f"격자 소음지도 · 수음 높이 {h:g} m · 격자 간격 {step:g} m{refine_note(C, h)} · 등음선 5 dB")
     cmap, norm = din_cmap()
     lv = [-200] + DIN_EDGES + [200]
     ax.contourf(gx, gy, Am, levels=lv, cmap=cmap, norm=norm, zorder=1, antialiased=True)
@@ -486,7 +518,8 @@ def draw_grid_compact(fig, C, cfg, key, h, G=None, note="", labels=False, limit=
     bbox = grid_bbox(cfg)
     gx, gy, step, Am, A = grid_array(C, key, h, bbox, G=G)       # G: 화면에서 조건을 걸어 다시 합친 표(성분 고르기)
     ax = fig.add_axes([0.005, 0.005, 0.99, 0.905])
-    fig.text(0.01, 0.975, f"격자 소음지도 · {KEYNAME[key]} · 높이 {h:g} m · 간격 {step:g} m{note}",
+    fig.text(0.01, 0.975, f"격자 소음지도 · {KEYNAME[key]} · 높이 {h:g} m · 간격 {step:g} m"
+             f"{refine_note(C, h) if G is None else ''}{note}",
              fontsize=11, weight="bold", va="center", color="#222222")
     cmap, norm = din_cmap()
     ax.contourf(gx, gy, Am, levels=[-200] + DIN_EDGES + [200], cmap=cmap, norm=norm, zorder=1, antialiased=True)

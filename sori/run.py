@@ -330,10 +330,19 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
         seg_rows.append(pd.DataFrame(dict(kind=kind, x=rx[v], y=ry[v], z=rz[v], **{k: a[v] for k, a in extra.items()},
                                           n_viol=nv[v], n_viol_main=nvm[v], min_s_over_l=ratio[v])))
     if "grid" in which and cfg["receivers"]["grid"]["enabled"]:
+        from . import refine as RF
         gx, gy, gz, ins = d["gx"], d["gy"], d["gz"], d["ginside"]
         X, Y = np.meshgrid(gx, gy)
         m = ~ins.ravel()
-        frames = []
+        frames, rframes = [], []
+        RF.clear(out)
+        ref_on, ref_thr, ref_lv = RF.opts(cfg)
+        if ref_on:                                      # 정밀 격자: 세밀 격자의 건물 안·간선 노면 띠(높이와 무관)
+            fx, fy, fk, fs = RF.lattice(gx, gy, ref_lv)
+            FX, FY = np.meshgrid(fx, fy)
+            fzg, fin, fout = point_ground(d, FX.ravel(), FY.ravel())
+            fzg, fins = fzg.reshape(FX.shape), (fin | fout).reshape(FX.shape)
+            fnear = fins | RF.road_band(out, int(cfg["model"]["main_min_lanes"]), float(gx[1] - gx[0]), FX, FY)
         for h in cfg["receivers"]["grid"]["heights"]:
             rx, ry = X.ravel()[m], Y.ravel()[m]
             rg = gz.ravel()[m]; rz = rg + float(h)
@@ -352,7 +361,37 @@ def main(cfg, which=("grid", "facade", "points"), progress=None):
                 _write_tif(tif, A, gx, gy, cfg["receivers"]["grid"]["step"], cfg["crs"], model.name)
                 named.append(naming.copy_as(cfg, tif, "grid", key, f"_h{h:g}m"))
             summary[f"grid_h{h:g}"] = {k: [float(np.nanmin(G[k])), float(np.nanmax(G[k]))] for k in ("LrT", "LrN")}
+            if ref_on:
+                A0 = np.full(X.shape, np.nan)
+                A0.ravel()[m] = G.LrT.values
+                lv = [0]
+
+                def comp(ii, jj, h=h):
+                    lv[0] += 1
+                    x, y, zg = fx[jj], fy[ii], fzg[ii, jj]
+                    n_ = len(x)
+                    rr = _run(cfg, d, S, F, x, y, zg + float(h), zg, np.full(n_, -1, np.int64), np.full(n_, -1, np.int64),
+                              int(cfg["propagation"]["reflection"]["max_order_grid"]),
+                              f"정밀 격자 h={h:g} m {lv[0]}단계", progress=progress)
+                    return _addK(rr, x, y)
+                _, _, new = RF.refine(A0, fins, fnear, fk, ref_thr, comp)
+                R = pd.concat([pd.DataFrame(dict(x=fx[jj], y=fy[ii], z=fzg[ii, jj] + float(h), h=float(h),
+                                                 step_m=hs * fs, **rr)) for ii, jj, rr, hs in new], ignore_index=True) \
+                    if new else pd.DataFrame(columns=["x", "y", "z", "h", "step_m"] + list(G.columns[4:]))
+                rframes.append(R)
+                P = np.r_[np.c_[G.x.values, G.y.values], np.c_[R.x.values, R.y.values]]
+                fine = RF.fill(fx, fy, P, {k: np.r_[G[k].values, R[k].values] for k in RF.KEYS}, fins)
+                np.savez_compressed(RF.fine_path(out, h), fx=fx, fy=fy, step=float(gx[1] - gx[0]), fine_step=fs, **fine)
+                for key in RF.KEYS:
+                    tif = os.path.join(out, f"grid_{key}_h{h:g}m_fine.tif")
+                    _write_tif(tif, fine[key].astype(np.float64), fx, fy, fs, cfg["crs"], model.name)
+                summary[f"grid_h{h:g}_refine"] = {"threshold_dB": ref_thr, "min_step_m": fs, "points_regular": int(len(G)),
+                                                  "points_added": int(len(R))}
+                log.info("정밀 격자 h=%g m: 규칙 격자 %d점 + 세분 %d점(%.1f배), 최소 간격 %.3g m",
+                         h, len(G), len(R), (len(G) + len(R)) / max(len(G), 1), fs)
         pd.concat(frames).to_csv(os.path.join(out, "grid_result.csv"), index=False, encoding="utf-8-sig")
+        if rframes:
+            pd.concat(rframes, ignore_index=True).to_csv(os.path.join(out, "grid_refined.csv"), index=False, encoding="utf-8-sig")
         named.append(naming.copy_as(cfg, os.path.join(out, "grid_result.csv"), "grid"))
         outputs["grid"] = model.name
     if "facade" in which and cfg["receivers"]["facade"]["enabled"] and len(FR):

@@ -160,7 +160,8 @@ def count_stages(cfg, which):
     """계산 단계 수(run.main 이 진행률을 따로 세는 묶음): 격자는 높이마다 1, 벽면 1, 점 수음점 1"""
     r, n = cfg["receivers"], 0
     if "grid" in which and r["grid"]["enabled"]:
-        n += len(r["grid"]["heights"])
+        rf = r["grid"].get("refine") or {}
+        n += len(r["grid"]["heights"]) * (1 + (int(rf.get("levels", 2)) if rf.get("enabled") else 0))   # 정밀 격자: 높이마다 단계 수 더
     if "facade" in which and r["facade"]["enabled"]:
         n += 1
     if "points" in which and (r.get("points") or {}).get("path"):
@@ -290,7 +291,8 @@ class Worker(QtCore.QThread):
                 r = G.run_job(self.kw["cfg"], self.kw["out"], self.kw["which"], self.kw["plots"], progress=prog,
                               method=self.kw.get("method"), barriers=self.kw.get("barriers"),
                               extra_heights=self.kw.get("extra_heights"), compare_base=self.kw.get("compare_base"),
-                              scenario=self.kw.get("scenario"), preset=self.kw.get("preset"))
+                              scenario=self.kw.get("scenario"), preset=self.kw.get("preset"),
+                              refine=self.kw.get("refine"))
                 self.b.done.emit("run", r)
             else:
                 rp = default_output_dir() / "selfcheck_report.json"
@@ -2997,6 +2999,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                   "설정 파일은 바꾸지 않음. 계산 뒤 도구 줄 ‘높이’에서 층을 골라 봄. 층 수만큼 격자 계산 시간이 늘어남")
         self.sp_floors.valueChanged.connect(self._update_estimate)
         row.addWidget(self.sp_floors)
+        self.chk_refine = QtWidgets.QCheckBox("정밀 격자(경계 세분)", checked=False)
+        self.chk_refine.setToolTip("격자를 계산한 뒤 건물·간선 도로 경계와 값이 2 dB 넘게 바뀌는 칸만 반 간격씩 두 번 더 계산\n"
+                                   "(2.5 m 격자면 0.625 m까지). 지도·GeoTIFF 가 경계에서 정확해짐(전농사거리 검토: 95 % 오차 1.2–1.7 → 0.25–0.5 dB).\n"
+                                   "격자 계산점이 약 4.5–8배로 늘어남. 규칙 격자 결과 표(grid_result.csv)는 그대로. 설정 파일은 바꾸지 않음")
+        row.addWidget(self.chk_refine)
         self.chk_fast = QtWidgets.QCheckBox("빠른 미리보기", checked=False)
         self.chk_fast.setToolTip("격자 간격 2배·벽면 수음점 간격 2배·반사 1차까지로 빨리 계산해 대략의 분포를 봄.\n"
                                  "결과는 설정값 계산과 다르므로 결과 폴더 이름 끝에 ‘_미리보기’ 를 붙여 따로 저장(설정 파일은 그대로)")
@@ -3024,7 +3031,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lbl_est = QtWidgets.QLabel("")              # 계산 전 예상 점 수·시간
         self.lbl_est.setStyleSheet("color: #555555;")
         f.addWidget(self.lbl_est, 5, 0, 1, 4)
-        for c in list(self.chk.values()) + [self.chk_h15, self.chk_fast]:
+        for c in list(self.chk.values()) + [self.chk_h15, self.chk_fast, self.chk_refine]:
             c.toggled.connect(self._update_estimate)
         f.setRowStretch(6, 1)
         f.setColumnStretch(1, 1)
@@ -4488,6 +4495,9 @@ class MainWindow(QtWidgets.QMainWindow):
             g = e["grid"] // 4 if self.chk_fast.isChecked() else e["grid"]
             parts.append(f"격자 {'' if e['grid_exact'] else '최대 '}{g:,}점")
             n += g
+            if self._refine_on():                         # 검토(validation/fine_grid): 2 dB 기준 4.5–7.7배
+                parts.append(f"정밀 격자 세분 약 {int(g * 3.5):,}–{int(g * 6.7):,}점 더")
+                n += int(g * 6.7)
         if "facade" in which and self.cfg["receivers"]["facade"]["enabled"]:
             if e["facade"] is not None:
                 fa = e["facade"] // 2 if self.chk_fast.isChecked() else e["facade"]
@@ -5292,9 +5302,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.setCurrentIndex(1)
         xh = self._extra_heights()
         self._pending_out = out
+        ref = self._refine_on()
         self._launch(Worker(self.bridge, "run", cfg=str(self.cfg_path), out=out, which=which,
                             plots=self.chk_plots.isChecked(), method=self.cb_method.currentData(),
-                            stages=self._stages(which, xh), extra_heights=xh, preset="fast" if fast else None),
+                            stages=self._stages(which, xh, ref), extra_heights=xh, preset="fast" if fast else None,
+                            refine=ref),
                      "계산 준비 중(모델 만들기)… 창을 닫지 마세요", busy=True)
         self._pending_out = out
 
@@ -5318,10 +5330,19 @@ class MainWindow(QtWidgets.QMainWindow):
             return f"{h:g} m ({int(round(k))}층)"
         return f"{h:g} m (고시)" if abs(h - 1.5) < 1e-9 else f"{h:g} m"
 
-    def _stages(self, which, extra_heights=None):
-        """진행률 단계 수(이번 계산에만 더하는 격자 높이 포함)"""
+    def _refine_on(self):
+        """이번 계산에 정밀 격자를 쓰는지: 단추를 켰거나 설정 파일에서 켬(빠른 미리보기는 늘 끔)"""
+        if self.chk_fast.isChecked():
+            return False
+        return self.chk_refine.isChecked() or bool(((self.cfg or {}).get("receivers", {}).get("grid", {}).get("refine") or {}).get("enabled"))
+
+    def _stages(self, which, extra_heights=None, refine=None):
+        """진행률 단계 수(이번 계산에만 더하는 격자 높이·정밀 격자 단계 포함)"""
         import copy
         cfg = copy.deepcopy(dict(self.cfg))
+        if refine is not None:
+            g = cfg["receivers"]["grid"]
+            g["refine"] = dict(g.get("refine") or {}, enabled=bool(refine))
         if extra_heights:
             hs = cfg["receivers"]["grid"]["heights"]
             cfg["receivers"]["grid"]["heights"] = sorted({round(float(h), 3) for h in list(hs) + list(extra_heights)})

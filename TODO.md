@@ -75,6 +75,7 @@
 - [ ] 단면: 간격 고르기, 오른쪽 창, 색표·보간·등음선, 건물 번호, 높이별 값 그래프(v0.4) — User's 단면 절·그림
 - [ ] 격자 지도 등음선 숫자·기준선(보기 ▸ 등음선 숫자·기준선), 단면 도로 노면·도로명, 3D 파사드 바닥 소음지도 단추(v0.5)
 - [ ] 오른쪽 3D 파사드 three.js 화면(단추 넷·3D 안 건물 클릭·저장은 matplotlib), 한 창 보기는 matplotlib(v0.6)
+- [ ] 정밀 격자(경계 세분): 계산 실행 탭 단추, 설정 `receivers.grid.refine`, 결과 파일(grid_refined.csv·grid_fine_h*.npz·*_fine.tif) — User's 계산 절, Technical 격자 절·검토 validation/fine_grid(v0.7)
 - [ ] 두 매뉴얼 판별 변경 표에 v0.3 행(지금은 11-13·11-14 행이 v0.2 아래에 있음, 판 표기는 version.tex 로 v0.3)
 
 ## 보류·기록만

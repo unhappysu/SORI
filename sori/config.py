@@ -150,7 +150,10 @@ DEFAULTS = {
     },
     "receivers": {
         "center": None,                            # [x, y] 계산 중심(교차로 등)
-        "grid": {"enabled": True, "bbox": None, "size": [480.0, 520.0], "step": 5.0, "heights": [4.0]},
+        "grid": {"enabled": True, "bbox": None, "size": [480.0, 520.0], "step": 5.0, "heights": [4.0],
+                 # 정밀 격자(경계 세분, sori/refine.py): 칸이 건물·간선 노면 띠에 닿거나 네 꼭짓점 값 범위가 threshold_dB 를
+                 # 넘으면 반 간격으로 더 계산, levels 번(2 → step/4). 규칙 격자 결과(grid_result.csv)는 그대로, 그림·GeoTIFF 만 세밀
+                 "refine": {"enabled": False, "threshold_dB": 2.0, "levels": 2}},
         "facade": {"enabled": True, "radius": 230.0, "piece": 10.0, "z_in_floor": 2.8, "offset": 0.05},
         "points": {"path": None,                   # 점 수음점 CSV: point_id, x, y, h(지면 위 높이 m) — 현장 측정점 비교용
                    "default_height": None,         # h 가 빈 행에 쓸 높이(m). None 이면 그 행은 건너뜀
@@ -231,6 +234,11 @@ def _validate(c):
     for k in ("max_order_grid", "max_order_facade", "max_order_point"):
         if not 0 <= int(p["reflection"][k]) <= MAXO:
             raise ValueError(f"propagation.reflection.{k} 는 0 ~ {MAXO} (4차 이상은 계산 시간이 차수마다 크게 늘어남)")
+    rf = c["receivers"]["grid"].get("refine") or {}
+    if not 0.1 <= float(rf.get("threshold_dB", 2.0)) <= 20.0:
+        raise ValueError("receivers.grid.refine.threshold_dB 는 0.1 ~ 20 dB")
+    if not 1 <= int(rf.get("levels", 2)) <= 3:
+        raise ValueError("receivers.grid.refine.levels 는 1 ~ 3 (단계마다 간격이 반으로)")
     lat = p.get("lateral") or {}                  # rls19·rls90 은 켜 있어도 적용 안 함(run.lateral_on) — 기본 켬이라 오류로 막지 않음
     if not 0.0 <= float(p.get("cmet_C0", 0.0) or 0.0) <= 10.0:
         raise ValueError("propagation.cmet_C0 는 0 ~ 10 dB (ISO 9613-2 비고 22: 실제 값은 보통 0 ~ 5 dB)")

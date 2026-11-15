@@ -67,13 +67,14 @@ def save_settings(**kv):
 
 # ================================================================ 계산 작업(화면과 무관)
 def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True, period="LrT", progress=None,
-            method=None, barriers=None, extra_heights=None, compare_base=None, scenario=None, preset=None):
+            method=None, barriers=None, extra_heights=None, compare_base=None, scenario=None, preset=None, refine=None):
     """설정 파일로 build → run → (그림) 실행. 결과·사용 설정·계산 조건은 out_dir 에 저장.
     method(iso9613_2 | rls19 | rls90)를 주면 설정 파일의 propagation_method 대신 씀(설정 파일은 그대로, 사본에 기록)
     아래도 설정 파일은 그대로 두고 이번 계산에만 씀(사본 config_used.yaml 끝에 기록):
       barriers = 방음벽 CSV 경로(input.barriers.path), extra_heights = 격자 높이 추가(예: [1.5]), scenario = 시나리오 이름
       compare_base = 기준 결과 폴더 → 계산 뒤 차이 표(diff_*.csv, compare.write)를 만듦
-      preset = "fast": 빠른 미리보기(격자 간격 2배, 벽면 수음점 간격 2배, 반사 1차까지) — 결과가 설정값 계산과 다름"""
+      preset = "fast": 빠른 미리보기(격자 간격 2배, 벽면 수음점 간격 2배, 반사 1차까지) — 결과가 설정값 계산과 다름
+      refine = True/False: 정밀 격자(경계 세분, receivers.grid.refine.enabled)를 이번 계산에만 켜거나 끔"""
     from sori import config as C, build, run
     cfg_path = Path(cfg_path).resolve()
     out = Path(out_dir).resolve()
@@ -98,8 +99,13 @@ def run_job(cfg_path, out_dir, which=("grid", "facade", "points"), do_plots=True
         if new != [round(float(h), 3) for h in hs]:
             cfg["receivers"]["grid"]["heights"] = new
             over["receivers.grid.heights"] = new
+    if refine is not None and preset != "fast":
+        g = cfg["receivers"]["grid"]
+        g["refine"] = dict(g.get("refine") or {}, enabled=bool(refine))
+        over["receivers.grid.refine.enabled"] = bool(refine)
     if preset == "fast":
         g, f, rf = cfg["receivers"]["grid"], cfg["receivers"]["facade"], cfg["propagation"]["reflection"]
+        g["refine"] = dict(g.get("refine") or {}, enabled=False)          # 미리보기는 세분하지 않음
         g["step"] = float(g["step"]) * 2.0
         f["piece"] = float(f["piece"]) * 2.0
         over.update({"receivers.grid.step": g["step"], "receivers.facade.piece": f["piece"]})
