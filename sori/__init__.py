@@ -7,7 +7,7 @@ SORI (Simulation of Outdoor Road-noise Impact) — 도로교통소음 3D 소음�
 ※ 본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.
    계산 결과의 검토·검증 책임은 사용자에게 있음.
 """
-__version__ = "0.7"   # 판 번호 규칙·이력: README "판 번호", docs/release/v*.md. 매뉴얼은 docs/manual/build.sh 가 이 값을 씀
+__version__ = "0.7.2"   # 판 번호 규칙·이력: README "판 번호", docs/release/v*.md. 매뉴얼은 docs/manual/build.sh 가 이 값을 씀
 AI_NOTICE = "본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음."
 
 

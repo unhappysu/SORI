@@ -461,6 +461,12 @@ def test_traffic_editor_edit_and_save(tmp_path, monkeypatch):
     path = Path(w.cfg["input"]["traffic"]["path"])
     before = read_csv_any(path)
     assert T.isEnabled() and T.tbl.rowCount() == len(before)
+    adv = [j for j, (c, *_) in enumerate(Q.TRAFFIC_VIEW) if c in Q.TRAFFIC_ADV]          # 값이 없는 고급 열만 숨김
+    empty = [j for j in adv if not any(T.tbl.item(i, j).text().strip() for i in range(T.tbl.rowCount()))]
+    assert [j for j in range(len(Q.TRAFFIC_VIEW)) if T.tbl.isColumnHidden(j)] == empty
+    T.chk_all.setChecked(True)                                                           # 모든 열 보기
+    assert not any(T.tbl.isColumnHidden(j) for j in adv)
+    T.chk_all.setChecked(False)
     col = {c: j for j, (c, *_) in enumerate(Q.TRAFFIC_VIEW)}
     lw_d = len(Q.TRAFFIC_VIEW)
     T.tbl.item(0, col["M_day"]).setText("1200")                          # 주간 M 을 고치면 LW′ 즉시 다시 계산
@@ -867,9 +873,57 @@ def test_barrier_draw_run_and_diff_map(tmp_path, monkeypatch):
     assert w.diff_base is None and not w.act_diff.isEnabled()
     w.set_diff_base(after)                                               # 손으로 기준 고르기(반대 방향 차이)
     assert w.act_diff.isChecked() and w._grid_now[0].dLrT.max() > 3.0
-    w._del_barrier()                                                     # 선택 없으면 그대로
-    w.tbl_bar.selectRow(0); w._del_barrier()
+    w._del_barrier()                                                     # 하나뿐이면 고르지 않아도 지움
     assert w.barriers == [] and not w.btn_bar_run.isEnabled()
+    w.close()
+    app.processEvents()
+
+
+def test_barrier_remove_ways(tmp_path):
+    """방음벽 지우기(v0.7.2): 표의 ✕, 지도에서 선을 눌러 고른 뒤 지우기, 모두 지우기, 되돌리기, 그리기 취소 — 모두 파일에 반영"""
+    import shutil
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    work = tmp_path / "case"
+    shutil.copytree(RC.INPUT, work)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.open_config(work / "config.yaml")
+    w.enter_task("grid")
+    cx, cy = w.cfg["receivers"]["center"]
+    bcsv = work / "barriers.csv"
+
+    def draw(dy):
+        w._toggle_bar_draw(True)
+        w._on_map_click(cx - 60.0, cy + dy); w._on_map_click(cx + 20.0, cy + dy)
+        w._finish_barrier()
+    for dy in (30.0, 0.0, -30.0):
+        draw(dy)
+    ids = lambda: [b["id"] for b in w.barriers]                           # noqa: E731
+    saved = lambda: [ln.split(",")[0] for ln in bcsv.read_text(encoding="utf-8-sig").splitlines()[1:]]   # noqa: E731
+    assert ids() == saved() == ["W1", "W2", "W3"] and w.btn_bar_clear.isEnabled() and not w.btn_bar_undo.isEnabled()
+    w._del_barrier()                                                     # 여러 개인데 고른 것이 없으면 지우지 않고 안내
+    assert ids() == ["W1", "W2", "W3"] and "고르세요" in w.lbl_status.text()
+    w.tbl_bar.cellWidget(1, 5).click()                                   # 표의 ✕ — 행을 고르지 않아도 그 행만
+    assert ids() == saved() == ["W1", "W3"] and not w.tbl_bar.selectedIndexes()
+    w._on_map_click(cx - 20.0, cy - 30.0)                                # 지도에서 W3 선을 누름 → 고름(격자점 조회 아님)
+    assert {i.row() for i in w.tbl_bar.selectedIndexes()} == {1} and "W3 고름" in w.lbl_status.text()
+    w.btn_bar_del.click()
+    assert ids() == saved() == ["W1"]
+    w.btn_bar_undo.click()                                               # 되돌리기(두 번)
+    assert ids() == saved() == ["W1", "W3"]
+    w.btn_bar_undo.click()
+    assert ids() == saved() == ["W1", "W2", "W3"] and not w.btn_bar_undo.isEnabled()
+    w.btn_bar_clear.click()                                              # 모두 지우기 → 되돌리기
+    assert ids() == saved() == [] and not w.btn_bar_del.isEnabled()
+    w.btn_bar_undo.click()
+    assert ids() == ["W1", "W2", "W3"]
+    w._toggle_bar_draw(True)                                             # 그리기 취소(Esc): 두 점을 찍었어도 만들지 않음
+    w._on_map_click(cx, cy + 50.0); w._on_map_click(cx + 30.0, cy + 50.0)
+    assert not w.btn_bar_cancel.isHidden()
+    w._cancel_bar_draw()
+    assert w._bar_draw is None and ids() == ["W1", "W2", "W3"] and w.btn_bar_cancel.isHidden()
     w.close()
     app.processEvents()
 

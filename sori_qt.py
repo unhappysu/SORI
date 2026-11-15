@@ -850,62 +850,154 @@ class MapView(QtWidgets.QWidget):
             self.moved.emit(e.xdata, e.ydata)
 
 
+# ================================================================ 데이터 입력 화면 모양(설정값·교통량·차로 수 탭 공통, 2026-11-15)
+UI_NAVY, UI_INK, UI_SUB, UI_LINE, UI_SOFT = "#16365c", "#1f2933", "#6b7785", "#dde3ea", "#f5f7fa"
+UI_RO, UI_CALC = "#eff1f4", "#eaf1fb"              # 표: 읽기 전용 칸, 계산 결과 칸
+
+
+def input_qss():
+    """데이터 입력 화면 스타일시트(objectName inputpage 아래에만 적용)"""
+    return f"""
+    #inputpage QTabWidget::pane {{ border: 1px solid {UI_LINE}; border-radius: 6px; top: -1px; }}
+    #inputpage QTabBar::tab {{ padding: 7px 18px; margin-right: 4px; font-size: 14px; color: {UI_SUB};
+                               background: transparent; border: none; border-bottom: 3px solid transparent; }}
+    #inputpage QTabBar::tab:selected {{ color: {UI_NAVY}; border-bottom: 3px solid {RED}; }}
+    #inputpage QTabBar::tab:hover:!selected {{ color: {UI_INK}; }}
+    #inputpage QWidget#cards {{ background: {UI_SOFT}; }}
+    #inputpage QFrame#card {{ background: #ffffff; border: 1px solid {UI_LINE}; border-radius: 8px; }}
+    #inputpage QLabel#cardtitle {{ font-size: 14px; font-weight: 700; color: {UI_NAVY}; padding-bottom: 2px; }}
+    #inputpage QLabel#flabel {{ font-size: 13px; color: {UI_INK}; }}
+    #inputpage QLabel#fnote, #inputpage QLabel#tabhint {{ font-size: 12px; color: {UI_SUB}; }}
+    #inputpage QLabel#tabhead {{ font-size: 14px; color: {UI_INK}; }}
+    #inputpage QLineEdit {{ border: 1px solid #c5ced9; border-radius: 4px; padding: 4px 7px; background: #ffffff;
+                            font-size: 13px; }}
+    #inputpage QLineEdit:focus {{ border: 1px solid {UI_NAVY}; }}
+    #inputpage QLineEdit:disabled {{ background: {UI_RO}; }}
+    #inputpage QTableWidget QLineEdit {{ border: none; border-radius: 0; padding: 0 2px; }}
+    #inputpage QPushButton, #inputpage QToolButton {{ border: 1px solid #c5ced9; border-radius: 5px; padding: 5px 14px;
+                                                      background: #ffffff; font-size: 13px; }}
+    #inputpage QToolButton {{ padding: 4px 8px; }}
+    #inputpage QPushButton:hover, #inputpage QToolButton:hover {{ background: #eef2f6; }}
+    #inputpage QPushButton:pressed, #inputpage QToolButton:pressed {{ background: #dfe5ec; }}
+    #inputpage QPushButton:disabled {{ color: #a8a8a8; }}
+    #inputpage QPushButton#primary {{ background: {UI_NAVY}; border: 1px solid {UI_NAVY}; color: #ffffff; font-weight: 600; }}
+    #inputpage QPushButton#primary:hover {{ background: #1f4a7c; }}
+    #inputpage QPushButton#primary:disabled {{ background: #9aa9bb; border: 1px solid #9aa9bb; color: #ffffff; }}
+    #inputpage QTableWidget {{ border: 1px solid {UI_LINE}; gridline-color: #e6eaef; font-size: 13px;
+                               alternate-background-color: #f9fafc; selection-background-color: #d6e4f7;
+                               selection-color: #1a1a1a; }}
+    #inputpage QHeaderView::section {{ background: #f1f4f8; color: #33414f; font-size: 12px; font-weight: 600;
+                                       padding: 5px 6px; border: none; border-right: 1px solid {UI_LINE};
+                                       border-bottom: 1px solid #c5ced9; }}
+    #inputpage QTableCornerButton::section {{ background: #f1f4f8; border: none; border-bottom: 1px solid #c5ced9; }}
+    """
+
+
+def tab_head(lay, text):
+    """탭 머리 두 줄을 lay 에 넣음: 파일 줄(이름 굵게) + 회색 한 줄 설명 → (파일 줄, 설명 줄)"""
+    a = QtWidgets.QLabel(text, objectName="tabhead")
+    a.setTextFormat(Qt.RichText)
+    b = QtWidgets.QLabel("", objectName="tabhint")
+    b.setWordWrap(True)
+    b.hide()
+    lay.addWidget(a)
+    lay.addWidget(b)
+    return a, b
+
+
+def file_head(what, path, more=""):
+    """탭 머리 파일 줄 글: ‘교통량 파일  traffic.csv  ○○ 폴더’ — 전체 경로는 풍선 도움말로"""
+    import html
+    p = Path(path)
+    return (f"<span style='color:{UI_SUB}'>{what}</span>&nbsp;&nbsp;<b>{html.escape(p.name)}</b>"
+            f"&nbsp;&nbsp;<span style='color:{UI_SUB}; font-size:12px'>{html.escape(p.parent.name)} 폴더{more}</span>")
+
+
+def style_table(t):
+    """입력 표 공통: 줄 높이, 가운데 머리글, 줄바꿈 없음"""
+    t.verticalHeader().setDefaultSectionSize(28)
+    t.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
+    t.horizontalHeader().setDefaultAlignment(Qt.AlignCenter)
+    t.horizontalHeader().setHighlightSections(False)
+    t.setWordWrap(False)
+
+
 # ================================================================ 입력값 편집(config.yaml 을 칸에 넣어 고치고 저장)
-# (설정 키 경로, 이름, 종류, 선택지·설명) — 종류: text, int, float, float?(비우면 null), floats(쉼표 목록), xy(두 값),
-#   choice, bool, file?(파일, 비우면 null), file, dirs(폴더 목록)
+# 묶음: (제목, 열(0 왼쪽·1 오른쪽), 칸 목록). 칸: (설정 키 경로, 이름, 종류, 선택지, 짧은 글, 풍선 도움말)
+#   종류: text, int, float, float?(비우면 null), floats(쉼표 목록), xy(두 값), choice, bool, file?(파일, 비우면 null), file, dirs(폴더 목록)
+#   짧은 글: 숫자·체크 칸은 칸 오른쪽에 회색으로(단위·범위), 글·파일 칸은 빈칸일 때 칸 안에. 긴 설명은 풍선 도움말에만
 ROAD_TYPES = ["gemeinde", "landesstrasse", "bundesstrasse", "autobahn"]
 CHOICE_LABELS = {**METHODS,
-                 "flatten": "flatten — 도로폭 안 지형을 도로중심선 높이로 평평하게(권장)",
-                 "dtm": "dtm — 등고선 지형 그대로(2026-11-05 이전 계산과 같음)",
-                 "A": "A — 가 지역(주거·녹지지역 등): 주간 68 / 야간 58 dB(A)",
-                 "B": "B — 나 지역(상업·공업지역 등): 주간 73 / 야간 63 dB(A)"}
+                 "flatten": "평평하게 — 도로폭 안을 중심선 높이로 (권장)",
+                 "dtm": "지형 그대로 — 등고선 지형",
+                 "exclude": "제외 (기본)", "include": "포함",
+                 "general": "일반법 — 옥타브 대역", "alternative": "대체법 — A특성",
+                 "A": "가 지역 — 주간 68 / 야간 58 dB(A)",
+                 "B": "나 지역 — 주간 73 / 야간 63 dB(A)"}
 INPUT_FIELDS = [
-    ("프로젝트", [
-        ("project.name", "프로젝트 이름", "text", None),
-        ("project.scenario", "시나리오", "text", "파일명 규칙에 들어감(예: 현황, 방음벽안)"),
-        ("crs", "좌표계 EPSG", "int", "수치지도 1:1,000 = 5186"),
+    ("프로젝트", 0, [
+        ("project.name", "이름", "text", None, None, None),
+        ("project.scenario", "시나리오", "text", None, "예: 현황, 방음벽안", "결과 파일명 규칙에 들어감"),
+        ("crs", "좌표계 EPSG", "int", None, "수치지도 1:1,000 = 5186", None),
     ]),
-    ("입력 파일", [
-        ("input.map.folders", "수치지도 폴더 (필수)", "dirs", "국토지리정보원 수치지형도 v2.0 SHP 폴더(여러 개는 ; 로 구분)"),
-        ("input.traffic.path", "교통량 CSV (권장)", "file?", "비우면 차로 수 기준 가정 교통량"),
-        ("input.traffic.default_road_type", "기본 도로 유형", "choice", ROAD_TYPES),
-        ("input.dem.path", "지형 DEM", "file?", "비우면 등고선·표고점만 사용"),
-        ("input.junctions.path", "교차로 CSV", "file?", "비우면 자동 판정"),
-        ("input.ground.soft_polygons", "녹지 다각형", "file?", "SHP/GPKG, 비우면 없음"),
-        ("input.road_override.path", "도로 확인값 CSV", "file?", "방향별 차로 수 등(‘차로 수’ 탭에서 만듦), 비우면 없음"),
-        ("input.zones.path", "용도지역 다각형", "file?", "SHP/GPKG — 건물별 소음 기준 대조용, 비우면 모두 기본 지역"),
-        ("input.zones.field", "용도지역 이름 열", "text", "예: zone, 용도지역명"),
-        ("input.zones.default", "기본 지역", "choice", ["A", "B"]),
+    ("입력 파일", 0, [
+        ("input.map.folders", "수치지도 폴더", "dirs", None, "수치지형도 v2.0 SHP 폴더",
+         "국토지리정보원 수치지형도 v2.0 SHP 폴더(여러 개는 ; 로 구분)"),
+        ("input.traffic.path", "교통량 CSV", "file?", None, "비우면 차로 수로 가정",
+         "비우면 차로 수 기준 가정 교통량. 값은 ‘교통량’ 탭에서 고침"),
+        ("input.traffic.default_road_type", "기본 도로 유형", "choice", ROAD_TYPES, None,
+         "교통량 표에서 도로 유형이 빈 행에 씀(RLS-19 표 2 / RLS-90 표 3, 독일 기준)"),
+        ("input.dem.path", "지형 DEM", "file?", None, "비우면 등고선·표고점만", None),
+        ("input.junctions.path", "교차로 CSV", "file?", None, "비우면 자동 판정", None),
+        ("input.ground.soft_polygons", "녹지 다각형", "file?", None, "비우면 없음", "SHP/GPKG"),
+        ("input.road_override.path", "도로 확인값 CSV", "file?", None, "‘차로 수’ 탭에서 만듦",
+         "방향별 차로 수 등(‘차로 수’ 탭에서 만듦), 비우면 없음"),
+        ("input.zones.path", "용도지역 다각형", "file?", None, "비우면 모두 기본 지역",
+         "SHP/GPKG — 건물별 소음 기준 대조용, 비우면 모두 기본 지역"),
+        ("input.zones.field", "용도지역 이름 열", "text", None, "예: zone, 용도지역명", None),
+        ("input.zones.default", "기본 지역", "choice", ["A", "B"], None,
+         "A = 가 지역(주거·녹지지역 등), B = 나 지역(상업·공업지역 등)"),
     ]),
-    ("계산 범위·수음점", [
-        ("receivers.center", "격자 중심 X, Y (m)", "xy", "‘지도에서 중심 찍기’로도 넣을 수 있음"),
-        ("receivers.grid.size", "격자 크기 가로, 세로 (m)", "xy", None),
-        ("receivers.grid.step", "격자 간격 (m)", "float", None),
-        ("receivers.grid.heights", "격자 높이 (m)", "floats", "쉼표로 여러 개, 예: 1.5, 4"),
-        ("receivers.facade.enabled", "건물 벽면 계산", "bool", None),
-        ("receivers.facade.radius", "벽면 계산 반경 (m)", "float", "격자 중심에서"),
-        ("receivers.facade.piece", "벽면 수음점 가로 간격 (m)", "float",
+    ("점 수음점", 0, [
+        ("receivers.points.path", "점 수음점 CSV", "file?", None, "point_id, x, y, h", None),
+        ("receivers.points.default_height", "기본 높이", "float?", None, "m · h 가 빈 행에 씀", None),
+        ("receivers.points.measured", "측정값 CSV", "file?", None, "point_id, period, Leq",
+         "point_id, period(day/night), Leq — 측정−계산 차이 표·지도"),
+    ]),
+    ("모델", 0, [
+        ("model.floor_height", "층 높이", "float", None, "m · 층수 × 층 높이 = 건물 높이",
+         "수치지도 층수 × 층 높이 = 건물 높이"),
+        ("model.road_surface", "차도 면 지형", "choice", ["flatten", "dtm"], None,
+         "flatten = 도로폭 안 지형을 도로중심선 높이로 평평하게(권장), dtm = 등고선 지형 그대로(2026-11-05 이전 계산과 같음)"),
+        ("model.minor_roads", "골목길(1차로) 음원", "choice", ["exclude", "include"], None,
+         "exclude = 교통량 자료가 없는 골목길(1차로)을 음원에서 뺌(기본), include = 넣음"),
+    ]),
+    ("격자", 1, [
+        ("receivers.center", "중심 X, Y", "xy", None, "m", "‘지도에서 중심 찍기’로도 넣을 수 있음"),
+        ("receivers.grid.size", "크기 가로, 세로", "xy", None, "m", None),
+        ("receivers.grid.step", "간격", "float", None, "m", None),
+        ("receivers.grid.heights", "높이", "floats", None, "m · 쉼표로 여러 개", "쉼표로 여러 개, 예: 1.5, 4"),
+    ]),
+    ("건물 벽면", 1, [
+        ("receivers.facade.enabled", "벽면 계산", "bool", None, None, None),
+        ("receivers.facade.radius", "계산 반경", "float", None, "m · 격자 중심에서", None),
+        ("receivers.facade.piece", "수음점 가로 간격", "float", None, "m · 기본 10",
          "기본 10. 줄이면 점 수·계산 시간이 늘고(5 m ≈ 1.5배, 2.5 m ≈ 2.7배) 벽면 결과가 달라짐. 세로는 층마다 1점"),
-        ("model.floor_height", "층 높이 (m)", "float", "수치지도 층수 × 층 높이 = 건물 높이"),
-        ("model.road_surface", "차도 면 지형", "choice", ["flatten", "dtm"]),
-        ("model.minor_roads", "골목길(1차로) 음원", "choice", ["exclude", "include"]),
-        ("receivers.points.path", "점 수음점 CSV", "file?", "point_id, x, y, h"),
-        ("receivers.points.default_height", "점 수음점 기본 높이 (m)", "float?", "h 가 빈 행에 씀"),
-        ("receivers.points.measured", "측정값 CSV", "file?", "point_id, period(day/night), Leq — 측정−계산 차이 표·지도"),
     ]),
-    ("전파·반사", [
-        ("propagation_method", "전파 방법", "choice", list(METHODS)),
-        ("input.ground.method", "지면 계산법", "choice", ["general", "alternative"]),
-        ("input.ground.default_G", "기본 지면 계수 G", "float", "0 = 포장, 1 = 녹지"),
-        ("propagation.temperature_C", "기온 (°C)", "float", None),
-        ("propagation.humidity_pct", "상대습도 (%)", "float", None),
-        ("propagation.reflection.rho", "반사계수 ρ", "float", "ISO 9613-2 표 4: 창 있는 벽 0.8"),
-        ("propagation.reflection.max_order_grid", "반사 차수 — 격자", "int", "0~6 (4차 이상은 계산 시간이 차수마다 크게 늘어남)"),
-        ("propagation.reflection.max_order_facade", "반사 차수 — 벽면", "int", "0~6"),
-        ("propagation.reflection.max_order_point", "반사 차수 — 점 수음점", "int", "0~6"),
-        ("propagation.cmet_C0", "기상 보정 C0 dB (ISO 방법만)", "float",
+    ("전파·반사", 1, [
+        ("propagation_method", "전파 방법", "choice", list(METHODS), None, None),
+        ("input.ground.method", "지면 계산법", "choice", ["general", "alternative"], None, None),
+        ("input.ground.default_G", "기본 지면 계수 G", "float", None, "0 포장 ~ 1 녹지", None),
+        ("propagation.temperature_C", "기온", "float", None, "°C", None),
+        ("propagation.humidity_pct", "상대습도", "float", None, "%", None),
+        ("propagation.reflection.rho", "반사계수 ρ", "float", None, "창 있는 벽 0.8", "ISO 9613-2 표 4: 창 있는 벽 0.8"),
+        ("propagation.reflection.max_order_grid", "반사 차수 · 격자", "int", None, "0~6",
+         "0~6 (4차 이상은 계산 시간이 차수마다 크게 늘어남)"),
+        ("propagation.reflection.max_order_facade", "반사 차수 · 벽면", "int", None, "0~6", None),
+        ("propagation.reflection.max_order_point", "반사 차수 · 점 수음점", "int", None, "0~6", None),
+        ("propagation.cmet_C0", "기상 보정 C0", "float", None, "dB · ISO 방법만 · 0 = 순풍",
          "0 = 순풍 조건(기본). 0 초과면 장기 평균 L_AT(LT)(ISO 9613-2 8절, 보통 0~5 dB, 지역 기상 통계로 정함)"),
-        ("propagation.lateral.enabled", "측면 회절 (ISO 방법만)", "bool",
+        ("propagation.lateral.enabled", "측면 회절", "bool", None, "ISO 방법만 · 계산 시간 약 +25 %",
          "기본 켬. 건물·방음벽에 막힌 직접음에 좌우로 돌아오는 경로를 더함(ISO 9613-2 식 13). 고층 건물 뒤·이면 지역 값이 오름, "
          "도로변은 거의 그대로. 계산 시간 약 +25 %. RLS-19·RLS-90 방법에서는 켜도 적용 안 함. 끄면 2026-11-13 이전 계산과 같음"),
     ]),
@@ -1144,43 +1236,69 @@ class InputEditor(QtWidgets.QWidget):
         self.path = None
         self.w = {}
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(4, 4, 4, 4)
-        self.lbl = QtWidgets.QLabel("설정 파일을 열면 입력값을 고칠 수 있습니다.")
-        self.lbl.setWordWrap(True)
-        lay.addWidget(self.lbl)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(8)
+        self.lbl, self.hint = tab_head(lay, "설정 파일을 열면 입력값을 고칠 수 있습니다.")
         sc = QtWidgets.QScrollArea(widgetResizable=True)
         sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        inner = QtWidgets.QWidget()
-        il = QtWidgets.QGridLayout(inner)                 # 두 열: 왼쪽 프로젝트·입력 파일, 오른쪽 계산 범위·전파
-        il.setHorizontalSpacing(18)
-        for i, (title, fields) in enumerate(INPUT_FIELDS):
-            gb = QtWidgets.QGroupBox(title)
-            fl = QtWidgets.QFormLayout(gb)
-            fl.setFieldGrowthPolicy(QtWidgets.QFormLayout.AllNonFixedFieldsGrow)
-            for key, label, kind, extra in fields:
-                fl.addRow(label, self._make(key, kind, extra))
-            il.addWidget(gb, i % 2, i // 2)
-        il.setRowStretch(2, 1)
-        il.setColumnStretch(0, 1)
-        il.setColumnStretch(1, 1)
+        sc.setFrameShape(QtWidgets.QFrame.NoFrame)
+        inner = QtWidgets.QWidget(objectName="cards")
+        il = QtWidgets.QHBoxLayout(inner)                 # 두 열로 묶음 카드를 쌓음
+        il.setContentsMargins(12, 12, 12, 12)
+        il.setSpacing(12)
+        cols = [QtWidgets.QVBoxLayout(), QtWidgets.QVBoxLayout()]
+        for c in cols:
+            c.setSpacing(12)
+            il.addLayout(c, 1)
+        need = {g[0]: NEED_LABEL[g[2]] for g in INPUT_GUIDE if g[2] != "opt"}
+        for title, col, fields in INPUT_FIELDS:
+            card = QtWidgets.QFrame(objectName="card")
+            g = QtWidgets.QGridLayout(card)
+            g.setContentsMargins(14, 12, 14, 14)
+            g.setHorizontalSpacing(12)
+            g.setVerticalSpacing(7)
+            g.setColumnMinimumWidth(0, 120)
+            g.setColumnStretch(1, 1)
+            g.addWidget(QtWidgets.QLabel(title, objectName="cardtitle"), 0, 0, 1, 2)
+            for r, (key, label, kind, extra, note, tip) in enumerate(fields, 1):
+                if key in need:                           # 필수·권장 표시(‘준비할 파일’ 탭과 같은 색)
+                    lab, color = need[key]
+                    label += (f"&nbsp;<span style='color:white; background-color:{color}; font-size:10px'>"
+                              f"&nbsp;{lab}&nbsp;</span>")
+                ql = QtWidgets.QLabel(label, objectName="flabel")
+                ql.setTextFormat(Qt.RichText)
+                box = self._make(key, kind, extra, note)
+                if tip:
+                    ql.setToolTip(tip)
+                    box.setToolTip(tip)
+                g.addWidget(ql, r, 0)
+                g.addWidget(box, r, 1)
+            if title == "격자":
+                bl = QtWidgets.QHBoxLayout()
+                bl.setSpacing(8)
+                b = QtWidgets.QPushButton("지도에서 중심 찍기")
+                b.setToolTip("지도 화면으로 가서 한 번 클릭하면 그 점이 격자 중심이 되고 이 화면으로 돌아옴")
+                b.clicked.connect(self.pick_center.emit)
+                bl.addWidget(b)
+                self.btn_prev = QtWidgets.QPushButton("지도에서 범위 보기")
+                self.btn_prev.setToolTip("저장하지 않고 지도 화면에 새 계산 범위(주황 점선)를 그려 봄")
+                self.btn_prev.clicked.connect(self._preview)
+                bl.addWidget(self.btn_prev)
+                bl.addStretch(1)
+                g.addLayout(bl, len(fields) + 1, 1)
+            cols[col].addWidget(card)
+        for c in cols:
+            c.addStretch(1)
         sc.setWidget(inner)
         lay.addWidget(sc, 1)
         row = QtWidgets.QHBoxLayout()
-        b = QtWidgets.QPushButton("지도에서 격자 중심 찍기")
-        b.setToolTip("지도 화면으로 가서 한 번 클릭하면 그 점이 격자 중심이 되고 이 화면으로 돌아옴")
-        b.clicked.connect(self.pick_center.emit)
-        row.addWidget(b)
-        self.btn_prev = QtWidgets.QPushButton("지도에서 범위 보기")
-        self.btn_prev.setToolTip("저장하지 않고 지도 화면에 새 계산 범위(주황 점선)를 그려 봄")
-        self.btn_prev.clicked.connect(self._preview)
+        row.addWidget(QtWidgets.QLabel("칸이나 이름에 마우스를 올리면 설명이 나옵니다.", objectName="tabhint"), 1)
         self.btn_reset = QtWidgets.QPushButton("되돌리기")
         self.btn_reset.clicked.connect(lambda: self.path and self.load(self.path))
-        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)")
+        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)", objectName="primary")
         self.btn_save.setToolTip("고친 값을 검사한 뒤 설정 파일(config.yaml)에 씀")
         self.btn_save.setDefault(True)
         self.btn_save.clicked.connect(self.save)
-        row.addWidget(self.btn_prev)
-        row.addStretch(1)
         for x in (self.btn_reset, self.btn_save):
             x.setMinimumWidth(110)
             row.addWidget(x)
@@ -1188,36 +1306,48 @@ class InputEditor(QtWidgets.QWidget):
         self.setEnabled(False)
 
     # 칸 만들기·읽기·쓰기
-    def _make(self, key, kind, extra):
+    def _make(self, key, kind, extra, note):
+        """칸 하나 → 줄에 놓을 상자(칸 + 오른쪽 짧은 글). 값을 읽고 쓰는 위젯은 self.w[key] = (위젯, 종류)"""
+        box = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(box)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        side = note                                       # 칸 오른쪽에 쓸 글(글·파일 칸은 칸 안에)
         if kind == "choice":
             w = QtWidgets.QComboBox()
             for v in extra:
                 w.addItem(CHOICE_LABELS.get(v, v), v)
+            w.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            w.setMinimumContentsLength(14)
+            h.addWidget(w, 1)
         elif kind == "bool":
             w = QtWidgets.QCheckBox()
-            if isinstance(extra, str):
-                w.setToolTip(extra)
+            h.addWidget(w)
         elif kind in ("file?", "file", "dirs"):
-            w = QtWidgets.QWidget()
-            h = QtWidgets.QHBoxLayout(w)
-            h.setContentsMargins(0, 0, 0, 0)
+            w, side = box, None
             e = QtWidgets.QLineEdit()
+            e.setPlaceholderText(note or "")
             btn = QtWidgets.QToolButton(text="…")
+            btn.setToolTip("폴더 고르기" if kind == "dirs" else "파일 고르기")
             btn.clicked.connect(lambda _=False, e=e, k=kind: self._browse(e, k))
             h.addWidget(e, 1)
             h.addWidget(btn)
             w.edit = e
             e.textChanged.connect(lambda _t: self.changed.emit())
-            if isinstance(extra, str):
-                e.setPlaceholderText(extra)
-        else:
+        elif kind == "text":
+            w, side = QtWidgets.QLineEdit(), None
+            w.setPlaceholderText(note or "")
+            h.addWidget(w, 1)
+        else:                                             # 숫자 칸은 좁게, 단위·범위를 오른쪽에
             w = QtWidgets.QLineEdit()
-            if isinstance(extra, str):
-                w.setPlaceholderText(extra)
-        if isinstance(extra, str):
-            w.setToolTip(extra)
+            w.setFixedWidth(150 if kind in ("xy", "floats") else 84)
+            h.addWidget(w)
+        if side:
+            h.addWidget(QtWidgets.QLabel(side, objectName="fnote"))
+        if kind not in ("choice", "file?", "file", "dirs", "text"):
+            h.addStretch(1)
         self.w[key] = (w, kind)
-        return w
+        return box
 
     def _rel(self, p):
         """설정 파일 폴더 안이면 상대 경로로(파일을 옮겨도 함께 움직이게)"""
@@ -1262,15 +1392,16 @@ class InputEditor(QtWidgets.QWidget):
                 w.setText("" if v is None else str(int(v)))
             else:
                 w.setText("" if v is None else (f"{v:g}" if isinstance(v, float) else str(v)))
-        self.lbl.setText(f"설정 파일: {self.path}\n"
-                         "고친 뒤 ‘저장’ → 설정 파일에 씀. 결과는 홈 ▸ ‘지도 확인 · 계산’에서 다시 계산해야 바뀜")
+        self.lbl.setText(file_head("설정 파일", self.path))
         self.lbl.setToolTip(str(self.path))
+        self.hint.setText("고친 뒤 저장 → 홈 ▸ ‘지도 확인 · 계산’에서 다시 계산해야 결과가 바뀝니다.")
+        self.hint.show()
         self.setEnabled(True)
 
     def values(self):
         """칸 값 → {키 경로: 값}. 형식이 틀리면 ValueError(칸 이름 포함)"""
         out = {}
-        names = {k: lab for _, fs in INPUT_FIELDS for k, lab, _, _ in fs}
+        names = {k: f"{title} ▸ {lab}" for title, _col, fs in INPUT_FIELDS for k, lab, *_ in fs}
         for key, (w, kind) in self.w.items():
             try:
                 if kind == "choice":
@@ -1356,28 +1487,33 @@ TRAFFIC_VIEW = [
     ("key", "도로명 / UFID", "도로명(수치지도 도로명) 또는 도로 객체 UFID", None),
     ("key_type", "구분", "name = 도로명, ufid = 도로 객체 하나", ["name", "ufid"]),
     ("road_type", "도로 유형", "RLS-19 표 2 / RLS-90 표 3 도로유형(독일 기준). 빈칸 = 설정의 기본 도로 유형", [""] + ROAD_TYPES),
-    ("DTV", "DTV 대/일", "일교통량(양방향). M 을 비우면 DTV × 표준표 계수(RLS-19 표 2, RLS-90 계산은 표 3 — 독일 기준, 국내와 다를 수 있음)", None),
-    ("M_day", "M 주간 대/h", "주간 06–22시 시간당 교통량(양방향)", None),
-    ("M_night", "M 야간 대/h", "야간 22–06시 시간당 교통량(양방향)", None),
-    ("p1_day", "p1 주간 %", "중형 화물차(Lkw1) 비율. 빈칸 = RLS-19 표 2(독일 기준)", None),
-    ("p2_day", "p2 주간 %", "대형 화물차·이륜차(Lkw2) 비율. 빈칸 = RLS-19 표 2(독일 기준)", None),
-    ("p1_night", "p1 야간 %", None, None),
-    ("p2_night", "p2 야간 %", None, None),
-    ("v_pkw", "속도 승용 km/h", "빈칸 = 설정 기본 속도(간선 50)", None),
-    ("v_lkw", "속도 화물 km/h", "빈칸 = 승용 속도", None),
-    ("v_pkw_fwd", "정방향 승용 km/h", "UFID 행만: 디지타이즈 방향 승용 속도. 빈칸 = 위 공통 속도", None),
-    ("v_lkw_fwd", "정방향 화물 km/h", "UFID 행만: 디지타이즈 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 정방향 승용)", None),
-    ("v_pkw_bwd", "역방향 승용 km/h", "UFID 행만: 디지타이즈 반대 방향 승용 속도. 빈칸 = 위 공통 속도", None),
-    ("v_lkw_bwd", "역방향 화물 km/h", "UFID 행만: 반대 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 역방향 승용)", None),
+    ("DTV", "DTV\n대/일", "일교통량(양방향). M 을 비우면 DTV × 표준표 계수(RLS-19 표 2, RLS-90 계산은 표 3 — 독일 기준, 국내와 다를 수 있음)", None),
+    ("M_day", "M 주간\n대/h", "주간 06–22시 시간당 교통량(양방향)", None),
+    ("M_night", "M 야간\n대/h", "야간 22–06시 시간당 교통량(양방향)", None),
+    ("p1_day", "p1 주간\n%", "중형 화물차(Lkw1) 비율. 빈칸 = RLS-19 표 2(독일 기준)", None),
+    ("p2_day", "p2 주간\n%", "대형 화물차·이륜차(Lkw2) 비율. 빈칸 = RLS-19 표 2(독일 기준)", None),
+    ("p1_night", "p1 야간\n%", "중형 화물차(Lkw1) 비율, 야간", None),
+    ("p2_night", "p2 야간\n%", "대형 화물차·이륜차(Lkw2) 비율, 야간", None),
+    ("v_pkw", "승용 속도\nkm/h", "빈칸 = 설정 기본 속도(간선 50)", None),
+    ("v_lkw", "화물 속도\nkm/h", "빈칸 = 승용 속도", None),
+    ("v_pkw_fwd", "정방향 승용\nkm/h", "UFID 행만: 디지타이즈 방향 승용 속도. 빈칸 = 위 공통 속도", None),
+    ("v_lkw_fwd", "정방향 화물\nkm/h", "UFID 행만: 디지타이즈 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 정방향 승용)", None),
+    ("v_pkw_bwd", "역방향 승용\nkm/h", "UFID 행만: 디지타이즈 반대 방향 승용 속도. 빈칸 = 위 공통 속도", None),
+    ("v_lkw_bwd", "역방향 화물\nkm/h", "UFID 행만: 반대 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 역방향 승용)", None),
     ("surface", "노면", "RLS-19 표 4a·4b (빈칸 = 수치지도 포장 속성)", None),   # 선택지는 rls19.SURFACES
-    ("grade", "종단경사 %", "빈칸 = 지형에서 산정", None),
+    ("grade", "종단경사\n%", "빈칸 = 지형에서 산정", None),
     ("basis", "근거", "measured = 실측, assumed = 가정", ["", "measured", "assumed"]),
-    ("dir_split_fwd", "정방향 비율", "UFID 행만: 디지타이즈 방향 교통량 비율 0~1", None),
-    ("dir_basis", "방향 근거", None, ["", "measured", "assumed"]),
+    ("dir_split_fwd", "정방향\n비율", "UFID 행만: 디지타이즈 방향 교통량 비율 0~1", None),
+    ("dir_basis", "방향\n근거", "정방향 비율의 근거: measured = 실측(이때만 비율 적용), assumed = 가정", ["", "measured", "assumed"]),
     ("note", "메모", "출처·가정 등", None),
 ]
 NUM_COLS = {"DTV", "M_day", "M_night", "p1_day", "p2_day", "p1_night", "p2_night", "v_pkw", "v_lkw", "grade",
             "dir_split_fwd", "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd"}
+# 값이 하나도 없으면 숨기는 열(‘모든 열 보기’ 로 보임) — 자주 쓰지 않는 입력
+TRAFFIC_ADV = {"v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd", "surface", "grade", "dir_split_fwd", "dir_basis"}
+TRAFFIC_HINT = "도로명 행 = 같은 이름의 2차로 이상 구간 전체 · UFID 행 = 도로 객체 하나(우선) · 빈칸 = 표준값 · LW′ = 자동 계산(음원 세기)"
+TRAFFIC_TIP = ("도로명 행은 같은 이름의 2차로 이상 구간 전체, UFID 행은 그 도로 객체 하나에 적용(UFID 가 우선). "
+               "빈칸은 RLS-19 표 2·설정 기본값. 머리글에 마우스를 올리면 열 설명")
 LW_COLS = ["LW′ 주간", "LW′ 야간"]
 
 
@@ -1462,12 +1598,11 @@ class TrafficEditor(QtWidgets.QWidget):
         self.path, self.cfg, self.df = None, None, None
         self._busy = False
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(4, 4, 4, 4)
-        self.lbl = QtWidgets.QLabel("설정 파일을 열면 교통량 표를 고칠 수 있습니다.")
-        self.lbl.setWordWrap(True)
-        lay.addWidget(self.lbl)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(8)
+        self.lbl, self.hint = tab_head(lay, "설정 파일을 열면 교통량 표를 고칠 수 있습니다.")
         self.tbl = QtWidgets.QTableWidget(0, len(TRAFFIC_VIEW) + len(LW_COLS))
-        heads = [h for _, h, _, _ in TRAFFIC_VIEW] + LW_COLS
+        heads = [h for _, h, _, _ in TRAFFIC_VIEW] + [c + "\ndB/m" for c in LW_COLS]
         self.tbl.setHorizontalHeaderLabels(heads)
         for j, (_c, _h, tip, _ch) in enumerate(TRAFFIC_VIEW):
             if tip:
@@ -1482,7 +1617,9 @@ class TrafficEditor(QtWidgets.QWidget):
             ch = surf if c == "surface" else ch
             if ch:
                 self.tbl.setItemDelegateForColumn(j, ChoiceDelegate(ch, self.tbl))
+        style_table(self.tbl)
         self.tbl.setAlternatingRowColors(True)
+        self.tbl.setTextElideMode(Qt.ElideMiddle)         # 긴 UFID 는 앞·끝자리가 보이게
         hh = self.tbl.horizontalHeader()
         hh.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
         for j in range(len(LW_COLS)):                     # 계산 결과 LW′ 는 도로 유형 바로 뒤에 보이게(데이터 열 순서는 그대로)
@@ -1490,17 +1627,22 @@ class TrafficEditor(QtWidgets.QWidget):
         self.tbl.itemChanged.connect(self._changed)
         lay.addWidget(self.tbl, 1)
         row = QtWidgets.QHBoxLayout()
-        for text, fn in (("행 추가", self.add_row), ("선택 행 복제", self.dup_rows), ("선택 행 삭제", self.del_rows),
-                         ("국내 차종 → 차량군…", self.kr12_dialog)):
+        for text, fn in (("행 추가", self.add_row), ("복제", self.dup_rows), ("삭제", self.del_rows),
+                         ("국내 차종 변환…", self.kr12_dialog)):
             b = QtWidgets.QPushButton(text)
             b.clicked.connect(fn)
             row.addWidget(b)
         b.setToolTip("현장에서 센 국내 12종 차종별 대수를 RLS-19 차량군(M, p1, p2)으로 바꿔 선택한 행에 넣음(가정 대응표)")
-        self.lbl_sum = QtWidgets.QLabel("")
+        row.addSpacing(10)
+        self.chk_all = QtWidgets.QCheckBox("모든 열 보기")
+        self.chk_all.setToolTip("값이 하나도 없는 열(방향별 속도·노면·종단경사·방향 비율)은 숨김 — 켜면 모두 보임")
+        self.chk_all.toggled.connect(self._columns)
+        row.addWidget(self.chk_all)
+        self.lbl_sum = QtWidgets.QLabel("", objectName="tabhint")
         row.addWidget(self.lbl_sum, 1)
         self.btn_reset = QtWidgets.QPushButton("되돌리기")
         self.btn_reset.clicked.connect(lambda: self.cfg is not None and self.load(self.cfg))
-        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)")
+        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)", objectName="primary")
         self.btn_save.setToolTip("값을 검사한 뒤 교통량 CSV 에 씀(다른 열은 그대로)")
         self.btn_save.clicked.connect(self.save)
         for x in (self.btn_reset, self.btn_save):
@@ -1508,6 +1650,13 @@ class TrafficEditor(QtWidgets.QWidget):
             row.addWidget(x)
         lay.addLayout(row)
         self.setEnabled(False)
+
+    def _columns(self, *_):
+        """값이 하나도 없는 고급 열은 숨김(‘모든 열 보기’ 를 켜면 모두)"""
+        show_all = self.chk_all.isChecked()
+        for j, (c, *_r) in enumerate(TRAFFIC_VIEW):
+            empty = not any(self.tbl.item(i, j) and self.tbl.item(i, j).text().strip() for i in range(self.tbl.rowCount()))
+            self.tbl.setColumnHidden(j, c in TRAFFIC_ADV and empty and not show_all)
 
     def load(self, cfg):
         """cfg(sori.config.load 결과)의 교통량 파일을 표에 채움. 파일이 없으면 빈 표(저장하면 새 파일)"""
@@ -1518,39 +1667,53 @@ class TrafficEditor(QtWidgets.QWidget):
         self.path = Path(p) if p else base / "traffic.csv"
         if self.path.exists():
             df = read_csv_any(self.path)
-            msg = f"교통량 파일: {self.path}"
+            msg = file_head("교통량 파일", self.path)
         else:
             df = pd.DataFrame(columns=TRAFFIC_COLS)
-            msg = (f"교통량 파일이 없습니다 — 저장하면 {self.path} 를 새로 만들고 설정 파일에 넣음 "
-                   "(지금은 모든 도로에 차로 수 기준 가정 교통량)")
+            msg = (f"<b>교통량 파일 없음</b>&nbsp;&nbsp;<span style='color:{UI_SUB}; font-size:12px'>저장하면 "
+                   f"{self.path.name} 를 만들고 설정 파일에 넣음 — 지금은 모든 도로가 차로 수 기준 가정 교통량</span>")
         for c, *_ in TRAFFIC_VIEW:
             if c not in df.columns:
                 df[c] = ""
         self.df = df.fillna("").astype(str)
-        self.lbl.setText(msg + "\n도로명 행은 같은 이름의 2차로 이상 구간 전체, UFID 행은 그 도로 객체 하나에 적용 "
-                               "(UFID 가 우선). 빈칸은 RLS-19 표 2·설정 기본값. 머리글에 마우스를 올리면 설명")
+        self.lbl.setText(msg)
+        self.lbl.setToolTip(str(self.path))
+        self.hint.setText(TRAFFIC_HINT)
+        self.hint.setToolTip(TRAFFIC_TIP)
+        self.hint.show()
         self._busy = True
         self.tbl.setRowCount(0)
         for _, r in self.df.iterrows():
             self._append([r.get(c, "") for c, *_ in TRAFFIC_VIEW])
         self._busy = False
         self._recalc_all()
+        self._columns()
         self.tbl.resizeColumnsToContents()
-        self.tbl.setColumnWidth(0, min(self.tbl.columnWidth(0), 260))
-        self.tbl.setColumnWidth(len(TRAFFIC_VIEW) - 1, min(self.tbl.columnWidth(len(TRAFFIC_VIEW) - 1), 240))
+        for j in range(self.tbl.columnCount()):               # 숫자 열은 고르게, 긴 글 열은 폭 제한
+            self.tbl.setColumnWidth(j, max(self.tbl.columnWidth(j), 58))
+        self.tbl.setColumnWidth(0, min(self.tbl.columnWidth(0), 210))
+        self.tbl.setColumnWidth(len(TRAFFIC_VIEW) - 1, min(self.tbl.columnWidth(len(TRAFFIC_VIEW) - 1), 320))
         for j in range(len(LW_COLS)):
-            self.tbl.setColumnWidth(len(TRAFFIC_VIEW) + j, 80)
+            self.tbl.setColumnWidth(len(TRAFFIC_VIEW) + j, 78)
         self.setEnabled(True)
 
     def _append(self, vals):
         i = self.tbl.rowCount()
         self.tbl.insertRow(i)
         for j, v in enumerate(vals):
-            self.tbl.setItem(i, j, QtWidgets.QTableWidgetItem(str(v)))
-        for j in range(len(LW_COLS)):
+            it = QtWidgets.QTableWidgetItem(str(v))
+            if TRAFFIC_VIEW[j][0] in NUM_COLS:
+                it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.tbl.setItem(i, j, it)
+        bold = self.tbl.font()
+        bold.setBold(True)
+        for j in range(len(LW_COLS)):                     # 계산 결과: 굵은 남색 글자, 옅은 파랑 바탕, 고칠 수 없음
             it = QtWidgets.QTableWidgetItem("")
             it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-            it.setBackground(QtGui.QColor("#eef3fa"))
+            it.setBackground(QtGui.QColor(UI_CALC))
+            it.setForeground(QtGui.QColor(UI_NAVY))
+            it.setFont(bold)
+            it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.tbl.setItem(i, len(TRAFFIC_VIEW) + j, it)
         return i
 
@@ -1589,7 +1752,7 @@ class TrafficEditor(QtWidgets.QWidget):
             it = self.tbl.item(i, j)
             if it is not None:
                 it.setBackground(QtGui.QColor("#ffd6d6") if c in bad else QtGui.QBrush())
-                it.setToolTip(bad.get(c, ""))
+                it.setToolTip(bad.get(c, "") or (rec["key"] if c == "key" else ""))     # 줄여 보이는 UFID 는 풍선 도움말로 전체
         lw = (None, None)
         if rec["key"] and not bad:
             try:
@@ -1748,22 +1911,30 @@ class TrafficEditor(QtWidgets.QWidget):
 # ================================================================ 차로 수 편집(roads_override.csv) — 음원선 위치(RLS-19 3.3.1)
 # (열, 머리글, 편집 가능, 선택지, 설명)
 LANE_VIEW = [
-    ("ufid", "UFID", False, None, "수치지도 도로 객체 번호"),
+    ("ufid", "UFID", False, None, "수치지도 도로 객체 번호(끝자리가 보이게 줄여 씀 — 마우스를 올리면 전체)"),
     ("rname", "도로명", False, None, None),
     ("oneway", "일방", False, None, "수치지도 일방통행 여부"),
-    ("lanes", "지도 차로", False, None, "수치지도 전체 차로 수(양방향 합)"),
-    ("width", "도로폭 m", False, None, "수치지도 도로폭"),
-    ("lanes_fwd", "정방향 차로", True, None, "디지타이즈 방향(지도에서 화살표 방향) 차로 수. 일방통행은 전체 차로 수"),
-    ("lanes_bwd", "역방향 차로", True, None, "반대 방향 차로 수. 일방통행은 비움"),
-    ("lanes_basis", "차로 근거", True, ["", "checked", "assumed"], "checked = 지도·현장 확인, assumed = 가정"),
-    ("oneway_dir", "일방 진행", True, ["", "1", "-1"], "일방통행만: 1 = 디지타이즈 방향으로 진행, -1 = 반대"),
-    ("oneway_dir_basis", "진행 근거", True, ["", "checked", "assumed"], None),
+    ("lanes", "지도\n차로", False, None, "수치지도 전체 차로 수(양방향 합)"),
+    ("width", "도로폭\nm", False, None, "수치지도 도로폭"),
+    ("lanes_fwd", "정방향\n차로", True, None, "디지타이즈 방향(지도에서 화살표 방향) 차로 수. 일방통행은 전체 차로 수"),
+    ("lanes_bwd", "역방향\n차로", True, None, "반대 방향 차로 수. 일방통행은 비움"),
+    ("lanes_basis", "차로\n근거", True, ["", "checked", "assumed"], "checked = 지도·현장 확인, assumed = 가정"),
+    ("oneway_dir", "일방\n진행", True, ["", "1", "-1"], "일방통행만: 1 = 디지타이즈 방향으로 진행, -1 = 반대"),
+    ("oneway_dir_basis", "진행\n근거", True, ["", "checked", "assumed"], "checked = 지도·현장 확인, assumed = 가정"),
     ("note", "메모", True, None, None),
-    ("_rule", "적용", False, None, "override = 확인값, map_half·ceil = 지도 차로 수를 반으로, oneway_map = 일방"),
-    ("_wl", "차로폭 m", False, None, "설정 lane_width (auto = 도로폭/차로 수, 2.75~3.5 m)"),
-    ("_off", "음원선 위치 m", False, None, "중심선에서 음원선까지 거리(+ = 디지타이즈 방향 왼쪽). RLS-19 3.3.1 그림 6"),
+    ("_rule", "적용", False, None, "지금 계산에 쓰이는 방향별 차로 수(정방향+역방향)와 정한 방법 — 확인값 / 지도 반씩(수치지도 차로 수를 "
+                                 "반으로, 홀수는 설정 odd_lane_rule) / 일방"),
+    ("_wl", "차로폭\nm", False, None, "설정 lane_width (auto = 도로폭/차로 수, 2.75~3.5 m)"),
+    ("_off", "음원선 위치\nm", False, None, "중심선에서 음원선까지 거리(+ = 디지타이즈 방향 왼쪽). RLS-19 3.3.1 그림 6"),
 ]
 LANE_EDIT = [c for c, _h, e, *_ in LANE_VIEW if e]
+# sori.build.lane_layout 의 규칙 이름 → 화면 글
+LANE_RULE = {"override": "확인값", "oneway_map": "일방", "single_centre": "중앙 1줄", "map_half": "지도 반씩",
+             "ceil": "지도 반씩(올림)", "major_fwd": "지도 반씩(정방향 +1)"}
+LANE_HINT = ("흰 칸에 실제 방향별 차로 수를 넣으면 음원선 위치가 바뀝니다. 정·역방향 = 도로를 그린 방향 기준(‘지도에서 보기’의 화살표). "
+             "회색 = 수치지도 값 · 파랑 = 계산 결과")
+LANE_TIP = ("수치지도는 전체 차로 수만 있어 지금은 반씩 나눔(홀수는 설정 odd_lane_rule). 실제 방향별 차로 수를 넣으면 음원선이 "
+            "그 위치로 옮겨짐(RLS-19 3.3.1). 저장 뒤 ‘계산 실행’을 다시 해야 결과에 반영")
 
 
 class LanesEditor(QtWidgets.QWidget):
@@ -1778,26 +1949,30 @@ class LanesEditor(QtWidgets.QWidget):
         self.cfg, self.roads, self.path, self.extra = None, None, None, None
         self._busy = False
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setContentsMargins(4, 4, 4, 4)
-        self.lbl = QtWidgets.QLabel("설정 파일을 열고 한 번 계산하면(도로 객체 roads.gpkg 생김) 차로 수를 고칠 수 있습니다.")
-        self.lbl.setWordWrap(True)
-        lay.addWidget(self.lbl)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(8)
+        self.lbl, self.hint = tab_head(lay, "설정 파일을 열고 한 번 계산하면(도로 객체 roads.gpkg 생김) 차로 수를 고칠 수 있습니다.")
         top = QtWidgets.QHBoxLayout()
-        top.addWidget(QtWidgets.QLabel("도로명 찾기"))
-        self.ed_find = QtWidgets.QLineEdit(placeholderText="예: 사가정로")
+        top.setSpacing(14)
+        self.ed_find = QtWidgets.QLineEdit(placeholderText="도로명·UFID 찾기 (예: 사가정로)")
+        self.ed_find.setClearButtonEnabled(True)
+        self.ed_find.setFixedWidth(280)
         self.ed_find.textChanged.connect(self._filter)
-        top.addWidget(self.ed_find, 1)
-        self.chk_minor = QtWidgets.QCheckBox("1차로 도로도 보기")
-        self.chk_minor.toggled.connect(self._filter)
-        top.addWidget(self.chk_minor)
-        self.chk_inside = QtWidgets.QCheckBox("격자 계산 범위 안만")
+        top.addWidget(self.ed_find)
+        self.chk_inside = QtWidgets.QCheckBox("계산 범위 안만")
         self.chk_inside.setChecked(True)
         self.chk_inside.setToolTip("도로 객체는 반사·전파 탐색 때문에 계산 범위보다 넓게 만들어짐 — 끄면 전부")
         self.chk_inside.toggled.connect(self._filter)
         top.addWidget(self.chk_inside)
+        self.chk_minor = QtWidgets.QCheckBox("1차로 도로 포함")
+        self.chk_minor.toggled.connect(self._filter)
+        top.addWidget(self.chk_minor)
         self.chk_edited = QtWidgets.QCheckBox("확인값 넣은 도로만")
         self.chk_edited.toggled.connect(self._filter)
         top.addWidget(self.chk_edited)
+        top.addStretch(1)
+        self.lbl_sum = QtWidgets.QLabel("", objectName="tabhint")
+        top.addWidget(self.lbl_sum)
         lay.addLayout(top)
         self.tbl = QtWidgets.QTableWidget(0, len(LANE_VIEW))
         self.tbl.setHorizontalHeaderLabels([h for _, h, *_ in LANE_VIEW])
@@ -1806,25 +1981,29 @@ class LanesEditor(QtWidgets.QWidget):
                 self.tbl.horizontalHeaderItem(j).setToolTip(tip)
             if ch:
                 self.tbl.setItemDelegateForColumn(j, ChoiceDelegate(ch, self.tbl))
-        self.tbl.setAlternatingRowColors(True)
+        style_table(self.tbl)
+        self.tbl.verticalHeader().hide()                  # 거른 표에서는 줄 번호가 띄엄띄엄이라 뜻이 없음
+        self.tbl.setTextElideMode(Qt.ElideLeft)           # UFID 는 끝자리로 구분
+        hh = self.tbl.horizontalHeader()
+        hh.moveSection(self._col("rname"), 0)             # 도로명을 맨 앞에(데이터 열 순서는 그대로)
+        hh.setSectionResizeMode(self._col("note"), QtWidgets.QHeaderView.Stretch)
         self.tbl.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.tbl.itemChanged.connect(self._changed)
         self.tbl.cellDoubleClicked.connect(lambda i, j: LANE_VIEW[j][2] or self.map_selected())
         lay.addWidget(self.tbl, 1)
         row = QtWidgets.QHBoxLayout()
         b = QtWidgets.QPushButton("지도에서 보기")
-        b.setToolTip("고른 도로와 방향별 음원선(지금 표의 차로 수 기준)을 지도에 표시. 읽기 전용 칸을 두 번 클릭해도 됨")
+        b.setToolTip("고른 도로와 방향별 음원선(지금 표의 차로 수 기준)을 지도에 표시. 회색 칸을 두 번 클릭해도 됨")
         b.clicked.connect(self.map_selected)
         row.addWidget(b)
         b = QtWidgets.QPushButton("확인값 지우기")
         b.setToolTip("고른 행의 확인값 칸을 비움 → 수치지도 차로 수로 돌아감")
         b.clicked.connect(self.clear_selected)
         row.addWidget(b)
-        self.lbl_sum = QtWidgets.QLabel("")
-        row.addWidget(self.lbl_sum, 1)
+        row.addStretch(1)
         self.btn_reset = QtWidgets.QPushButton("되돌리기")
         self.btn_reset.clicked.connect(lambda: self.cfg is not None and self.load(self.cfg, self.roads))
-        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)")
+        self.btn_save = QtWidgets.QPushButton("저장 (⌘S)" if sys.platform == "darwin" else "저장 (Ctrl+S)", objectName="primary")
         self.btn_save.setToolTip("확인값이 있는 행만 도로 확인값 CSV(roads_override.csv)에 씀")
         self.btn_save.clicked.connect(self.save)
         for x in (self.btn_reset, self.btn_save):
@@ -1855,12 +2034,15 @@ class LanesEditor(QtWidgets.QWidget):
             ov = {r["ufid"].strip(): r for _, r in df.iterrows() if str(r.get("ufid", "")).strip()}
             known = set(roads.ufid)
             self.extra = df[~df["ufid"].str.strip().isin(known)]        # 계산 영역 밖 UFID 행은 그대로 보존
-            msg = f"도로 확인값 파일: {self.path} ({len(ov)}행)"
+            msg = file_head("도로 확인값 파일", self.path, f" · 확인값 {len(ov)}행")
         else:
-            msg = f"도로 확인값 파일이 없습니다 — 저장하면 {self.path} 를 새로 만들고 설정 파일에 넣음"
-        self.lbl.setText(msg + "\n수치지도는 전체 차로 수만 있어 지금은 반씩 나눔(홀수는 설정 odd_lane_rule). 실제 방향별 "
-                               "차로 수를 넣으면 음원선이 그 위치로 옮겨짐(RLS-19 3.3.1). 정·역방향은 도로를 그린 방향 기준 — "
-                               "‘지도에서 보기’로 화살표 확인. 저장 뒤 ‘계산 실행’을 다시 해야 결과에 반영")
+            msg = (f"<b>도로 확인값 파일 없음</b>&nbsp;&nbsp;<span style='color:{UI_SUB}; font-size:12px'>저장하면 "
+                   f"{self.path.name} 를 만들고 설정 파일에 넣음</span>")
+        self.lbl.setText(msg)
+        self.lbl.setToolTip(str(self.path))
+        self.hint.setText(LANE_HINT)
+        self.hint.setToolTip(LANE_TIP)
+        self.hint.show()
         from shapely.geometry import box
         from sori.config import grid_bbox
         try:
@@ -1882,16 +2064,25 @@ class LanesEditor(QtWidgets.QWidget):
                 vals[c] = "" if pd.isna(v) else str(v).strip()
             for j, (c, _h, ed, *_rest) in enumerate(LANE_VIEW):
                 it = QtWidgets.QTableWidgetItem(vals.get(c, ""))
-                if not ed:
+                if c not in ("ufid", "rname", "note"):
+                    it.setTextAlignment(Qt.AlignCenter)
+                if not ed:                                # 고칠 수 없는 칸: 수치지도 값 = 회색, 계산 결과 = 파랑
                     it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-                    if c.startswith("_"):
-                        it.setBackground(QtGui.QColor("#eef3fa"))
+                    it.setBackground(QtGui.QColor(UI_CALC if c.startswith("_") else UI_RO))
+                    it.setForeground(QtGui.QColor(UI_NAVY if c.startswith("_") else "#4a5663"))
+                    if c == "ufid":
+                        it.setToolTip(vals[c])
                 self.tbl.setItem(i, j, it)
         self._busy = False
         for i in range(self.tbl.rowCount()):
             self._recalc(i)
         self.tbl.resizeColumnsToContents()
-        self.tbl.setColumnWidth(0, min(self.tbl.columnWidth(0), 200))
+        for j in range(self.tbl.columnCount()):
+            self.tbl.setColumnWidth(j, max(self.tbl.columnWidth(j) + 10, 58))
+        for c in ("lanes_basis", "oneway_dir_basis"):         # checked / assumed 가 잘리지 않게
+            self.tbl.setColumnWidth(self._col(c), 80)
+        self.tbl.setColumnWidth(self._col("ufid"), 150)
+        self.tbl.setColumnWidth(self._col("rname"), min(max(self.tbl.columnWidth(self._col("rname")), 130), 220))
         self._filter()
         self.setEnabled(True)
 
@@ -1970,7 +2161,8 @@ class LanesEditor(QtWidgets.QWidget):
             if any(b for _, b in bad.values()):
                 raise ValueError
             nd, nb, wl, rule, offs = self._layout(i, vals)
-            self.tbl.item(i, self._col("_rule")).setText(f"{rule} ({nd}+{nb})" if nb else f"{rule} ({nd})")
+            self.tbl.item(i, self._col("_rule")).setText(f"{LANE_RULE.get(rule, rule)} {nd}+{nb}" if nb
+                                                         else f"{LANE_RULE.get(rule, rule)} {nd}")
             self.tbl.item(i, self._col("_wl")).setText(f"{wl:.2f}")
             self.tbl.item(i, self._col("_off")).setText(" / ".join(f"{o:+.2f}" for o, _ in offs))
         except (ValueError, IndexError):
@@ -1989,7 +2181,7 @@ class LanesEditor(QtWidgets.QWidget):
     def _count(self):
         n = sum(self._edited(i) for i in range(self.tbl.rowCount()))
         vis = sum(not self.tbl.isRowHidden(i) for i in range(self.tbl.rowCount()))
-        self.lbl_sum.setText(f"  보이는 도로 {vis} / 전체 {self.tbl.rowCount()} · 확인값 {n}개")
+        self.lbl_sum.setText(f"도로 {vis} / 전체 {self.tbl.rowCount()} · 확인값 {n}개")
 
     def _filter(self, *_):
         q = self.ed_find.text().strip()
@@ -2022,7 +2214,8 @@ class LanesEditor(QtWidgets.QWidget):
             return
         r = self._road(i)
         self.show_on_map.emit((r.geometry, offs,
-                               f"{self._get(i, 'rname')} {r.ufid[-6:]} · {rule} {nd}+{nb}차로 · 차로폭 {wl:.2f} m"))
+                               f"{self._get(i, 'rname')} {r.ufid[-6:]} · {LANE_RULE.get(rule, rule)} {nd}+{nb}차로 · "
+                               f"차로폭 {wl:.2f} m"))
 
     def save(self):
         import copy
@@ -2506,6 +2699,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.barriers = []        # 방음벽 목록(sori.inputs.load_barriers 형식) — 설정 폴더의 barriers.csv
         self._bar_draw = None     # 방음벽 그리는 중 찍은 꼭짓점(그리는 중이 아니면 None)
         self._bar_art = []        # 지도 위 방음벽 그림 요소
+        self._bar_undo = []       # 지우기 전 방음벽 목록(‘되돌리기’)
         self._box_pts, self._box_art, self._bld_all, self._meas = [], [], None, None
         self.map_mode = "result"  # input = 입력 지도 확인(수치지도만, 소음 없음), result = 지도 확인 · 계산
         self._inlay = None        # 입력 지도 레이어 캐시 (설정 파일, 건물, 도로, 등고선)
@@ -2593,7 +2787,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.editor.pick_center.connect(self._start_pick_center)
         self.editor.preview.connect(self._preview_extent)
         self._picking_center = False
-        self.input_page = QtWidgets.QWidget()           # 입력값 전용 화면(지도 없음)
+        self.input_page = QtWidgets.QWidget(objectName="inputpage")           # 입력값 전용 화면(지도 없음)
+        self.input_page.setStyleSheet(input_qss())
         ip = QtWidgets.QVBoxLayout(self.input_page)
         ip.setContentsMargins(24, 14, 24, 10)
         # 위쪽 머리: ⌂ 홈 | 데이터 입력 (2026-11-14: 입력 → 계산 → 결과 단계 줄은 없앰 — 작업은 홈에서 고름)
@@ -4206,8 +4401,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._bar_draw.append((float(x), float(y)))
             self._draw_barriers()
             n = len(self._bar_draw)
-            self.lbl_status.setText(f"방음벽 꼭짓점 {n}개 — 계속 클릭, 끝내려면 더블클릭·오른쪽 클릭 또는 ‘그리기 끝’")
+            self.lbl_status.setText(f"방음벽 꼭짓점 {n}개 — 계속 클릭, 끝내려면 더블클릭·오른쪽 클릭 또는 ‘그리기 끝’, 버리려면 Esc")
             return
+        if self.view == "grid" and not (self.act_sec.isChecked() or self.act_path.isChecked()):
+            i = self._barrier_at(x, y)                             # 방음벽 선을 누르면 그 방음벽을 고름
+            if i is not None:
+                return self._select_barrier(i)
         if self.map_mode == "input" and self.view == "grid":         # 입력 지도: 건물·도로 속성만(소음 없음)
             return self._input_props(x, y)
         if self.act_sec.isChecked() and self.view == "grid":         # 단면 선 긋기 중
@@ -4865,16 +5064,25 @@ class MainWindow(QtWidgets.QMainWindow):
         w = QtWidgets.QWidget()
         lay = QtWidgets.QHBoxLayout(w)
         from sori.inputs import BARRIER_TYPES
-        t = self.tbl_bar = QtWidgets.QTableWidget(0, 5)
-        t.setHorizontalHeaderLabels(["이름", "높이 (m)", "반사 종류", "반사 손실 dB", "길이 (m)"])
+        t = self.tbl_bar = QtWidgets.QTableWidget(0, 6)
+        t.setHorizontalHeaderLabels(["이름", "높이 (m)", "반사 종류", "반사 손실 dB", "길이 (m)", "지우기"])
         t.horizontalHeaderItem(2).setToolTip("반사형 = 건물 외벽과 같은 반사, 반사 저감형 = RLS-19 표 8 3 dB(RLS-90 표 7 −4 dB), "
                                              "강한 반사 저감형 = 5 dB(−8 dB), 반사 없음 = 반사면을 만들지 않음")
         t.horizontalHeaderItem(3).setToolTip("비우면 반사 종류의 표 값. 숫자를 넣으면 그 손실(dB)로 계산(제품 시험값 등)")
         t.setItemDelegateForColumn(2, ChoiceDelegate(list(BARRIER_TYPES.values()), t))
-        t.horizontalHeader().setStretchLastSection(True)
+        t.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        t.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
+        t.setColumnWidth(5, 56)
         t.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         t.itemChanged.connect(self._bar_edited)
         t.itemSelectionChanged.connect(self._draw_barriers)
+        for key in (Qt.Key_Delete, Qt.Key_Backspace):       # 표에서 행을 고르고 Delete(맥은 ⌫)
+            sc = QtGui.QShortcut(QtGui.QKeySequence(key), t)
+            sc.setContext(Qt.WidgetShortcut)
+            sc.activated.connect(lambda: self._del_barrier())
+        self.sc_bar_esc = QtGui.QShortcut(QtGui.QKeySequence(Qt.Key_Escape), self)   # 그리는 중 Esc = 취소
+        self.sc_bar_esc.activated.connect(self._cancel_bar_draw)
+        self.sc_bar_esc.setEnabled(False)
         lay.addWidget(t, 3)
         v = QtWidgets.QVBoxLayout()
         r1 = QtWidgets.QHBoxLayout()
@@ -4891,12 +5099,27 @@ class MainWindow(QtWidgets.QMainWindow):
         r2 = QtWidgets.QHBoxLayout()
         self.btn_bar_draw = QtWidgets.QPushButton("＋ 지도에 그리기")
         self.btn_bar_draw.setCheckable(True)
-        self.btn_bar_draw.setToolTip("누른 뒤 격자 지도에서 꼭짓점을 차례로 클릭. 끝내려면 더블클릭·오른쪽 클릭 또는 이 단추를 다시 누름")
+        self.btn_bar_draw.setToolTip("누른 뒤 격자 지도에서 꼭짓점을 차례로 클릭. 끝내려면 더블클릭·오른쪽 클릭 또는 이 단추를 다시 누름. "
+                                     "그리던 선을 버리려면 Esc 또는 ‘그리기 취소’")
         self.btn_bar_draw.clicked.connect(self._toggle_bar_draw)
         r2.addWidget(self.btn_bar_draw)
-        b = QtWidgets.QPushButton("선택한 방음벽 지우기")
-        b.clicked.connect(self._del_barrier)
-        r2.addWidget(b)
+        self.btn_bar_cancel = QtWidgets.QPushButton("그리기 취소")
+        self.btn_bar_cancel.setToolTip("그리던 선을 버림(Esc)")
+        self.btn_bar_cancel.clicked.connect(lambda: self._cancel_bar_draw())
+        self.btn_bar_cancel.hide()
+        r2.addWidget(self.btn_bar_cancel)
+        self.btn_bar_del = QtWidgets.QPushButton("지우기")
+        self.btn_bar_del.setToolTip("표나 지도에서 고른 방음벽을 지움(하나뿐이면 고르지 않아도 됨). 표의 ✕ 나 Delete 키로도 지움")
+        self.btn_bar_del.clicked.connect(lambda: self._del_barrier())
+        r2.addWidget(self.btn_bar_del)
+        self.btn_bar_clear = QtWidgets.QPushButton("모두 지우기")
+        self.btn_bar_clear.clicked.connect(lambda: self._del_barrier([b["id"] for b in self.barriers]))
+        r2.addWidget(self.btn_bar_clear)
+        self.btn_bar_undo = QtWidgets.QPushButton("되돌리기")
+        self.btn_bar_undo.setToolTip("방금 지운 방음벽을 다시 넣음")
+        self.btn_bar_undo.clicked.connect(lambda: self._undo_barrier())
+        self.btn_bar_undo.setEnabled(False)
+        r2.addWidget(self.btn_bar_undo)
         r2.addStretch(1)
         v.addLayout(r2)
         r3 = QtWidgets.QHBoxLayout()
@@ -4913,8 +5136,8 @@ class MainWindow(QtWidgets.QMainWindow):
         r3.addStretch(1)
         v.addLayout(r3)
         self.lbl_bar = QtWidgets.QLabel(
-            "설치 전 결과(지금 결과 폴더)는 그대로 두고, 옆의 ‘…_방음벽’ 폴더에 설치 후를 계산해 차이 지도를 보여 줍니다. "
-            "계산 대상·전파 방법은 ‘계산 실행’ 탭 값. 방음벽은 설정 폴더의 barriers.csv 에 저장됩니다.")
+            "지우기: 표의 ✕, 또는 지도에서 방음벽 선을 눌러 고른 뒤 ‘지우기’(Delete). 그리기·지우기는 바로 barriers.csv 에 저장됩니다.\n"
+            "설치 후 계산은 옆의 ‘…_방음벽’ 폴더에 하고(설치 전 결과는 그대로) 차이 지도를 보여 줍니다. 계산 대상·전파 방법은 ‘계산 실행’ 탭 값.")
         self.lbl_bar.setWordWrap(True)
         self.lbl_bar.setStyleSheet("color: #666666; font-size: 11px;")
         v.addWidget(self.lbl_bar)
@@ -4938,7 +5161,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _load_barriers(self):
         from sori import inputs as I
-        self.barriers, self._bar_draw = [], None
+        self.barriers, self._bar_draw, self._bar_undo = [], None, []
         p = self._bar_path()
         if p is not None and p.is_file():
             try:
@@ -4972,8 +5195,16 @@ class MainWindow(QtWidgets.QMainWindow):
             L = QtWidgets.QTableWidgetItem(f"{self._bar_len(b):.1f}")
             L.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             t.setItem(i, 4, L)
+            x = QtWidgets.QToolButton(text="✕")              # 행마다 지우기 단추(행을 고르지 않아도 됨)
+            x.setToolTip(f"방음벽 {b['id']} 지우기")
+            x.setAutoRaise(True)
+            x.clicked.connect(lambda _=False, bid=b["id"]: self._del_barrier([bid]))
+            t.setCellWidget(i, 5, x)
         t.blockSignals(False)
         self.btn_bar_run.setEnabled(bool(self.barriers))
+        self.btn_bar_del.setEnabled(bool(self.barriers))
+        self.btn_bar_clear.setEnabled(len(self.barriers) > 1)
+        self.btn_bar_undo.setEnabled(bool(self._bar_undo))
         if hasattr(self, "btn_bar_study"):
             self.btn_bar_study.setEnabled(bool(self.barriers))
 
@@ -5029,7 +5260,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._bar_draw = []
         self.btn_bar_draw.setChecked(True)
         self.btn_bar_draw.setText("그리기 끝")
-        self.lbl_status.setText("방음벽 그리기 — 지도에서 꼭짓점을 차례로 클릭, 끝내려면 더블클릭·오른쪽 클릭 또는 ‘그리기 끝’")
+        self.btn_bar_cancel.show()
+        self.sc_bar_esc.setEnabled(True)
+        self.lbl_status.setText("방음벽 그리기 — 지도에서 꼭짓점을 차례로 클릭, 끝내려면 더블클릭·오른쪽 클릭 또는 ‘그리기 끝’, 버리려면 Esc")
 
     def _finish_barrier(self):
         """그리기를 끝냄: 꼭짓점이 2개 이상이면 방음벽으로 넣고 저장"""
@@ -5038,6 +5271,8 @@ class MainWindow(QtWidgets.QMainWindow):
         pts, self._bar_draw = self._bar_draw, None
         self.btn_bar_draw.setChecked(False)
         self.btn_bar_draw.setText("＋ 지도에 그리기")
+        self.btn_bar_cancel.hide()
+        self.sc_bar_esc.setEnabled(False)
         if len(pts) >= 2:
             ids = {b["id"] for b in self.barriers}
             k = len(self.barriers) + 1
@@ -5054,15 +5289,70 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lbl_status.setText("방음벽 그리기 취소(꼭짓점 2개 미만)")
         self._draw_barriers()
 
-    def _del_barrier(self):
-        rows = sorted({i.row() for i in self.tbl_bar.selectedIndexes()}, reverse=True)
-        if not rows:
+    def _cancel_bar_draw(self):
+        """그리던 선을 버림(방음벽을 만들지 않음)"""
+        if self._bar_draw is None:
             return
-        for i in rows:
-            del self.barriers[i]
+        self._bar_draw = []
+        self._finish_barrier()
+        self.lbl_status.setText("방음벽 그리기 취소")
+
+    def _del_barrier(self, ids=None):
+        """방음벽 지우기. ids(이름 목록)를 주지 않으면 표·지도에서 고른 것, 고른 것이 없고 하나뿐이면 그 하나.
+        지우면 바로 파일에 저장하고, ‘되돌리기’(_undo_barrier)로 복구할 수 있음"""
+        if ids is None:
+            rows = sorted({i.row() for i in self.tbl_bar.selectedIndexes()})
+            if not rows and len(self.barriers) == 1:
+                rows = [0]
+            ids = [self.barriers[i]["id"] for i in rows if i < len(self.barriers)]
+        ids = set(ids)
+        gone = [b["id"] for b in self.barriers if b["id"] in ids]
+        if not gone:
+            if self.barriers:
+                self.lbl_status.setText("지울 방음벽을 고르세요 — 표의 ✕ 를 누르거나, 지도에서 방음벽 선을 누른 뒤 ‘지우기’")
+            return
+        self._bar_undo.append([dict(b) for b in self.barriers])
+        self.barriers = [b for b in self.barriers if b["id"] not in ids]
+        self.tbl_bar.clearSelection()                        # 지운 자리의 다음 방음벽이 고른 것처럼 남지 않게
         self._fill_bar_table()
         self._save_barriers()
         self._draw_barriers()
+        msg = f"방음벽 {', '.join(gone)} 지움(저장함) — ‘되돌리기’로 복구"
+        if (self.R.get("build_info") or {}).get("barriers"):  # 방음벽을 넣어 계산한 결과를 보고 있으면 소음지도는 그대로
+            msg += ". 지금 소음지도는 방음벽을 넣어 계산한 결과라 바뀌지 않음(설치 전 결과 폴더를 열거나 다시 계산)"
+        self.lbl_status.setText(msg)
+
+    def _undo_barrier(self):
+        """마지막 지우기를 되돌림"""
+        if not self._bar_undo:
+            return
+        self.barriers = self._bar_undo.pop()
+        self._fill_bar_table()
+        self._save_barriers()
+        self._draw_barriers()
+        self.lbl_status.setText(f"되돌림 — 방음벽 {len(self.barriers)}개(저장함)")
+
+    def _barrier_at(self, x, y, px=7):
+        """지도 좌표 (x, y) 에서 화면 px 픽셀 안에 있는 방음벽 번호(없으면 None)"""
+        ax = self.map.ax
+        if ax is None or not self.barriers:
+            return None
+        from shapely.geometry import LineString, Point
+        inv = ax.transData.inverted()
+        tol = abs(inv.transform((px, 0))[0] - inv.transform((0, 0))[0])
+        d = [LineString(b["pts"]).distance(Point(x, y)) for b in self.barriers]
+        i = int(np.argmin(d))
+        return i if d[i] <= tol else None
+
+    def _select_barrier(self, i):
+        """지도에서 방음벽 선을 누름 → 방음벽 탭을 펴고 그 행을 고름(노란 선으로 표시). 이어서 ‘지우기’·Delete"""
+        self._set_dock("계산·결과 표", True)
+        self.tabs.setCurrentIndex(self.tabs.count() - 1)
+        self.tbl_bar.selectRow(i)
+        self.tbl_bar.setFocus()
+        b = self.barriers[i]
+        self.lbl_status.setText(f"방음벽 {b['id']} 고름 — 길이 {self._bar_len(b):.1f} m, 높이 {b['h']:g} m. "
+                                "지우려면 ‘지우기’ 또는 Delete, 높이·종류는 표에서 고침")
 
     def _draw_barriers(self):
         """격자 지도 위 방음벽(자주색 굵은 선 + 이름·높이), 그리는 중인 선(점선). 이 요소만 지우고 다시 그림"""
