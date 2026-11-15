@@ -14,6 +14,7 @@ SORI 데스크톱 화면 (PySide6 / Qt Widgets) — 화면 개편 1단계 시제
 import json
 import logging
 import math
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -37,10 +38,14 @@ from matplotlib.figure import Figure  # noqa: E402
 log = logging.getLogger("sori")
 try:                                                  # 앱 안 3D 보기(Qt WebEngine, PySide6-WebEngine). 없으면 브라우저로 엶
     from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
+    from PySide6.QtWebEngineCore import QWebEnginePage  # noqa: E402
     HAS_WEB = True
 except ImportError:                                   # pragma: no cover
-    QWebEngineView = None
+    QWebEngineView = QWebEnginePage = None
     HAS_WEB = False
+# 나란히 보기 오른쪽 3D 파사드를 three.js 웹 화면으로(2026-11-15, sori.facade_web). 웹 화면 부품이 없거나
+# SORI_WEB_FACADE=0 이면 matplotlib 3D(시험은 tests/conftest.py 가 0 으로 — 화면 없는 시험에서 WebGL 을 띄우지 않음)
+WEB_FACADE = HAS_WEB and os.environ.get("SORI_WEB_FACADE", "1") != "0"
 MSG_3D_EMPTY = "건물을 클릭하면\n여기에\n3D 파사드\n소음지도가\n나옵니다."
 SPLIT_EMPTY_W = 220      # 나란히 보기에서 건물을 고르기 전 오른쪽 3D 창 폭(px)
 ROLE = Qt.UserRole
@@ -431,6 +436,7 @@ class MapView(QtWidgets.QWidget):
     moved = QtCore.Signal(float, float)
     finished = QtCore.Signal()                     # 더블클릭·오른쪽 클릭(선 그리기 끝)
     facade_opts = QtCore.Signal()                  # 3D 파사드 보기 선택(소음도 숫자·주변 투명)을 바꿈
+    drawn = QtCore.Signal()                        # 새로 그리기 시작(나란히 보기 오른쪽 창을 이 창으로)
 
     def __init__(self):
         super().__init__()
@@ -477,6 +483,7 @@ class MapView(QtWidgets.QWidget):
             a.setVisible(on)
 
     def _clear(self, hq=None):
+        self.drawn.emit()
         self._show_facade_opts(False)
         self.fig.clear()
         self.fig.patch.set_facecolor("white")
@@ -2102,6 +2109,67 @@ QTableWidget::item { padding: 4px 8px; }
 DOCK_CSS = "QDockWidget::title { background: #f4f4f4; padding: 6px 10px; } QDockWidget { font-size: 12px; color: #555555; }"
 
 
+class FacadeWeb(QtWidgets.QWidget):
+    """나란히 보기 오른쪽 3D 파사드(three.js, sori.facade_web). 페이지는 한 번만 읽고 건물·시간대는 SORI.show/key 로
+    넘김(같은 건물이면 돌려 본 시점 유지). 3D 안에서 다른 건물을 누르면 picked(건물 번호)"""
+    picked = QtCore.Signal(int)
+
+    class _Page(QWebEnginePage if HAS_WEB else object):
+        def __init__(self, owner):
+            super().__init__(owner)
+            self.owner = owner
+
+        def javaScriptConsoleMessage(self, level, msg, line, src):       # 페이지 → 앱: console.log('SORI:pick:번호')
+            if msg.startswith("SORI:pick:"):
+                try:
+                    self.owner.picked.emit(int(msg.split(":")[2]))
+                except ValueError:
+                    pass
+
+    def __init__(self):
+        super().__init__()
+        self.web = None
+        self.ready = False
+        self._pending = None
+        self.data = None          # 지금 보이는 자료(시험·확인용)
+        self.key = None
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.lay = lay
+
+    def _ensure(self):
+        if self.web is None:
+            from sori.facade_web import page_path
+            self.web = QWebEngineView()
+            self.web.setPage(self._Page(self))
+            self.web.loadFinished.connect(self._loaded)
+            self.lay.addWidget(self.web, 1)
+            self.web.load(QtCore.QUrl.fromLocalFile(page_path()))
+
+    def _loaded(self, ok):
+        self.ready = bool(ok)
+        if ok and self._pending:
+            js, self._pending = self._pending, None
+            self.web.page().runJavaScript(js)
+
+    def _run(self, js):
+        self._ensure()
+        if self.ready:
+            self.web.page().runJavaScript(js)
+        else:
+            self._pending = js                          # 페이지가 다 읽히면 마지막 것만
+
+    def show_scene(self, data, key):
+        from sori.facade_web import show_js
+        self.data, self.key = data, key
+        self._run(show_js(data, key))
+
+    def set_key(self, key):
+        self.key = key
+        if self.data is not None:
+            self._run(f"SORI.key('{key[-1]}')")
+
+
 class View3DPage(QtWidgets.QWidget):
     """앱 안 3D 보기: 위쪽 띠(◀ 지도로 · 제목 · 브라우저로 열기) + 웹 3D 뷰어(noise3d.html, three.js).
     웹 화면은 처음 열 때 만듦(앱 시작이 느려지지 않게)"""
@@ -2475,7 +2543,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.facade_bid = None    # 오른쪽 창에 보이는 건물(나란히 보기)
         self.split = QtWidgets.QSplitter(Qt.Horizontal)
         self.split.addWidget(self.map)
-        self.split.addWidget(self.map3d)
+        self.right = QtWidgets.QStackedWidget()          # 오른쪽 창: 0 = matplotlib(단면·경로·안내), 1 = three.js 3D 파사드
+        self.right.addWidget(self.map3d)
+        self.facweb = None
+        if WEB_FACADE:
+            self.facweb = FacadeWeb()
+            self.facweb.picked.connect(self._facade_picked)
+            self.right.addWidget(self.facweb)
+        self.map3d.drawn.connect(lambda: self.right.setCurrentWidget(self.map3d))
+        self.split.addWidget(self.right)
         self.split.setChildrenCollapsible(False)
         self.split.setSizes([4, 1])                       # 건물을 고르기 전에는 오른쪽을 좁게(_fit_split)
         self.stack = QtWidgets.QStackedWidget()           # 0 = 홈 화면, 1 = 작업 화면(지도)
@@ -2836,7 +2912,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if key in ("facade", "grid") and not self.act_split.isChecked():   # 지도 확인: 건물 클릭 → 3D 파사드를 함께
             self.act_split.setChecked(True)
             self._toggle_split(True)
-        self.map3d.setVisible(self.map_mode == "result" and self.act_split.isChecked())   # 입력 지도: 3D 창 없이 지도만
+        on = self.map_mode == "result" and self.act_split.isChecked()   # 입력 지도: 3D 창 없이 지도만
+        self.map3d.setVisible(on)
+        self.right.setVisible(on)
         self._fit_split()
         self.show_grid()                                  # 작업에 맞게(차로 강조 등) 지도를 항상 다시 그림
         if key == "map":
@@ -3736,6 +3814,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if on is None:
             on = self.act_split.isChecked()
         self.map3d.setVisible(on)
+        self.right.setVisible(on)
         if on:
             if self.view == "facade":                    # 한 창에서 보던 건물을 오른쪽으로 옮김
                 self.facade_bid, self.view, self.view_bid = self.view_bid, "grid", None
@@ -3752,7 +3831,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _fit_split(self):
         """나란히 보기 폭: 건물을 고르기 전에는 오른쪽 3D 창을 좁게(안내 글만) 두어 격자 지도를 크게,
         건물을 고르면 반반. 2026-11-12: 처음 열면 빈 3D 창이 화면 절반을 차지해 지도가 작던 문제"""
-        if not self.map3d.isVisibleTo(self):
+        if not self.right.isVisibleTo(self):
             return
         W = max(self.split.width(), 600)
         wide = self.facade_bid is not None or self._paths_side() or self._section_side
@@ -3776,8 +3855,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.view = "section"
             self.redraw()
 
-    def _draw_facade(self, bid, target=None):
-        """target: 그릴 지도 창(None = 가운데 창 self.map, 나란히 보기면 self.map3d)"""
+    def _facade_picked(self, bid):
+        """오른쪽 three.js 3D 에서 다른 건물을 누름 → 그 건물로(왼쪽 격자 지도의 표시도 옮김)"""
+        if not self.show_facade(bid):
+            self.lbl_status.setText(f"건물 {bid}: 벽면 계산 결과 없음 — 3D 는 그대로")
+
+    def _draw_facade(self, bid, target=None, mpl=False):
+        """target: 그릴 지도 창(None = 가운데 창 self.map, 나란히 보기면 self.map3d).
+        나란히 보기 오른쪽은 웹 화면이 있으면 three.js(self.facweb), mpl=True 면 matplotlib(지도 저장용)"""
         side = target is not None
         target = target or self.map
         R, key = self.R, self.cb_key.currentData()
@@ -3794,9 +3879,24 @@ class MainWindow(QtWidgets.QMainWindow):
         from sori.plots import loud_azimuth
         az = loud_azimuth(FR, F, bid, key)                # 가장 시끄러운 벽이 정면에(없으면 설정 azim_3d)
         h = self.cb_h.currentData()
-        target.draw_facade3d(B, FR, F, T, bid, key, view, fh, float(pc.get("elev_3d", 28.0)),
-                             az if az is not None else float(pc.get("azim_3d", -60.0)), title,
-                             ground=(self._grid_array(h, key), h) if h is not None else None)
+        az = az if az is not None else float(pc.get("azim_3d", -60.0))
+        if side and self.facweb is not None and not mpl:
+            fw = self.facweb
+            same = fw.data is not None and fw.data["bid"] == bid and fw.data.get("_h") == h and fw.data.get("_out") == str(self.out)
+            if same:                                      # 같은 건물·높이: 시간대만 바꿈(시점 유지)
+                fw.set_key(key)
+            else:
+                from sori.facade_web import scene_data
+                from sori.maps_hq import DIN_COLS, DIN_EDGES
+                grids = {k: self._grid_array(h, k) for k in ("LrT", "LrN")} if h is not None else None
+                D = scene_data(B, FR, F, T, bid, view, fh, grids, h, DIN_EDGES, DIN_COLS, self.FACADE_BID_LABELS,
+                               az, float(pc.get("elev_3d", 28.0)), title.replace(f" · {KEYS[key]}", ""))
+                D.update(_h=h, _out=str(self.out))
+                fw.show_scene(D, key)
+            self.right.setCurrentWidget(fw)
+        else:
+            target.draw_facade3d(B, FR, F, T, bid, key, view, fh, float(pc.get("elev_3d", 28.0)), az, title,
+                                 ground=(self._grid_array(h, key), h) if h is not None else None)
         if not side:
             self._set_back(True)
         self.m_facade.set(FRb.sort_values(key, ascending=False).reset_index(drop=True))
@@ -3949,7 +4049,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """지금 보이는 지도(격자 또는 벽면)를 파일로 저장. 기본 이름은 결과 파일명 규칙(sori.naming).
         side=True: 나란히 보기 오른쪽 3D 파사드 창을 저장"""
         mv = self.map3d if side else self.map
-        if mv.ax is None and mv.ax3d is None:
+        if mv.ax is None and mv.ax3d is None and not self._web_shown():
             return self._err("저장할 지도가 없습니다. 결과를 먼저 열고" + (" 건물을 클릭하세요." if side else " 여세요."))
         key, h = self.cb_key.currentData(), self.cb_h.currentData()
         kind, extra = (("grid", f"_경로_{self._path_name or 'X{:.0f}_Y{:.0f}'.format(self.paths[1]['x'], self.paths[1]['y'])}")
@@ -3968,8 +4068,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if path:
             self.save_map_to(path, mv)
 
+    def _web_shown(self):
+        return self.facweb is not None and self.right.currentWidget() is self.facweb and self.facade_bid is not None
+
     def save_map_to(self, path, mv=None):
         mv = mv or self.map
+        web = mv is self.map3d and self._web_shown()
+        if web:                                           # three.js 화면은 matplotlib 으로 다시 그려 저장(PDF 벡터 유지)
+            self._draw_facade(self.facade_bid, self.map3d, mpl=True)
         path = Path(path)
         if path.suffix.lower() not in (".png", ".pdf"):
             path = path.with_suffix(".png")
@@ -3984,6 +4090,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if report:
                 self._force_report = False
                 self._redraw_main()
+            if web:
+                self.right.setCurrentWidget(self.facweb)
         log.info("지도 저장: %s", path)
         self.lbl_status.setText(f"지도 저장: {path}")
         return path

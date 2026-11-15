@@ -9,6 +9,10 @@ import pytest
 
 from reference_case import TOL_DB
 
+# 오른쪽 3D 파사드는 시험에서 matplotlib 으로(화면 없는 시험에서 WebGL 웹 화면을 띄우지 않음). three.js 쪽 시험은
+# 따로 WEB_FACADE 를 켜고 웹 화면 load 를 가로챔(test_facade_web_*)
+os.environ.setdefault("SORI_WEB_FACADE", "0")
+
 
 def pytest_addoption(parser):
     parser.addoption("--sori-tol", type=float, default=None,

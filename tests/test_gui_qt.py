@@ -1049,6 +1049,77 @@ def test_grid_contour_labels_limit_and_facade_ground(tmp_path):
     app.processEvents()
 
 
+def test_facade_web_scene_data(tmp_path):
+    """three.js 3D 파사드 자료(sori.facade_web.scene_data): 대상·주변 건물, 층별 벽면 값(주간·야간), 대상 벽마다 값 열,
+    건물 번호(대상 하나), 바닥 격자 그림(주간·야간). 정적 페이지는 three.js 를 품고 SORI.show 를 가짐"""
+    import json
+    import numpy as np
+    import pandas as pd
+    import geopandas as gpd
+    from shapely.geometry import Point
+    import reference_case as RC
+    from sori import facade_web as W
+    from sori.maps_hq import DIN_COLS, DIN_EDGES
+    out = RC.run_case(tmp_path / "case")
+    B = gpd.read_file(out / "buildings.gpkg")
+    FR = pd.read_csv(out / "facade_result.csv")
+    F = pd.read_csv(out / "facades.csv", index_col="fid")
+    bid = int(FR.bid.value_counts().index[0])
+    c = B[B.bid == bid].iloc[0].geometry.centroid
+    view = Point(c.x, c.y).buffer(80)
+    T = set(FR.bid[FR.bid.isin(B[B.intersects(view)].bid)].astype(int)) | {bid}
+    A = np.full((20, 20), 60.0); A[5:8, 5:8] = np.nan
+    grid = (A, (c.x - 50, c.x + 50, c.y - 50, c.y + 50))
+    D = W.scene_data(B, FR, F, T, bid, view, 3.0, {"LrT": grid, "LrN": grid}, 4.0, DIN_EDGES, DIN_COLS, title="t")
+    n = int(FR.bid.isin(T).sum())
+    assert len(D["fac"]["q"]) == 6 * n and len(D["fac"]["T"]) == len(D["fac"]["N"]) == len(D["fac"]["s"]) == n
+    assert D["bid"] == bid and any(b["id"] == bid for b in D["bld"])
+    assert len(D["walls"]) == FR[FR.bid == bid].fid.nunique()
+    assert all(len(w["z"]) == len(w["T"]) == len(w["N"]) for w in D["walls"])
+    assert [x["id"] for x in D["nums"] if x["me"]] == [bid]
+    assert set(D["ground"]) == {"T", "N"} and D["ground"]["T"].startswith("data:image/png")
+    js = W.show_js(D, "LrN")
+    assert js.startswith("SORI.show(") and js.endswith(",'N')") and json.loads(js[len("SORI.show("):-len(",'N')")])["bid"] == bid
+    page = open(W.page_path(), encoding="utf-8").read()
+    assert "window.SORI=" in page and "OrbitControls" in page and "cdnjs" not in page    # 인터넷 없이
+
+
+def test_facade_web_in_app(tmp_path, monkeypatch):
+    """나란히 보기 오른쪽 3D 파사드를 three.js 로(WEB_FACADE): 건물 클릭 → 웹 화면에 자료, 시간대 바꾸면 SORI.key 만,
+    지도 저장은 matplotlib 으로 다시 그려 저장하고 웹 화면으로 돌아옴, 3D 안에서 고른 건물로 바뀜, 단면·안내는 matplotlib 창.
+    (화면 없는 시험이라 웹 화면에 보내는 JavaScript 만 가로챔)"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    monkeypatch.setattr(Q, "WEB_FACADE", True)
+    sent = []
+    monkeypatch.setattr(Q.FacadeWeb, "_run", lambda self, js: sent.append(js))
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    w.open_config(tmp_path / "case" / "config.yaml", out)
+    w.enter_task("grid")
+    app.processEvents()
+    assert w.facweb is not None and w.right.currentWidget() is w.map3d
+    bids = list(w.R["facade"].bid.value_counts().index[:2].astype(int))
+    assert w.show_facade(bids[0])
+    assert w.right.currentWidget() is w.facweb and w.facweb.data["bid"] == bids[0]
+    assert sent[-1].startswith("SORI.show(") and w.map3d.ax3d is None             # matplotlib 3D 는 그리지 않음
+    w.cb_key.setCurrentIndex(1)
+    app.processEvents()
+    assert sent[-1] == "SORI.key('N')"                                            # 같은 건물: 시간대만
+    png = w.save_map_to(tmp_path / "fac.png", w.map3d)
+    assert png.stat().st_size > 10000 and w.right.currentWidget() is w.facweb
+    w.facweb.picked.emit(bids[1])                                                 # 3D 안에서 다른 건물 클릭
+    assert w.facade_bid == bids[1] and w.facweb.data["bid"] == bids[1] and sent[-1].startswith("SORI.show(")
+    w.map3d.message("x")                                                          # matplotlib 창에 그리면 그 창으로
+    assert w.right.currentWidget() is w.map3d
+    w.close()
+    app.processEvents()
+
+
 def test_section_roads_bands():
     """단면이 지나는 도로 노면 구간(sori_qt.section_roads): 노면 안에서 시작해도 잡히고, 이름이 같은 맞닿은 조각은 합침,
     간선(차로 수 ≥ main_min_lanes)만 간선 표시"""
