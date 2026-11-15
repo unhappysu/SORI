@@ -692,6 +692,11 @@ def test_splash_and_input_guide(tmp_path):
     assert w.editor.w["input.junctions.path"][0].edit.text() == "junctions.csv" and st("input.junctions.path") == "✓"
     p = g.make_template("receivers.points.path")
     assert p.read_text(encoding="utf-8-sig").splitlines()[0] == "point_id,x,y,h"
+    import zipfile                                                            # DEM: 래스터 없는 zip 은 계산 전에 ✗
+    with zipfile.ZipFile(work / "dem.zip", "w") as zf:
+        zf.writestr("readme.txt", "x")
+    g.set_value("input.dem.path", "dem.zip")
+    assert st("input.dem.path") == "✗" and "DEM 으로 읽을 수 없음" in g.rows["input.dem.path"][1].text()
     w.close()
     app.processEvents()
 
@@ -843,7 +848,17 @@ def test_barrier_draw_run_and_diff_map(tmp_path, monkeypatch):
     monkeypatch.setattr(w, "_launch", launch)
     w.chk["facade"].setChecked(False); w.chk["points"].setChecked(False)
     t_base = (out / "grid_result.csv").stat().st_mtime
+    assert w._base_dem(out) == Path(w.cfg["input"]["dem"]["path"]).name             # 설치 전 결과에 기록된 DEM
+    asked = []                                                           # DEM 설정이 다르면 묻고, 취소하면 계산 안 함
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or QtWidgets.QMessageBox.Cancel)
+    dem0 = w.cfg["input"]["dem"]["path"]
+    w.cfg["input"]["dem"]["path"] = None
     w.start_barrier_run()
+    assert asked and "지형(DEM)" in asked[0] and not seen
+    w.cfg["input"]["dem"]["path"] = dem0
+    w.start_barrier_run()                                                # 같으면 묻지 않고 계산
+    assert len(asked) == 1
     after = Path(str(out) + "_방음벽")
     assert Path(seen["out"]) == after and Path(seen["compare_base"]) == out and seen["scenario"] == "방음벽"
     assert sorted(seen["extra_heights"]) == [4.0, 10.0]

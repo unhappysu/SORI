@@ -1069,6 +1069,14 @@ def guide_status(key, value, base):
         if not n:
             return "✗", "#c0392b", "폴더는 있지만 건물 레이어(*B0010000*.shp)가 없음 — 압축을 풀었는지 확인"
         return "✓", "#1e8449", f"있음 — 건물 레이어 {n}개(도엽)"
+    if key == "input.dem.path":                       # 계산 중간(모델 만들기)에 실패하지 않게 미리 열어 봄
+        from sori.inputs import dem_source
+        try:
+            import rasterio
+            with rasterio.open(dem_source(paths[0])):
+                pass
+        except Exception as e:
+            return "✗", "#c0392b", f"DEM 으로 읽을 수 없음 — {e}"
     return "✓", "#1e8449", f"있음 — {paths[0].name}"
 
 
@@ -5344,6 +5352,18 @@ class MainWindow(QtWidgets.QMainWindow):
             return Path(self.out)
         return self.diff_base
 
+    @staticmethod
+    def _base_dem(base):
+        """결과 폴더에 기록된 계산 때 DEM 파일 이름(run_info.json 의 config_resolved), DEM 없음이면 None,
+        기록을 읽을 수 없으면 False"""
+        try:
+            ri = json.loads((Path(base) / "run_info.json").read_text(encoding="utf-8"))
+            dem = ri["config_resolved"]["input"]["dem"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        p = (dem or {}).get("path")
+        return Path(p).name if p else None
+
     def start_barrier_run(self):
         if not self.cfg_path:
             return self._err("설정 파일(config.yaml)을 먼저 여세요.")
@@ -5357,6 +5377,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if (self.cfg["input"].get("barriers") or {}).get("path"):
             log.warning("설정 파일에 input.barriers.path 가 있음 — ‘계산 실행’(설치 전)에도 방음벽이 들어감. "
                         "전후 비교를 하려면 설정에서 그 줄을 지우세요")
+        d0, d1 = self._base_dem(base), Path(self.cfg["input"]["dem"].get("path") or "").name or None
+        if d0 is not False and d0 != d1:                 # 설치 전 결과와 DEM 설정이 다르면 차이에 지형 차이가 섞임
+            msg = ("설치 전 결과와 지형(DEM) 설정이 다릅니다.\n"
+                   f"  설치 전({base.name}): {d0 or 'DEM 없음(등고선·표고점만)'}\n"
+                   f"  지금 설정: {d1 or 'DEM 없음(등고선·표고점만)'}\n\n"
+                   "이대로 계산하면 전후 차이에 방음벽 효과와 지형 차이가 섞입니다. "
+                   "먼저 ‘계산 실행’ 탭에서 설치 전(현황)을 지금 설정으로 다시 계산하는 것을 권합니다.\n\n그래도 계산할까요?")
+            if QtWidgets.QMessageBox.question(self, "SORI — 방음벽", msg,
+                                              QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel,
+                                              QtWidgets.QMessageBox.Cancel) != QtWidgets.QMessageBox.Yes:
+                return
         bars = self._save_barriers()
         out = str(base.with_name(base.name + "_방음벽"))
         which = [k for k, c in self.chk.items() if c.isChecked()]
@@ -5499,6 +5530,7 @@ class MainWindow(QtWidgets.QMainWindow):
         from sori import compare
         D = self._diff_table()
         rows = [("기준(대책 전)", str(self.diff_base)), ("비교(지금)", str(self.out)), ("정의", "Δ = 지금 − 기준 (음수 = 낮아짐)")]
+        rows += [("⚠ 조건 다름", w) for w in compare.mismatch(self.diff_base, self.out)]
         if D is None:
             return rows + [("차이", "겹치는 격자점 없음")]
         for h, g in D.groupby("h"):

@@ -80,9 +80,18 @@ def stats(D, key="LrT"):
             "lower_5dB": int((d < -5).sum()), "higher_1dB": int((d > 1).sum())}
 
 
-def write(base_out, new_out):
-    """차이 표를 비교 폴더(new_out)에 저장하고 요약(dict)을 돌려줌. 기준·비교의 전파 방법이 다르면 경고만 함"""
-    info = {"base": str(base_out), "new": str(new_out), "definition": "Δ = 비교(new) − 기준(base) dB, 음수 = 낮아짐"}
+def terrain_mode(out):
+    """결과 폴더의 지형 조건(build_info.json): 'contours'(등고선·표고점만) | 'contours+dem'. 모르면 None"""
+    try:
+        bi = json.load(open(os.path.join(str(out), "build_info.json"), encoding="utf-8"))
+        return (bi.get("terrain") or {}).get("mode")
+    except (OSError, ValueError):
+        return None
+
+
+def mismatch(base_out, new_out):
+    """두 결과의 계산 조건이 달라 차이에 대책 효과 말고 다른 것이 섞이는 경우 → 경고 글 목록(전파 방법, 지형 DEM)"""
+    out = []
     meth = []
     for o in (base_out, new_out):
         try:
@@ -90,9 +99,20 @@ def write(base_out, new_out):
             meth.append(sorted(set((ri.get("outputs") or {}).values())))
         except (OSError, ValueError):
             meth.append(None)
-    info["methods"] = {"base": meth[0], "new": meth[1]}
     if meth[0] and meth[1] and meth[0] != meth[1]:
-        info["warning"] = f"전파 방법이 다름(기준 {meth[0]}, 비교 {meth[1]}) — 차이에 방법 차이가 섞임"
+        out.append(f"전파 방법이 다름(기준 {meth[0]}, 비교 {meth[1]}) — 차이에 방법 차이가 섞임")
+    t = [terrain_mode(o) for o in (base_out, new_out)]
+    if t[0] and t[1] and t[0] != t[1]:
+        out.append(f"지형 조건이 다름(기준 {t[0]}, 비교 {t[1]}) — 차이에 지형(DEM) 차이가 섞임")
+    return out
+
+
+def write(base_out, new_out):
+    """차이 표를 비교 폴더(new_out)에 저장하고 요약(dict)을 돌려줌. 기준·비교의 계산 조건(전파 방법·지형)이 다르면 경고만 함"""
+    info = {"base": str(base_out), "new": str(new_out), "definition": "Δ = 비교(new) − 기준(base) dB, 음수 = 낮아짐"}
+    warn = mismatch(base_out, new_out)
+    if warn:
+        info["warning"] = " / ".join(warn)
         log.warning(info["warning"])
     for name, fn in (("grid", diff_grid), ("facade", diff_facade), ("point", diff_point)):
         D = fn(base_out, new_out)

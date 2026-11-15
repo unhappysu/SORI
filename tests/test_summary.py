@@ -127,3 +127,18 @@ def test_obsolete_standard_settings_ignored(tmp_path, caplog):
         cfg = C.load(p)
     assert "plots.limits" in caplog.text and "zones" not in C.DEFAULTS["input"] and "limits" not in C.DEFAULTS["plots"]
     assert cfg["plots"]["limits"] == {"LrT": 68, "LrN": 58}           # 값은 남지만 어디에서도 쓰지 않음
+
+
+def test_compare_mismatch_terrain_and_method(tmp_path):
+    """두 결과의 계산 조건 차이 경고(v0.8.1): 지형(DEM 사용 여부)·전파 방법이 다르면 경고, 같으면 없음"""
+    import json
+    a, b = tmp_path / "a", tmp_path / "b"
+    for o, mode, meth in ((a, "contours", "iso9613_2"), (b, "contours+dem", "iso9613_2")):
+        o.mkdir()
+        (o / "build_info.json").write_text(json.dumps({"terrain": {"mode": mode}}), encoding="utf-8")
+        (o / "run_info.json").write_text(json.dumps({"outputs": {"grid": meth}}), encoding="utf-8")
+    w = compare.mismatch(a, b)
+    assert len(w) == 1 and "지형" in w[0]
+    assert compare.mismatch(a, a) == [] and compare.mismatch(a, tmp_path / "없음") == []
+    (b / "run_info.json").write_text(json.dumps({"outputs": {"grid": "rls19"}}), encoding="utf-8")
+    assert len(compare.mismatch(a, b)) == 2

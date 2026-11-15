@@ -778,3 +778,31 @@ def test_point_receivers_config_path(tmp_path):
     cfg = config.load(str(c))
     assert cfg["receivers"]["points"]["path"] == str((tmp_path / "pts.csv").resolve())
     assert cfg["propagation"]["reflection"]["max_order_point"] == 3          # 국내 고시 별표 2 제8호
+
+
+def test_dem_zip_reads_same_as_raster(tmp_path):
+    """DEM 을 zip 그대로 지정해도 읽음(국토정보플랫폼 DEM 은 zip 으로 받음, 2026-11-15 v0.8.1): 래스터 하나가 든 zip 은
+    푼 파일과 같은 값, 래스터가 없거나 여러 개면 무엇을 쓸지 몰라 오류"""
+    import zipfile
+    import rasterio
+    from rasterio.transform import from_origin
+    from sori import inputs as IN
+    tif = tmp_path / "dem.tif"
+    a = np.arange(100, dtype="float32").reshape(10, 10)
+    with rasterio.open(tif, "w", driver="GTiff", height=10, width=10, count=1, dtype="float32", crs="EPSG:5186",
+                       transform=from_origin(1000.0, 2000.0, 10.0, 10.0)) as ds:
+        ds.write(a, 1)
+    z = tmp_path / "한글_DEM.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.write(tif, "37705/dem.tif")
+    xs, ys = np.array([1025.0, 1063.0]), np.array([1975.0, 1931.0])
+    v = IN.sample_dem(str(z), xs, ys, 5186)
+    assert np.allclose(v, IN.sample_dem(str(tif), xs, ys, 5186)) and np.isfinite(v).all()
+    with zipfile.ZipFile(tmp_path / "two.zip", "w") as zf:
+        zf.write(tif, "a.tif"); zf.write(tif, "b.tif")
+    with pytest.raises(RuntimeError, match="2개"):
+        IN.sample_dem(str(tmp_path / "two.zip"), xs, ys, 5186)
+    with zipfile.ZipFile(tmp_path / "none.zip", "w") as zf:
+        zf.writestr("readme.txt", "x")
+    with pytest.raises(RuntimeError, match="0개"):
+        IN.dem_source(str(tmp_path / "none.zip"))

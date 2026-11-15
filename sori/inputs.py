@@ -101,12 +101,30 @@ def prepare_roads(cfg, road):
 
 
 # ------------------------------------------------------------------ DEM
+DEM_EXTS = (".img", ".tif", ".tiff")
+
+
+def dem_source(path):
+    """rasterio 로 열 DEM 경로. zip(국토정보플랫폼 DEM 은 zip 으로 받음)이면 안의 래스터 하나를 GDAL /vsizip/ 경로로.
+    zip 안에 래스터가 없거나 여러 개면 RuntimeError(어느 파일을 쓸지 모르므로)"""
+    p = str(path)
+    if not p.lower().endswith(".zip"):
+        return p
+    import zipfile
+    with zipfile.ZipFile(p) as zf:
+        names = [n for n in zf.namelist() if n.lower().endswith(DEM_EXTS)]
+    if len(names) != 1:
+        raise RuntimeError(f"DEM zip '{p}' 안의 래스터({', '.join(DEM_EXTS)})가 {len(names)}개 — "
+                           + ("압축을 풀어 쓸 파일 하나를 지정하세요: " + ", ".join(names) if names else "DEM 파일이 아님"))
+    return f"/vsizip/{p}/{names[0]}"
+
+
 def sample_dem(path, xs, ys, crs):
-    """DEM 래스터를 (xs, ys)[계산 CRS]에서 쌍선형 표본추출. 무효값은 NaN"""
+    """DEM 래스터를 (xs, ys)[계산 CRS]에서 쌍선형 표본추출. 무효값은 NaN. path 는 래스터 또는 래스터 하나가 든 zip"""
     import rasterio
     from pyproj import Transformer
     from scipy.ndimage import map_coordinates
-    with rasterio.open(path) as ds:
+    with rasterio.open(dem_source(path)) as ds:
         arr = ds.read(1).astype(np.float64)
         if ds.nodata is not None:
             arr[arr == ds.nodata] = np.nan
