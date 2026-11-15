@@ -27,4 +27,3 @@ receivers:
 
 # propagation: {reflection: {max_order_grid: 1, max_order_facade: 2, max_order_point: 2, own_facade: all}}   # 보고서 재현용
 
-plots: {limits: {LrT: 68, LrN: 58, label: "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"}}

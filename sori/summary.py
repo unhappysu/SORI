@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 결과 요약·입력 도우미(계산 커널과 무관, 화면 없이 시험 가능).
-  - 건물 단위 표: 건물마다 벽면(전 층) 최고 레벨, 최고 층, 수음점 수, 용도지역 기준과 초과량
+  - 건물 단위 표: 건물마다 벽면(전 층) 최고 레벨, 최고 층, 수음점 수
   - 건물별 노출: 최고 레벨 5 dB 등급별 건물 수
-  - 용도지역별 도로교통소음 관리기준(소음·진동관리법 시행규칙 제25조 관련 별표 '교통소음·진동의 관리기준', 도로):
-      가 지역(주거·녹지지역 등, 학교·병원 부지 50 m 이내 등) 주간 68 / 야간 58 dB(A)
-      나 지역(상업·공업·농림지역 등, 미고시지역)             주간 73 / 야간 63 dB(A)
-    ※ 기준은 측정 Leq dB(A) 에 대한 것이고 SORI 값은 예측 평가레벨(교차로 보정 D_K 포함) — 비교는 참고용
+  (소음 관리기준 대조는 하지 않음 — 2026-11-15 사용자 결정: 기준은 지역·건물마다 달라 프로그램이 정하지 않음)
   - 성분 다시 합치기: 고른 성분(직접·1차·2차·3차·4차 이상)의 에너지 합(주간 LrT 만 성분이 있음)
   - 국내 12종 차종 → RLS-19 차량군(Pkw / Lkw1 / Lkw2) 변환(가정 대응표 — 근거 확인 필요)
   - 계산 전 예상 점 수·시간
@@ -17,59 +14,13 @@ import math
 import numpy as np
 import pandas as pd
 
-ZONE_LIMITS = {
-    "A": {"LrT": 68.0, "LrN": 58.0, "label": "가 지역(주거·녹지지역 등)"},
-    "B": {"LrT": 73.0, "LrN": 63.0, "label": "나 지역(상업·공업지역 등)"},
-}
-ZONE_SOURCE = "소음·진동관리법 시행규칙 제25조 관련 별표(교통소음·진동의 관리기준, 도로) — 측정 Leq dB(A) 기준"
-_B_WORDS = ("상업", "공업", "농림", "생산관리", "산업", "유통", "미고시", "commercial", "industrial")
-
 CLASS_EDGES = [35, 40, 45, 50, 55, 60, 65, 70, 75, 80]
 
 
-def zone_code(text, default="A"):
-    """용도지역 글자 → 'A'(가 지역) | 'B'(나 지역). 'A'·'B'·'가'·'나' 도 받음. 빈칸·모르는 값은 default"""
-    t = str(text or "").strip()
-    if t.upper() in ("A", "B"):
-        return t.upper()
-    if t in ("가", "가 지역", "가지역"):
-        return "A"
-    if t in ("나", "나 지역", "나지역"):
-        return "B"
-    if not t or t.lower() == "nan":
-        return default
-    return "B" if any(w in t.lower() for w in _B_WORDS) else "A"
-
-
-def building_zones(cfg, bld):
-    """건물별 용도지역 코드(Series, index = bid). input.zones.path(다각형 SHP/GPKG, field 열)가 있으면 건물 안의
-    대표점이 들어가는 다각형의 값, 없거나 밖이면 input.zones.default"""
-    z = (cfg.get("input") or {}).get("zones") or {}
-    default = zone_code(z.get("default", "A"))
-    out = pd.Series(default, index=bld.bid.values, dtype=object)
-    if not z.get("path"):
-        return out
-    import geopandas as gpd
-    Z = gpd.read_file(z["path"])
-    if Z.crs is None:
-        Z = Z.set_crs(cfg["crs"])
-    Z = Z.to_crs(cfg["crs"])
-    field = z.get("field") or "zone"
-    if field not in Z.columns:
-        raise ValueError(f"용도지역 파일에 '{field}' 열이 없음(input.zones.field): {list(Z.columns)}")
-    pts = gpd.GeoDataFrame({"bid": bld.bid.values}, geometry=bld.geometry.representative_point().values, crs=Z.crs)
-    hit = gpd.sjoin(pts, Z[[field, "geometry"]], how="left", predicate="within").drop_duplicates("bid")
-    for b, v in zip(hit.bid, hit[field]):
-        out[b] = zone_code(v, default)
-    return out
-
-
-def building_table(FR, bld, zones=None, limits=None):
+def building_table(FR, bld):
     """건물 단위 표(벽면 결과가 있는 건물만), LrT 최고 내림차순.
-    열: bid, 이름, 종류, 층수, 수음점, LrT_max, LrN_max, 최고층(LrT 최고인 층), 지역, 기준_주, 기준_야, 초과_주, 초과_야, 초과
-    zones: bid → 'A'/'B'(없으면 모두 A). limits: {LrT, LrN} 를 주면 지역과 무관하게 그 기준(plots.limits)"""
-    cols = ["bid", "이름", "종류", "층수", "수음점", "LrT_max", "LrN_max", "최고층", "지역", "기준_주", "기준_야",
-            "초과_주", "초과_야", "초과"]
+    열: bid, 이름, 종류, 층수, 수음점, LrT_max, LrN_max, 최고층(LrT 최고인 층)"""
+    cols = ["bid", "이름", "종류", "층수", "수음점", "LrT_max", "LrN_max", "최고층"]
     if FR is None or not len(FR):
         return pd.DataFrame(columns=cols)
     g = FR.groupby("bid")
@@ -81,16 +32,6 @@ def building_table(FR, bld, zones=None, limits=None):
     T["이름"] = T["이름"].replace({"nan": "", "None": ""})
     T["종류"] = [str(B.kind.get(b, "")) if "kind" in B else "" for b in T.bid]
     T["층수"] = [int(B.floors.get(b, 0)) if "floors" in B else 0 for b in T.bid]
-    zc = [(zones.get(b, "A") if zones is not None else "A") for b in T.bid]
-    T["지역"] = zc
-    if limits and "LrT" in limits and "LrN" in limits:
-        T["기준_주"], T["기준_야"] = float(limits["LrT"]), float(limits["LrN"])
-    else:
-        T["기준_주"] = [ZONE_LIMITS[z]["LrT"] for z in zc]
-        T["기준_야"] = [ZONE_LIMITS[z]["LrN"] for z in zc]
-    T["초과_주"] = (T.LrT_max - T["기준_주"]).round(2)
-    T["초과_야"] = (T.LrN_max - T["기준_야"]).round(2)
-    T["초과"] = np.where((T["초과_주"] > 0) | (T["초과_야"] > 0), "초과", "")
     return T.sort_values("LrT_max", ascending=False).reset_index(drop=True)[cols]
 
 

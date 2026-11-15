@@ -2,9 +2,12 @@
 """설정 파일(YAML) 로더. 사용자가 지정하지 않은 항목은 DEFAULTS를 사용함.
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
 import copy
+import logging
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger("sori")
 
 DEFAULTS = {
     "project": {"name": "소음지도", "output_dir": "output",
@@ -79,11 +82,6 @@ DEFAULTS = {
         "barriers": {
             "path": None,                          # 방음벽 CSV: barrier_id, height(지면 위 m), type(reflect/absorb/high/none), refl_loss(dB, 선택), coords("x y; x y; …")
             "piece": 10.0,                         # 반사면·지면고를 나누는 조각 길이(m)
-        },
-        "zones": {
-            "path": None,                          # 용도지역 다각형(SHP/GPKG) — 건물별 도로교통소음 관리기준 대조(summary.py)
-            "field": "zone",                       # 용도지역 이름 열(값: A/B, 가/나 또는 '제2종일반주거지역'·'일반상업지역' 등)
-            "default": "A",                        # 파일이 없거나 다각형 밖 건물: A = 가 지역(주거 등 68/58), B = 나 지역(상업·공업 등 73/63)
         },
         "road_alias": {},                          # 같은 도로축의 이름 변경 구간 {"전농로25길": "전농로"}
         "surface_map": {"아스팔트": "ref", "아스팔트콘크리트": "ref", "콘크리트": "ref",
@@ -162,9 +160,11 @@ DEFAULTS = {
                                                    #   point_id, period(day/night), Leq  또는  point_id, LrT_meas, LrN_meas
     },
     "plots": {"font": None, "dpi": 130, "targets_3d": None, "radius_3d": 105.0,
-              "limits": None,                       # 기준 초과 지도: {LrT: 68, LrN: 58, label: "..."}
               "elev_3d": 22.0, "azim_3d": 135.0},
 }
+
+# 없앤 설정 항목(이전 설정 파일에 있어도 오류 없이 무시). 2026-11-15: 소음 관리기준 대조(용도지역·기준값) 삭제
+OBSOLETE = ("input.zones", "plots.limits")
 
 
 class Cfg(dict):
@@ -205,7 +205,10 @@ def load(path):
     for k in ("dem", "traffic", "junctions", "road_override", "barriers"):
         c["input"][k]["path"] = rp(c["input"][k]["path"])
     c["input"]["ground"]["soft_polygons"] = rp(c["input"]["ground"]["soft_polygons"])
-    c["input"]["zones"]["path"] = rp(c["input"]["zones"]["path"])
+    for k in OBSOLETE:                                    # 없앤 항목: 읽기는 하되 쓰지 않음(이전 설정 파일 호환)
+        sec, name = k.split(".")
+        if name in (c.get(sec) or {}):
+            log.warning("설정 %s 는 더 이상 쓰지 않음(소음 기준 대조 기능 삭제, 2026-11-15) — 무시", k)
     c["receivers"]["points"]["path"] = rp(c["receivers"]["points"]["path"])
     c["receivers"]["points"]["measured"] = rp(c["receivers"]["points"].get("measured"))
     c["project"]["output_dir"] = rp(c["project"]["output_dir"])

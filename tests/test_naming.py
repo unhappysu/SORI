@@ -18,7 +18,7 @@ def test_rule_name_parts():
     assert naming.rule_name(c, "facade", "LrN") == "전농사거리_현황-ISO_야간_facade"
     assert naming.rule_name(c, "facade") == "전농사거리_현황-ISO_주야_facade"
     c["propagation_method"] = "rls19"
-    assert naming.rule_name(c, "grid", "LrN", "_exceed_h4m") == "전농사거리_현황-RLS_야간_grid_exceed_h4m"
+    assert naming.rule_name(c, "grid", "LrN", "_contour_h4m") == "전농사거리_현황-RLS_야간_grid_contour_h4m"
 
 
 def test_rule_name_sanitizes_separators():

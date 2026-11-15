@@ -503,17 +503,17 @@ class MapView(QtWidgets.QWidget):
         w, h = max(self.canvas.width(), 50) * r, max(self.canvas.height(), 50) * r
         self.fig.set_size_inches(w / self.fig.dpi, h / self.fig.dpi, forward=False)
 
-    def draw_hq_grid(self, C, cfg, key, h, redraw, compact=False, G=None, note="", labels=False, limit=None):
+    def draw_hq_grid(self, C, cfg, key, h, redraw, compact=False, G=None, note="", labels=False):
         """보고서 수준 격자 소음지도(maps_hq.draw_grid, 그림 파일 HQ_grid_* 와 같은 그리기).
         보고서 틀은 A3(16.54 × 11.69 in) 기준 글자 크기이므로, 창 안에 A3 이상이 담기도록 화면 dpi 를 맞춤.
         compact=True(앱 화면): 정보란 없이 지도만 창 가득(maps_hq.draw_grid_compact, 화면 dpi 그대로). False 는 지도 저장 때만.
-        labels·limit: 지도만 크게일 때 등음선 dB 숫자·기준선(draw_grid_compact)"""
+        labels: 지도만 크게일 때 등음선 dB 숫자(draw_grid_compact)"""
         from sori.maps_hq import draw_grid, draw_grid_compact
         self._clear(hq=redraw)
         self.fig.set_layout_engine(None)                 # 보고서 틀은 고정 배치
         if compact or G is not None:                     # 조건을 건 표(성분 고르기)는 지도만 크게로만 그림
             self._set_dpi(self._base_dpi)
-            self.ax = draw_grid_compact(self.fig, C, cfg, key, h, G=G, note=note, labels=labels, limit=limit)
+            self.ax = draw_grid_compact(self.fig, C, cfg, key, h, G=G, note=note, labels=labels)
         else:
             w, hgt = max(self.canvas.width(), 50), max(self.canvas.height(), 50)
             self._set_dpi(max(20.0, min(w / 16.54, hgt / 11.69)))
@@ -805,7 +805,7 @@ class MapView(QtWidgets.QWidget):
         sx.text(1.005, 1.0, "B", transform=sx.transAxes, color="#1f5fbf", weight="bold", ha="left", va="bottom")
         sx.set_xlabel(f"A로부터 거리 (m) — 계산점 간격 가로 {ds:g} m · 세로 {dz:g} m, 반사 {info['reflection_order']}차",
                       fontsize=7.5)
-        # 아래: 지면 위 4 m·1.5 m 높이의 A→B 값(기준선·건물 구간) — 단면과 같은 가로축
+        # 아래: 지면 위 4 m·1.5 m 높이의 A→B 값(건물 구간) — 단면과 같은 가로축
         self.fig.canvas.draw()                                        # 단면 칸 실제 위치(세로 비 적용 뒤)
         pos = sx.get_position()
         px = self.ax_prof = self.fig.add_axes([pos.x0, 0.075, pos.width, max(0.12, min(0.22, pos.y0 - 0.17))])
@@ -818,10 +818,6 @@ class MapView(QtWidgets.QWidget):
             ps, pv = section_profile(D, key, h)
             if np.isfinite(pv).any():
                 px.plot(ps, pv, ls=ls, color="#222222", lw=1.2, label=lab, zorder=3)
-        lim = {"LrT": 68.0, "LrN": 58.0}.get(key)
-        if lim is not None:
-            px.axhline(lim, color="#d00000", lw=0.9, ls=(0, (2, 2)), zorder=2)
-            px.text(0.005 * L, lim + 0.4, f"기준 {lim:g} dB", color="#d00000", fontsize=7, va="bottom", ha="left")
         px.set_xlim(0, L)
         px.grid(axis="y", color="#e6e6e6", lw=0.6)
         px.set_ylabel(f"{key} dB", fontsize=7.5)
@@ -931,9 +927,7 @@ CHOICE_LABELS = {**METHODS,
                  "flatten": "평평하게 — 도로폭 안을 중심선 높이로 (권장)",
                  "dtm": "지형 그대로 — 등고선 지형",
                  "exclude": "제외 (기본)", "include": "포함",
-                 "general": "일반법 — 옥타브 대역", "alternative": "대체법 — A특성",
-                 "A": "가 지역 — 주간 68 / 야간 58 dB(A)",
-                 "B": "나 지역 — 주간 73 / 야간 63 dB(A)"}
+                 "general": "일반법 — 옥타브 대역", "alternative": "대체법 — A특성"}
 INPUT_FIELDS = [
     ("프로젝트", 0, [
         ("project.name", "이름", "text", None, None, None),
@@ -952,11 +946,6 @@ INPUT_FIELDS = [
         ("input.ground.soft_polygons", "녹지 다각형", "file?", None, "비우면 없음", "SHP/GPKG"),
         ("input.road_override.path", "도로 확인값 CSV", "file?", None, "‘차로 수’ 탭에서 만듦",
          "방향별 차로 수 등(‘차로 수’ 탭에서 만듦), 비우면 없음"),
-        ("input.zones.path", "용도지역 다각형", "file?", None, "비우면 모두 기본 지역",
-         "SHP/GPKG — 건물별 소음 기준 대조용, 비우면 모두 기본 지역"),
-        ("input.zones.field", "용도지역 이름 열", "text", None, "예: zone, 용도지역명", None),
-        ("input.zones.default", "기본 지역", "choice", ["A", "B"], None,
-         "A = 가 지역(주거·녹지지역 등), B = 나 지역(상업·공업지역 등)"),
     ]),
     ("점 수음점", 0, [
         ("receivers.points.path", "점 수음점 CSV", "file?", None, "point_id, x, y, h", None),
@@ -2880,14 +2869,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_fval.setToolTip("켜면 격자 지도 위 건물 외벽을 따라 벽면 결과(층별 최댓값)를 같은 색 등급의 띠로 함께 표시")
         self.act_bmax = tb.addAction("건물별 값", self.redraw)
         self.act_bmax.setCheckable(True)
-        self.act_bmax.setToolTip("켜면 건물을 벽면(전 층) 최고 레벨 색으로 칠함. 용도지역 기준을 넘는 건물은 굵은 자주색 테두리.\n"
+        self.act_bmax.setToolTip("켜면 건물을 벽면(전 층) 최고 레벨 색으로 칠함.\n"
                                  "건물 단위 표(정렬·CSV 저장)는 아래 ‘건물별’ 탭")
         self.act_bmax.setEnabled(False)
-        self.act_clab = QtGui.QAction("등음선 숫자·기준선", self)
+        self.act_clab = QtGui.QAction("등음선 숫자", self)
         self.act_clab.setCheckable(True)
         self.act_clab.setChecked(True)
-        self.act_clab.setToolTip("켜면 격자 지도 등음선에 dB 숫자를, 관리기준 값(설정 plots.limits, 없으면 주간 68 / 야간 58 dB)의 "
-                                 "등음선을 굵은 남색 선으로 표시")
+        self.act_clab.setToolTip("켜면 격자 지도 등음선에 dB 숫자를 표시")
         self.act_clab.triggered.connect(self.redraw)
         cm = self.menu_cond = QtWidgets.QMenu(self)
         self.act_comp = {}
@@ -3919,10 +3907,9 @@ class MainWindow(QtWidgets.QMainWindow):
                     # 화면은 나란히·한 창 모두 지도만 크게, 지도 저장만 보고서 틀(A3). 2026-11-14: 한 창 보기에서 A3 틀을
                     # 창에 맞추느라 dpi 가 약 39 로 내려가 지도가 나란히 보기보다 작고 글자가 읽히지 않던 문제
                     compact = not getattr(self, "_force_report", False)
-                    on = self.act_clab.isChecked()
                     return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
                                                  lambda: (self._redraw_grid(), self._grid_extras()), compact=compact,
-                                                 G=Gsel, note=note, labels=on, limit=self._grid_limit(key) if on else None)
+                                                 G=Gsel, note=note, labels=self.act_clab.isChecked())
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key, Gh)
@@ -3936,15 +3923,6 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.map.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
             self._grid_now = None
-
-    def _grid_limit(self, key):
-        """격자 지도 기준선 값: 설정 plots.limits, 없으면 maps_hq.DEFAULT_LIMITS(가 지역 주간 68 / 야간 58 dB)"""
-        from sori.maps_hq import DEFAULT_LIMITS
-        lim = {**DEFAULT_LIMITS, **(((self.cfg or {}).get("plots") or {}).get("limits") or {})}
-        try:
-            return float(lim[key])
-        except (KeyError, TypeError, ValueError):
-            return None
 
     def _hq_ctx(self):
         """보고서 지도용 자료(maps_hq.Ctx: 건물·도로 띠·교차로·교통량·결과 전파 방법). 결과 폴더별로 한 번만 읽음.
@@ -4105,9 +4083,6 @@ class MainWindow(QtWidgets.QMainWindow):
         rows = [("건물 번호", str(bid)), ("종류", str(b.kind)), ("층수", str(int(b.floors))), ("높이 m", f"{b.H:.1f}"),
                 ("벽 수(계산)", str(FRb.fid.nunique())), ("수음점", f"{len(FRb):,}"),
                 (f"{key} 최대 dB", f"{FRb[key].max():.1f}"), (f"{key} 최소 dB", f"{FRb[key].min():.1f}")]
-        lim = pc.get("limits") or {}
-        if key in lim:
-            rows.append((f"기준 {lim[key]} dB 초과", f"{int((FRb[key] > float(lim[key])).sum()):,}점"))
         rows.append(("— 층별 최대", "dB"))                # 3D 그림 옆 숫자 대신 여기서(위층부터)
         for fl, v in FRb.groupby("floor")[key].max().sort_index(ascending=False).items():
             rows.append((f"{int(fl)}층", f"{v:.1f}"))
@@ -4442,7 +4417,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._show_props(rows, f"격자점 {key} {r[key]:.1f} dB")
         self.lbl_status.setText(f"격자점 ({r.x:.1f}, {r.y:.1f}) {key} {r[key]:.1f} dB")
 
-    # ------------------------------------------------------------ 건물 단위 표·건물별 값·용도지역 기준
+    # ------------------------------------------------------------ 건물 단위 표·건물별 값
     def _building_panel(self):
         w = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(w)
@@ -4455,14 +4430,10 @@ class MainWindow(QtWidgets.QMainWindow):
         row.addWidget(QtWidgets.QLabel("건물 종류"))
         self.cb_bld_kind = QtWidgets.QComboBox()
         row.addWidget(self.cb_bld_kind)
-        self.chk_bld_exc = QtWidgets.QCheckBox("기준 초과 건물만")
         for c in (self.cb_bld_floor, self.cb_bld_kind):
             c.setMinimumWidth(110)
             c.currentIndexChanged.connect(self._fill_building_table)
             c.currentIndexChanged.connect(self._bld_filter_changed)
-        self.chk_bld_exc.toggled.connect(self._fill_building_table)
-        self.chk_bld_exc.toggled.connect(self._bld_filter_changed)
-        row.addWidget(self.chk_bld_exc)
         self.lbl_bld = QtWidgets.QLabel("")
         self.lbl_bld.setStyleSheet("color: #555555;")
         row.addWidget(self.lbl_bld, 1)
@@ -4478,7 +4449,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return w
 
     def _building_table(self):
-        """건물 단위 표(벽면 결과가 있는 건물): 최고 레벨·최고 층·용도지역 기준·초과량(sori.summary.building_table)"""
+        """건물 단위 표(벽면 결과가 있는 건물): 최고 레벨·최고 층(sori.summary.building_table)"""
         from sori import summary as SM
         R = self.R
         if R.get("facade") is None or R.get("buildings") is None or not len(R["facade"]):
@@ -4487,14 +4458,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fl = self.cb_bld_floor.currentData()
         if fl is not None:                                          # 층 거름: 그 층 벽면 값만
             FR = FR[FR.floor == fl]
-        zones = None
-        lim = ((self.cfg or {}).get("plots") or {}).get("limits")      # 설정에 기준을 직접 넣었으면 그 값이 우선
-        try:
-            if self.cfg is not None:
-                zones = SM.building_zones(self.cfg, R["buildings"])
-        except Exception as e:
-            log.warning("용도지역 파일을 읽지 못해 모두 기본 지역으로 봄: %s", e)
-        T = SM.building_table(FR, R["buildings"], zones, lim)
+        T = SM.building_table(FR, R["buildings"])
         kind = self.cb_bld_kind.currentData()
         return T[T["종류"] == kind].reset_index(drop=True) if kind is not None and len(T) else T
 
@@ -4513,25 +4477,18 @@ class MainWindow(QtWidgets.QMainWindow):
             cb.blockSignals(False)
 
     def _fill_building_table(self, *_):
-        from sori import summary as SM
         T = self._bld_all = self._building_table()
-        FR = self.R.get("facade")                                   # 아래 '벽면' 표도 같은 조건(층·종류·초과)
+        FR = self.R.get("facade")                                   # 아래 '벽면' 표도 같은 조건(층·종류)
         if FR is not None and len(FR) and self.view != "facade":
             F2 = FR
             if self.cb_bld_floor.currentData() is not None:
                 F2 = F2[F2.floor == self.cb_bld_floor.currentData()]
-            if self.cb_bld_kind.currentData() is not None or self.chk_bld_exc.isChecked():
-                keep = T.bid if not self.chk_bld_exc.isChecked() else T.bid[T["초과"] == "초과"]
-                F2 = F2[F2.bid.isin(keep)]
+            if self.cb_bld_kind.currentData() is not None:
+                F2 = F2[F2.bid.isin(T.bid)]
             self.m_facade.set(F2.sort_values("LrT", ascending=False).head(200).reset_index(drop=True))
-        if len(T) and self.chk_bld_exc.isChecked():
-            T = T[T["초과"] == "초과"].reset_index(drop=True)
         self.m_bld.set(T if len(T) else None)
-        A = self._bld_all
-        if len(A):
-            n = int((A["초과"] == "초과").sum())
-            self.lbl_bld.setText(f"건물 {len(A):,}동 · 기준 초과 {n:,}동(주간 {int((A['초과_주'] > 0).sum()):,}, "
-                                 f"야간 {int((A['초과_야'] > 0).sum()):,}) — 기준: {SM.ZONE_SOURCE}. 줄을 누르면 그 건물로")
+        if len(T):
+            self.lbl_bld.setText(f"건물 {len(T):,}동 — 줄을 누르면 그 건물로")
         else:
             self.lbl_bld.setText("벽면 계산 결과가 없습니다.")
 
@@ -4561,7 +4518,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return Path(path)
 
     def _building_overlay(self):
-        """‘건물별 값’: 건물을 벽면 최고 레벨 색으로 칠하고, 기준을 넘는 건물은 굵은 테두리"""
+        """‘건물별 값’: 건물을 벽면 최고 레벨 색으로 칠함"""
         ax, A, B = self.map.ax, getattr(self, "_bld_all", None), self.R.get("buildings")
         if (not self.act_bmax.isChecked() or self.view != "grid" or ax is None or A is None or not len(A)
                 or B is None or self.act_diff.isChecked()):
@@ -4573,16 +4530,11 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             from sori.plots import classes
             cmap, norm, _ = classes(30, 5)
-        if self.chk_bld_exc.isChecked():
-            A = A[A["초과"] == "초과"]
-        E = B.merge(A[["bid", f"{key}_max", "초과_주", "초과_야"]], on="bid")
+        E = B.merge(A[["bid", f"{key}_max"]], on="bid")
         if not len(E):
             return
         xl, yl = ax.get_xlim(), ax.get_ylim()
         E.plot(ax=ax, color=[cmap(norm(v)) for v in E[f"{key}_max"]], ec="#3a3a3a", lw=0.35, zorder=14, gid="bmax")
-        X = E[E["초과_주" if key == "LrT" else "초과_야"] > 0]
-        if len(X):
-            X.boundary.plot(ax=ax, color="#8e0055", lw=1.6, zorder=15)
         ax.set_xlabel(""); ax.set_ylabel("")
         ax.set_xlim(xl)
         ax.set_ylim(yl)
@@ -4599,7 +4551,6 @@ class MainWindow(QtWidgets.QMainWindow):
         for (lab, a), (_l, b) in zip(d, n):
             if a or b:
                 rows.append((f"{lab} dB", f"{a:,} · {b:,}"))
-        rows.append(("기준 초과 건물", f"{int((A['초과'] == '초과').sum()):,} / {len(A):,}동"))
         return rows
 
     # ------------------------------------------------------------ 측정 − 계산 차이

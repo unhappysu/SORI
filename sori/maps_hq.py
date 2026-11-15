@@ -2,10 +2,9 @@
 """
 보고서·발표용 고품질 지도 (A3 가로, PNG 300 dpi + PDF 벡터)
   - grid_map      : 격자 소음지도(등음선), 5 dB 등급, DIN 45682 색 순서
-  - exceed_map    : 기준 초과 지도(초과량 등급 + 기준 초과 건물 표시)
   - facade_bands  : 파사드 소음지도 — 벽면을 따라 색 띠(층별 최댓값)
   - building_map  : 건물별 평가도 — 건물을 벽면 최고레벨로 채색, 상위 건물 표기
-공통 요소: 도로명, 방위표, 축척, 좌표 눈금(EPSG), 정보란(기준·자료·교통량 가정), AI 제작 표기
+공통 요소: 도로명, 방위표, 축척, 좌표 눈금(EPSG), 정보란(자료·교통량 가정), AI 제작 표기
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음.
 """
 import math
@@ -45,7 +44,7 @@ DIN_COLS = ["#c8e6a0",  # ≤35 hellgrün
             "#283cb4",  # 75–80 blau
             "#141464"]  # >80 dunkelblau
 # 앱 화면용 단순 색표(2026-11-14 사용자: "모든 색이 들어가서 별로, 색을 줄여줘"): 노랑 → 주황 → 빨강 한 계열 7단계,
-# 50 dB 이하는 한 칸(옅은 회녹색). 경계 55·60·65·70 은 국내 도로교통소음 기준(가 58/68·나 63/73 dB) 주변을 5 dB 로 가름
+# 50 dB 이하는 한 칸(옅은 회녹색), 그 위는 5 dB 등급
 PALETTES = {
     "din": ([35, 40, 45, 50, 55, 60, 65, 70, 75, 80], list(DIN_COLS)),
     "simple": ([50, 55, 60, 65, 70, 75],
@@ -81,15 +80,11 @@ def set_palette(name):
 
 def palette_name():
     return next((k for k, (e, c) in PALETTES.items() if e == DIN_EDGES and c == DIN_COLS), "din")
-EXC_EDGES = [0, 3, 6, 10]
-EXC_COLS = ["#e9ede6", "#ffd84d", "#ff8a1f", "#d7261e", "#7a0a2a"]
 ROAD_FC = "#d9d9d9"
 BLD_FC = "#f2f2f2"
 BLD_EC = "#3a3a3a"
 BLD_LW = 0.35
 
-DEFAULT_LIMITS = {"LrT": 68.0, "LrN": 58.0,
-                  "label": "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"}
 KEYNAME = {"LrT": "LrT 주간 (06–22시)", "LrN": "LrN 야간 (22–06시)"}
 
 
@@ -481,9 +476,6 @@ def draw_grid(fig, C, cfg, key, h):
     return ax
 
 
-LIMIT_COLOR = "#1f3a93"      # 앱 격자 지도 기준선(노랑–빨강 색표와 섞이지 않는 남색)
-
-
 def contour_labels(ax, cs, bbox, gap=0.12, per_level=5, avoid=None, z=31):
     """등음선 dB 숫자(앱 화면, 2026-11-14): 선을 끊지 않고 흰 테두리 글자로 얹음. 건물·노면(avoid 도형) 위이거나,
     이미 놓인 숫자와 지도 폭의 gap 배 안쪽이거나, 같은 값이 per_level 개를 넘으면 뺌(골목의 작은 고리마다 숫자가
@@ -510,11 +502,10 @@ def contour_labels(ax, cs, bbox, gap=0.12, per_level=5, avoid=None, z=31):
     return kept
 
 
-def draw_grid_compact(fig, C, cfg, key, h, G=None, note="", labels=False, limit=None):
+def draw_grid_compact(fig, C, cfg, key, h, G=None, note="", labels=False):
     """좁은 창(데스크톱 화면의 격자 + 3D 나란히 보기)용 지도만 크게: draw_grid 와 같은 지도 레이어(등음선 채움·
     건물·간선 노면·신호교차로·도로명·방위표·축척)에 범례는 제목 아래 가로 띠로(지도를 가리지 않게). 정보란·계산 조건은 없음
-    (보고서 그림·지도 저장은 draw_grid). 앱 화면(2026-11-14): labels=True 면 등음선에 dB 숫자,
-    limit(dB) 를 주면 그 값의 등음선을 굵은 남색 기준선으로(범례 띠 오른쪽에 표시). 반환: 지도 축(ax)"""
+    (보고서 그림·지도 저장은 draw_grid). 앱 화면(2026-11-14): labels=True 면 등음선에 dB 숫자. 반환: 지도 축(ax)"""
     bbox = grid_bbox(cfg)
     gx, gy, step, Am, A = grid_array(C, key, h, bbox, G=G)       # G: 화면에서 조건을 걸어 다시 합친 표(성분 고르기)
     ax = fig.add_axes([0.005, 0.005, 0.99, 0.905])
@@ -524,19 +515,10 @@ def draw_grid_compact(fig, C, cfg, key, h, G=None, note="", labels=False, limit=
     cmap, norm = din_cmap()
     ax.contourf(gx, gy, Am, levels=[-200] + DIN_EDGES + [200], cmap=cmap, norm=norm, zorder=1, antialiased=True)
     cs = ax.contour(gx, gy, Am, levels=DIN_EDGES, colors="#333", linewidths=0.25, alpha=0.6, zorder=2)
-    avoid = None
     if labels:                                                       # 숫자는 건물·간선 노면 밖에만
         v = box(*bbox)
         avoid = C.bld[C.bld.intersects(v)].geometry.union_all().union(C.road_band.intersection(v))
         contour_labels(ax, cs, bbox, avoid=avoid)
-    if limit is not None and np.nanmin(Am) < limit < np.nanmax(Am):  # 기준선은 건물 위(건물 아래면 길가에서 거의 가려짐)
-        cl = ax.contour(gx, gy, Am, levels=[limit], colors=LIMIT_COLOR, linewidths=1.4, zorder=25)
-        cl.set_path_effects([pe.withStroke(linewidth=3.0, foreground="white")])
-        if labels:
-            for t in contour_labels(ax, cl, bbox, gap=0.25, per_level=4, avoid=avoid, z=32):
-                t.set_text(f"기준 {limit:g}")
-                t.set_color(LIMIT_COLOR)
-                t.set_fontweight("bold")
     base_layers(ax, C, bbox)
     sig = C.J[C.J.type == "signal"].groupby("cluster")[["x", "y"]].mean()
     ax.scatter(sig.x, sig.y, marker="o", s=50, fc="white", ec="k", lw=1.1, zorder=35)
@@ -545,12 +527,7 @@ def draw_grid_compact(fig, C, cfg, key, h, G=None, note="", labels=False, limit=
     ax.set_anchor("N")                                                # 세로로 긴 창에서 지도를 위쪽에 붙임
     ax.set_xticklabels([]); ax.set_yticklabels([])                    # 좁은 창에서는 좌표 글자를 뺌
     ax.set_xlabel(""); ax.set_ylabel("")                            # geopandas 가 붙이는 좌표축 이름 지움
-    lg = legend_strip(fig, [0.01, 0.915, 0.98, 0.04])                # 범례: 제목 아래 가로 띠(지도를 가리지 않게)
-    if limit is not None:
-        n = len(DIN_COLS)
-        lg.set_xlim(-1.6, n + 2.4)                                    # 오른쪽에 기준선 칸
-        lg.plot([n + 0.25, n + 0.95], [0.72, 0.72], color=LIMIT_COLOR, lw=1.6)
-        lg.text(n + 1.05, 0.72, f"기준 {limit:g} dB", fontsize=7, va="center", color=LIMIT_COLOR, weight="bold")
+    legend_strip(fig, [0.01, 0.915, 0.98, 0.04])                     # 범례: 제목 아래 가로 띠(지도를 가리지 않게)
     return ax
 
 
@@ -570,47 +547,7 @@ def legend_strip(fig, rect, road=True):
     return lg
 
 
-# ------------------------------------------------------------------ 2) 기준 초과 지도
-def exceed_map(cfg, key="LrT", h=None, limits=None):
-    C = Ctx(cfg)
-    lim = dict(DEFAULT_LIMITS, **(limits or cfg.get("plots", {}).get("limits") or {}))
-    L = float(lim[key])
-    h = h if h is not None else cfg["receivers"]["grid"]["heights"][0]
-    bbox = grid_bbox(cfg)
-    gx, gy, step, Am, A = grid_array(C, key, h, bbox)
-    fig, ax, side = setup_fig(f"{cfg['project']['name']} 기준 초과 지도 — {KEYNAME[key]}",
-                              f"기준값 {L:g} dB(A) 대비 초과량 · 수음 높이 {h:g} m · 격자 {step:g} m")
-    E = Am - L
-    cmap = ListedColormap(EXC_COLS); norm = BoundaryNorm([-500] + EXC_EDGES + [500], len(EXC_COLS))
-    ax.contourf(gx, gy, E, levels=[-500] + EXC_EDGES + [500], cmap=cmap, norm=norm, zorder=1)
-    ax.contour(gx, gy, E, levels=[0], colors="#7a0a2a", linewidths=0.9, zorder=2)
-    # 벽면 최고레벨이 기준을 넘는 건물 강조
-    nb = nf = 0
-    fp = os.path.join(C.out, "facade_result.csv")
-    v = box(*bbox)
-    base_layers(ax, C, bbox)
-    if os.path.exists(fp):
-        FR = pd.read_csv(fp)
-        mx = FR.groupby("bid")[key].max()
-        exc = mx[mx > L].index
-        nb = len(exc); nf = int((FR[key] > L).sum())
-        B = C.bld[C.bld.bid.isin(exc) & C.bld.intersects(v)]
-        B.plot(ax=ax, fc="#f6b3b8", ec="#9b0f2a", lw=0.7, zorder=13)
-    road_labels(ax, C, bbox)
-    frame(ax, bbox); north_scale(ax, bbox)
-    labels = [f"기준 이하"] + [f"초과 {a} – {b} dB" for a, b in zip(EXC_EDGES[:-1], EXC_EDGES[1:])] + [f"초과 > {EXC_EDGES[-1]} dB"]
-    y = legend_classes(side, 1.0, f"{key} − {L:g} dB", EXC_EDGES, EXC_COLS, unit="", labels=labels)
-    side.add_patch(Rectangle((0.0, y - 0.022), 0.13, 0.02, fc="#f6b3b8", ec="#9b0f2a", transform=side.transAxes))
-    side.text(0.17, y - 0.012, "벽면 최고레벨이 기준을 넘는 건물", fontsize=10, va="center", transform=side.transAxes)
-    valid = np.isfinite(A)
-    share = 100 * np.mean(A[valid] > L)
-    y = info_block(side, y - 0.07, C, [("기준", lim["label"]),
-                                       ("초과 면적", f"격자 지점의 {share:.0f} % (도로 위 포함)"),
-                                       ("초과 건물", f"{nb}동 (초과 벽면·층 {nf:,}개)" if os.path.exists(fp) else "벽면 계산 없음")])
-    # Lr 도 A가중 등가소음도(LAeq 와 같은 종류)다. 다른 것은 계산 조건(D_K 가산, 순풍 LAT(DW)·Cmet 미적용, 가정 입력)
-    warn_box(side, y - 0.01, "지도 값은 A가중 등가소음도로 기준과 같은 지표이나, 교차로 보정(D_K)·순풍 조건(Cmet 미적용)·"
-                             "가정 교통량이 들어가 실측 LAeq와 조건이 다릅니다. 실측 검증 전에는 초과 범위를 참고로만 보세요.")
-    return save(fig, C.out, f"HQ_exceed_{key}_h{h:g}m", cfg, ("grid", key, f"_exceed_h{h:g}m"))
+
 
 
 # ------------------------------------------------------------------ 3) 파사드 색 띠
@@ -701,7 +638,6 @@ def main(cfg):
     hs = cfg["receivers"]["grid"]["heights"]
     for key in ("LrT", "LrN"):
         files += grid_map(cfg, key, hs[0])
-        files += exceed_map(cfg, key, hs[0])
         if os.path.exists(os.path.join(cfg["project"]["output_dir"], "facade_result.csv")):
             files += facade_bands(cfg, key)
             files += building_map(cfg, key)

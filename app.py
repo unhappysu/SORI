@@ -638,7 +638,7 @@ def show_results():
         if HAVE_MAP and (out / "grid_result.csv").exists():
             _overlay_map(out, int(S().crs))
     with tabs[1]:
-        imgs = sorted(out.glob("HQ_grid_*.png")) + sorted(out.glob("HQ_exceed_*.png")) + \
+        imgs = sorted(out.glob("HQ_grid_*.png")) + \
             sorted(out.glob("grid_*_isophone.png")) + sorted(out.glob("grid_*_grid.png"))
         if imgs:
             sel = st.selectbox("그림", imgs, format_func=lambda p: p.stem.replace("grid_", "").replace("_", " "))

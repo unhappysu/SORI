@@ -1064,8 +1064,8 @@ def test_facade3d_building_numbers_values_and_ghost(tmp_path):
     app.processEvents()
 
 
-def test_grid_contour_labels_limit_and_facade_ground(tmp_path):
-    """2차 개선(2026-11-14): 격자 지도 등음선 dB 숫자·기준선(보기 ▸ 등음선 숫자·기준선, 기본 켬),
+def test_grid_contour_labels_and_facade_ground(tmp_path):
+    """2차 개선(2026-11-14): 격자 지도 등음선 dB 숫자(보기 ▸ 등음선 숫자, 기본 켬). 소음 기준선은 없음(2026-11-15 삭제).
     3D 파사드 바닥 소음지도(기본 켬, 끄면 없음, 두 창 같이)"""
     from PySide6 import QtWidgets
     import reference_case as RC
@@ -1079,16 +1079,12 @@ def test_grid_contour_labels_limit_and_facade_ground(tmp_path):
     w.open_config(tmp_path / "case" / "config.yaml", out)
     w.enter_task("grid")
     app.processEvents()
-    assert w.act_clab.isChecked() and w._grid_limit("LrT") == 68.0 and w._grid_limit("LrN") == 58.0
+    assert w.act_clab.isChecked() and not hasattr(w, "_grid_limit")
     labs = [t.get_text() for t in w.map.ax.texts if t.get_gid() == "contour_label"]
-    assert labs and set(labs) <= {str(e) for e in DIN_EDGES} | {"기준 68"}     # 등음선 숫자
-    strip = " ".join(t.get_text() for a in w.map.fig.axes for t in a.texts)
-    G = w.R["grid"][w.R["grid"].h == w.cb_h.currentData()].LrT
-    if G.min() < 68 < G.max():
-        assert "기준 68 dB" in strip                                        # 범례 띠에 기준선
+    assert labs and set(labs) <= {str(e) for e in DIN_EDGES}                    # 등음선 숫자만
+    assert "기준" not in " ".join(t.get_text() for a in w.map.fig.axes for t in a.texts)   # 기준선·범례 기준 칸 없음
     w.act_clab.setChecked(False); w.redraw(); app.processEvents()
     assert not [t for t in w.map.ax.texts if t.get_gid() == "contour_label"]
-    assert "기준 68 dB" not in " ".join(t.get_text() for a in w.map.fig.axes for t in a.texts)
     w.act_clab.setChecked(True); w.redraw(); app.processEvents()
     bid = int(w.R["facade"].bid.value_counts().index[0])
     assert w.show_facade(bid)
@@ -1261,7 +1257,7 @@ def test_paths_view_lines_and_road_contribution(tmp_path, monkeypatch):
 
 
 def test_building_table_overlay_conditions_and_input_tools(tmp_path, monkeypatch):
-    """보완 사항 1·4·5·7·11: 건물 단위 표(정렬·CSV·기준 초과), ‘건물별 값’ 겹치기, 성분 고르기, 주야 차이 지도,
+    """보완 사항 1·4·5·7: 건물 단위 표(정렬·CSV, 소음 기준 열 없음), ‘건물별 값’ 겹치기, 성분 고르기, 주야 차이 지도,
     계산 전 예상 점 수, 지도에서 점 수음점 찍기·계산 범위 그리기, 도로 속성, 국내 차종 변환"""
     import numpy as np
     import pandas as pd
@@ -1280,12 +1276,7 @@ def test_building_table_overlay_conditions_and_input_tools(tmp_path, monkeypatch
     A = w._bld_all
     assert len(A) == FR.bid.nunique() and w.m_bld.rowCount() == len(A)
     assert A.LrT_max.iloc[0] == pytest.approx(FR.LrT.max()) and list(A.LrT_max) == sorted(A.LrT_max, reverse=True)
-    assert set(A["지역"]) == {"A"} and set(A["기준_주"]) == {68.0}
-    nx = int((A["초과"] == "초과").sum())
-    assert 0 < nx <= len(A)
-    w.chk_bld_exc.setChecked(True)
-    assert w.m_bld.rowCount() == nx
-    w.chk_bld_exc.setChecked(False)
+    assert not {"지역", "기준_주", "초과"} & set(A.columns) and not hasattr(w, "chk_bld_exc")
     # 층·건물 종류 거름(보완 사항 7): 1층만이면 최고값이 1층 값의 최댓값, 벽면 표도 1층만
     assert w.cb_bld_floor.itemText(0) == "전체" and w.cb_bld_floor.itemText(1) == "1층"
     w.cb_bld_floor.setCurrentIndex(1)
@@ -1305,7 +1296,7 @@ def test_building_table_overlay_conditions_and_input_tools(tmp_path, monkeypatch
     vals = [w.props.item(i, 0).text() for i in range(w.props.rowCount())]
     w._show_props(w._summary_props(), "계산 결과 요약")
     vals = [w.props.item(i, 0).text() for i in range(w.props.rowCount())]
-    assert "— 건물별 노출" in vals and "기준 초과 건물" in vals
+    assert "— 건물별 노출" in vals and not any("기준" in v for v in vals)
     # 건물별 값 겹치기
     assert w.act_bmax.isEnabled()
     w.act_bmax.setChecked(True); w.redraw()

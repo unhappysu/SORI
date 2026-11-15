@@ -3,7 +3,7 @@
 결과 파일명 규칙: {프로젝트}_{시나리오}-{방법}_{시간대}_{grid|facade|section}[부가].확장자
   - 방법: propagation_method 에서 자동(iso9613_2 → ISO, rls19 → RLS). 사용자가 직접 쓰지 않음
   - 시간대: LrT → 주간(06~22시), LrN → 야간(22~06시), 두 시간대를 함께 담은 표(CSV) → 주야
-  - 부가: 격자 높이(_h4m), 지도 종류(_exceed, _building)
+  - 부가: 격자 높이(_h4m), 지도 종류(_building)
   예) 전농사거리_현황-ISO_주간_grid_h4m.png, 전농사거리_현황-RLS_주야_facade.csv
 기존 고정 이름 파일(grid_result.csv 등)은 웹 화면·비교 스크립트가 읽으므로 그대로 두고, 규칙 이름은 사본으로 만듦.
 section(단면) 지도는 미구현 — 규칙에 자리만 둠.

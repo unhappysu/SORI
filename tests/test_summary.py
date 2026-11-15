@@ -22,38 +22,14 @@ def _bld():
                             geometry=[box(0, 0, 10, 10), box(20, 0, 30, 10), box(40, 0, 50, 10), box(60, 0, 70, 10)])
 
 
-def test_building_table_and_zone_limits():
-    T = SM.building_table(_fr(), _bld(), zones=pd.Series({1: "A", 2: "B", 3: "A"}))
+def test_building_table():
+    """건물 단위 표: 최고 레벨·최고 층·수음점·이름. 소음 기준 열(지역·기준·초과)은 없음(2026-11-15 삭제)"""
+    T = SM.building_table(_fr(), _bld())
     assert list(T.bid) == [2, 1, 3]                                    # LrT 최고 내림차순, 결과 없는 건물 4 는 없음
     r1 = T[T.bid == 1].iloc[0]
     assert (r1.LrT_max, r1.LrN_max, r1.최고층, r1.수음점, r1.이름) == (69.5, 59.0, 2, 3, "가동")
-    assert (r1.기준_주, r1.기준_야) == (68.0, 58.0) and r1.초과_주 == 1.5 and r1.초과_야 == 1.0 and r1.초과 == "초과"
-    r2 = T[T.bid == 2].iloc[0]                                         # 나 지역 73/63: 주간만 초과
-    assert (r2.기준_주, r2.기준_야) == (73.0, 63.0) and r2.초과_주 == 1.0 and r2.초과_야 == -0.5 and r2.초과 == "초과"
-    assert T[T.bid == 3].iloc[0].초과 == ""
-    T2 = SM.building_table(_fr(), _bld(), limits={"LrT": 75, "LrN": 65})
-    assert (T2.초과 == "").all() and set(T2.기준_주) == {75.0}
+    assert not {"지역", "기준_주", "기준_야", "초과_주", "초과_야", "초과"} & set(T.columns)
     assert len(SM.building_table(None, _bld())) == 0
-
-
-def test_zone_code_words():
-    assert SM.zone_code("제2종일반주거지역") == "A" and SM.zone_code("자연녹지지역") == "A"
-    assert SM.zone_code("일반상업지역") == "B" and SM.zone_code("준공업지역") == "B" and SM.zone_code("미고시지역") == "B"
-    assert SM.zone_code("b") == "B" and SM.zone_code("나") == "B" and SM.zone_code("") == "A" and SM.zone_code(None, "B") == "B"
-
-
-def test_building_zones_from_polygons(tmp_path):
-    import geopandas as gpd
-    from shapely.geometry import box
-    Z = gpd.GeoDataFrame({"용도": ["일반상업지역"]}, geometry=[box(15, -5, 35, 15)], crs=5186)
-    Z.to_file(tmp_path / "zones.gpkg", driver="GPKG")
-    cfg = {"crs": 5186, "input": {"zones": {"path": str(tmp_path / "zones.gpkg"), "field": "용도", "default": "A"}}}
-    z = SM.building_zones(cfg, _bld().set_crs(5186))
-    assert dict(z) == {1: "A", 2: "B", 3: "A", 4: "A"}
-    cfg["input"]["zones"]["field"] = "없는열"
-    with pytest.raises(ValueError, match="없는열"):
-        SM.building_zones(cfg, _bld().set_crs(5186))
-    assert set(SM.building_zones({"input": {}}, _bld())) == {"A"}
 
 
 def test_exposure_classes():
@@ -134,3 +110,20 @@ def test_measured_compare_long_and_wide(tmp_path):
 
 def test_floor_heights():
     assert SM.floor_heights(3) == [2.8, 5.8, 8.8] and SM.floor_heights(0) == []
+
+
+def test_obsolete_standard_settings_ignored(tmp_path, caplog):
+    """소음 기준 대조 삭제(2026-11-15): 이전 설정 파일의 input.zones·plots.limits 는 오류 없이 무시하고 경고만"""
+    import logging
+    import shutil
+    import reference_case as RC
+    from sori import config as C
+    work = tmp_path / "case"
+    shutil.copytree(RC.INPUT, work)
+    p = work / "config.yaml"
+    p.write_text(p.read_text(encoding="utf-8")
+                 + "\nplots: {limits: {LrT: 68, LrN: 58}}\n", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="sori"):
+        cfg = C.load(p)
+    assert "plots.limits" in caplog.text and "zones" not in C.DEFAULTS["input"] and "limits" not in C.DEFAULTS["plots"]
+    assert cfg["plots"]["limits"] == {"LrT": 68, "LrN": 58}           # 값은 남지만 어디에서도 쓰지 않음

@@ -183,7 +183,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 
 ## 6. 출력 (`output/`)
 
-**파일명 규칙 사본**: 아래 고정 이름 파일과 함께 `{프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}[부가]` 이름의 사본을 만듭니다(설정 `project.scenario`, 기본 "현황"; `project.file_naming: false` 이면 만들지 않음). 방법 표시(ISO/RLS)는 `propagation_method` 에서 자동으로 붙고, 두 시간대를 함께 담은 CSV 는 `주야`, 격자 높이·지도 종류는 부가(`_h4m`, `_exceed_h4m`, `_building`)로 붙습니다. 칸 안의 `_`·공백·파일명 금지 글자는 `-` 로 바뀝니다. 대상: 격자·파사드 결과 CSV, 격자 GeoTIFF, 고품질 지도(HQ_*) PNG·PDF. 점 수음점 결과와 확인용 그림(`grid_*_grid.png` 등)은 고정 이름만. section(단면) 지도는 미구현. 예) `전농사거리_현황-ISO_주간_grid_h4m.png`, `전농사거리_현황-RLS_주야_facade.csv`. 만든 목록은 `run_info.json` 의 `file_naming`.
+**파일명 규칙 사본**: 아래 고정 이름 파일과 함께 `{프로젝트}_{시나리오}-{ISO|RLS}_{주간|야간|주야}_{grid|facade|section}[부가]` 이름의 사본을 만듭니다(설정 `project.scenario`, 기본 "현황"; `project.file_naming: false` 이면 만들지 않음). 방법 표시(ISO/RLS)는 `propagation_method` 에서 자동으로 붙고, 두 시간대를 함께 담은 CSV 는 `주야`, 격자 높이·지도 종류는 부가(`_h4m`, `_building`)로 붙습니다. 칸 안의 `_`·공백·파일명 금지 글자는 `-` 로 바뀝니다. 대상: 격자·파사드 결과 CSV, 격자 GeoTIFF, 고품질 지도(HQ_*) PNG·PDF. 점 수음점 결과와 확인용 그림(`grid_*_grid.png` 등)은 고정 이름만. section(단면) 지도는 미구현. 예) `전농사거리_현황-ISO_주간_grid_h4m.png`, `전농사거리_현황-RLS_주야_facade.csv`. 만든 목록은 `run_info.json` 의 `file_naming`.
 
 | 파일 | 내용 |
 |---|---|
@@ -191,7 +191,7 @@ python -m sori all -c config.yaml                            # 모델 구축 →
 | `facade_result.csv` | 파사드 결과(층별). `LrT_cmp`는 RLS-19 3.1 올림값, `LrT_direct/refl1/refl2/refl3`는 성분(`refl3` 는 3차를 계산할 때만) |
 | `point_result.csv` | 점 수음점 결과: 지면고 `zg`, 높이 `h`(`h_basis` = input/default_height), `LrT`·`LrN`, 성분, 3.1 올림값, `note`(건물 안·모델 범위 밖) |
 | `point_levels_for_comparison.csv` | 측정값 비교용(point_id, period = day/night, Leq_calc). `field_survey/scripts/process_measurements.py --model` 입력 형식. 값은 RLS-19 평가레벨 LrT·LrN(교차로·반사 보정 포함)이며, 측정 회차와 비교하려면 그 회차의 동시 교통량으로 계산한 결과를 써야 함 |
-| `HQ_*.png / .pdf` | **보고서·발표용 A3 지도(300 dpi + 벡터 PDF)**: 격자 소음지도, 기준 초과 지도, 벽면 색 띠 지도, 건물별 평가도 (주·야) |
+| `HQ_*.png / .pdf` | **보고서·발표용 A3 지도(300 dpi + 벡터 PDF)**: 격자 소음지도, 벽면 색 띠 지도, 건물별 평가도 (주·야) |
 | `noise3d.html` | **3D 웹 뷰어**: 지형 위 격자 소음지도 + 건물 벽면 층별 소음. 더블클릭해 브라우저로 열기(three.js 내장, 인터넷 없이 동작) |
 | `*.png` | 확인용 간이 그림(격자, 파사드 평면, 파사드 3D) |
 | `sources.csv` | 음원 점별 LW′, D_K, D_refl, 경사, 교차로 거리 등 |
@@ -224,6 +224,7 @@ python -m pytest -q tests        # 330개 시험(2026-11-11 v0.2: 329 통과, RL
 |---|---|---|
 | v0.1 | 2026-11-04 | 첫 배포(태그 `v0.1`, 공개 안 함) — `docs/release/v0.1.md` |
 | v0.2 | 2026-11-10 | RLS-90 추가, 차도 면 보정 기본 flatten, 교통량 빈칸 독일 기준표, 골목길 제외 기본(**결과 바뀜**), 홈·입력값 화면, 나란히 보기, 격자 위 벽면 값 — `docs/release/v0.2.md`. 태그 전 |
+| v0.8 | 2026-11-15 | 소음 관리기준 관련 기능 전부 삭제(기준은 지역·건물마다 달라 프로그램이 정하지 않음): 격자 지도·단면 그래프 기준선, 건물별 값 초과 테두리, 건물 단위 표 지역·기준·초과 열과 ‘기준 초과 건물만’, 속성 창 기준 초과 줄, 보고서 기준 초과 지도(`HQ_exceed_*`), 설정 `input.zones`·`plots.limits`(있으면 경고 후 무시) — 계산 불변, 출력 파일 줄어듦 — `docs/release/v0.8.md` |
 | v0.7.2 | 2026-11-15 | 방음벽 지우기 고침·개선: 표의 행마다 ✕, 지도에서 방음벽 선을 눌러 고르기, 하나뿐이면 고르지 않아도 지움, 모두 지우기·되돌리기, Delete 키, 그리기 취소(Esc) — 계산 불변 — `docs/release/v0.7.2.md` |
 | v0.7.1 | 2026-11-15 | 데이터 입력 화면 다듬기: 설정값(묶음 카드·짧은 이름·단위는 칸 옆·긴 설명은 풍선 도움말), 교통량(두 줄 머리글·숫자 오른쪽 맞춤·빈 고급 열 숨김), 차로 수(도로명 먼저·고칠 칸 흰색/지도 값 회색/결과 파랑·적용 한글 표기) — 계산·파일 형식 불변 — `docs/release/v0.7.1.md` |
 | v0.7 | 2026-11-15 | 정밀 격자(경계 세분) 선택 사항: 건물·간선 경계와 값이 2 dB 넘게 바뀌는 칸만 반 간격씩 두 번 더 계산(2.5 m → 0.625 m), 지도·GeoTIFF 는 삼각망 보간. 기본 끔 — 끄면 결과 불변, 켜면 그림·세밀 GeoTIFF 가 바뀜(규칙 격자 표는 그대로) — `docs/release/v0.7.md` |
