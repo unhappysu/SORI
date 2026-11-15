@@ -1004,10 +1004,68 @@ def test_facade3d_building_numbers_values_and_ghost(tmp_path):
     w.map3d.opt_ghost.setChecked(True)                                       # 주변 투명
     cols = w.map3d.ax3d.collections
     assert len(cols) == n_solid + 1 and w.map.opt_ghost.isChecked()
-    assert max(c.get_facecolor()[:, 3].max() for c in cols[1:2]) < 0.1      # 주변 건물 면은 거의 투명
+    assert any(len(c.get_facecolor()) and c.get_facecolor()[:, 3].max() < 0.1 for c in cols)   # 주변 건물 면은 거의 투명
     w.map3d.opt_ghost.setChecked(False); w.map3d.opt_vals.setChecked(True)
     w.close()
     app.processEvents()
+
+
+def test_grid_contour_labels_limit_and_facade_ground(tmp_path):
+    """2차 개선(2026-11-14): 격자 지도 등음선 dB 숫자·기준선(보기 ▸ 등음선 숫자·기준선, 기본 켬),
+    3D 파사드 바닥 소음지도(기본 켬, 끄면 없음, 두 창 같이)"""
+    from PySide6 import QtWidgets
+    import reference_case as RC
+    import sori_qt as Q
+    from sori.maps_hq import DIN_EDGES
+    out = RC.run_case(tmp_path / "case")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.resize(1400, 900)
+    w.show()
+    w.open_config(tmp_path / "case" / "config.yaml", out)
+    w.enter_task("grid")
+    app.processEvents()
+    assert w.act_clab.isChecked() and w._grid_limit("LrT") == 68.0 and w._grid_limit("LrN") == 58.0
+    labs = [t.get_text() for t in w.map.ax.texts if t.get_gid() == "contour_label"]
+    assert labs and set(labs) <= {str(e) for e in DIN_EDGES} | {"기준 68"}     # 등음선 숫자
+    strip = " ".join(t.get_text() for a in w.map.fig.axes for t in a.texts)
+    G = w.R["grid"][w.R["grid"].h == w.cb_h.currentData()].LrT
+    if G.min() < 68 < G.max():
+        assert "기준 68 dB" in strip                                        # 범례 띠에 기준선
+    w.act_clab.setChecked(False); w.redraw(); app.processEvents()
+    assert not [t for t in w.map.ax.texts if t.get_gid() == "contour_label"]
+    assert "기준 68 dB" not in " ".join(t.get_text() for a in w.map.fig.axes for t in a.texts)
+    w.act_clab.setChecked(True); w.redraw(); app.processEvents()
+    bid = int(w.R["facade"].bid.value_counts().index[0])
+    assert w.show_facade(bid)
+    app.processEvents()
+    gids = lambda: [c.get_gid() for c in w.map3d.ax3d.collections]           # noqa: E731
+    assert "ground_grid" in gids() and w.map3d.opt_ground.isChecked()
+    assert any("바닥 = 높이" in t.get_text() for t in w.map3d.fig.texts)
+    w.map3d.opt_ground.setChecked(False)
+    assert "ground_grid" not in gids() and not w.map.opt_ground.isChecked()
+    w.map3d.opt_ground.setChecked(True)
+    w.close()
+    app.processEvents()
+
+
+def test_section_roads_bands():
+    """단면이 지나는 도로 노면 구간(sori_qt.section_roads): 노면 안에서 시작해도 잡히고, 이름이 같은 맞닿은 조각은 합침,
+    간선(차로 수 ≥ main_min_lanes)만 간선 표시"""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    import sori_qt as Q
+    R = gpd.GeoDataFrame({"axis": ["큰길", "큰길", "_x", ""], "rname": ["", "", "", "골목"], "lanes": [4, 4, 1, 1],
+                          "width": [14.0, 14.0, None, 3.0]},
+                         geometry=[LineString([(50, -50), (50, 0)]), LineString([(50, 0), (50, 50)]),
+                                   LineString([(1, -20), (1, 20)]), LineString([(80, -20), (80, 20)])])
+    info = {"p1": (0.0, 0.0), "p2": (100.0, 0.0)}
+    r = Q.section_roads(R, info, 2)
+    assert [round(x[0], 3) for x in r] == [0.0, 43.0, 78.5]
+    assert abs(r[0][1] - 2.625) < 1e-6 and r[0][2] == "" and not r[0][4]     # A 가 노면 안(폭 = 1차로 × 3.25 m), '_' 이름 뺌
+    assert (round(r[1][0], 6), round(r[1][1], 6)) + r[1][2:] == (43.0, 57.0, "큰길", 4, True)   # 두 조각 → 한 구간
+    assert r[2][2] == "골목" and not r[2][4]
+    assert Q.section_roads(None, info) == []
 
 
 def test_paths_view_lines_and_road_contribution(tmp_path, monkeypatch):

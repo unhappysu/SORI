@@ -391,6 +391,41 @@ def section_buildings(B, info):
     return sorted(out, key=lambda r: r[1])
 
 
+def section_roads(roads, info, min_lanes=2):
+    """단면 선 A→B 가 지나는 도로 노면 → [(s 시작, s 끝, 이름, 차로 수, 간선 여부)] (s 순). 노면 = 중심선을 폭
+    (width, 없으면 차로 수 × 3.25 m)의 절반만큼 넓힌 띠 — A·B 가 노면 안에서 시작해 중심선을 건너지 않아도 잡힘.
+    이름은 도로명(axis, 없으면 rname). 이름이 같은 도로 조각이 맞닿거나 겹치면 한 구간으로 합침"""
+    from shapely.geometry import LineString, Point
+    (x1, y1), (x2, y2) = info["p1"], info["p2"]
+    line = LineString([(x1, y1), (x2, y2)])
+    if roads is None or not len(roads):
+        return []
+    W = pd.to_numeric(roads.get("width"), errors="coerce") if "width" in roads.columns else pd.Series(np.nan, index=roads.index)
+    N = pd.to_numeric(roads.get("lanes"), errors="coerce").fillna(1) if "lanes" in roads.columns else pd.Series(1, index=roads.index)
+    W = W.where(W > 0, 3.25 * N)
+    band = roads.geometry.buffer(W / 2, cap_style=2)
+    out = []
+    for i in band.index[band.intersects(line)]:
+        r = roads.loc[i]
+        name = next((str(v) for v in (r.get("axis", ""), r.get("rname", ""))
+                     if isinstance(v, str) and v and not v.startswith("_")), "")
+        seg = band[i].intersection(line)
+        for g in getattr(seg, "geoms", [seg]):
+            if g.is_empty or g.length <= 0:
+                continue
+            ss = [line.project(Point(c)) for c in g.coords]
+            out.append([min(ss), max(ss), name, int(N[i]), int(N[i]) >= min_lanes])
+    out.sort(key=lambda r: r[0])
+    merged = []
+    for r in out:
+        m = next((q for q in merged if q[2] == r[2] and r[0] <= q[1] + 0.5 and q[0] <= r[1] + 0.5), None)
+        if m is None:
+            merged.append(r)
+        else:
+            m[0], m[1], m[3], m[4] = min(m[0], r[0]), max(m[1], r[1]), max(m[3], r[3]), m[4] or r[4]
+    return [tuple(r) for r in sorted(merged, key=lambda r: r[0])]
+
+
 class MapView(QtWidgets.QWidget):
     clicked = QtCore.Signal(float, float)          # 평면 지도 클릭(EPSG 평면 좌표)
     moved = QtCore.Signal(float, float)
@@ -416,10 +451,14 @@ class MapView(QtWidgets.QWidget):
         self.opt_vals.setToolTip("확인 대상 건물 벽면에 층별 소음도(dB)를 숫자로 — 보이는 벽마다 한 열")
         self.opt_ghost = self.nav.addAction("주변 투명")
         self.opt_ghost.setToolTip("주변 건물을 투명하게(윤곽선만) 그려 확인 대상 건물만 보기")
+        self.opt_ground = self.nav.addAction("바닥 소음지도")
+        self.opt_ground.setToolTip("바닥을 지금 고른 높이의 격자 소음지도 색으로(격자 결과가 있을 때)")
         self.opt_vals.setCheckable(True)
         self.opt_vals.setChecked(True)
         self.opt_ghost.setCheckable(True)
-        for a in (self.opt_vals, self.opt_ghost):
+        self.opt_ground.setCheckable(True)
+        self.opt_ground.setChecked(True)
+        for a in (self.opt_vals, self.opt_ghost, self.opt_ground):
             a.toggled.connect(lambda _: self.facade_opts.emit())
         self._show_facade_opts(False)
         self._fac_bid = None      # 지금 그린 3D 파사드 건물(같은 건물을 다시 그리면 돌려 본 시점 유지)
@@ -434,7 +473,7 @@ class MapView(QtWidgets.QWidget):
         self.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
 
     def _show_facade_opts(self, on):
-        for a in (self._opt_sep, self.opt_vals, self.opt_ghost):
+        for a in (self._opt_sep, self.opt_vals, self.opt_ghost, self.opt_ground):
             a.setVisible(on)
 
     def _clear(self, hq=None):
@@ -455,16 +494,17 @@ class MapView(QtWidgets.QWidget):
         w, h = max(self.canvas.width(), 50) * r, max(self.canvas.height(), 50) * r
         self.fig.set_size_inches(w / self.fig.dpi, h / self.fig.dpi, forward=False)
 
-    def draw_hq_grid(self, C, cfg, key, h, redraw, compact=False, G=None, note=""):
+    def draw_hq_grid(self, C, cfg, key, h, redraw, compact=False, G=None, note="", labels=False, limit=None):
         """보고서 수준 격자 소음지도(maps_hq.draw_grid, 그림 파일 HQ_grid_* 와 같은 그리기).
         보고서 틀은 A3(16.54 × 11.69 in) 기준 글자 크기이므로, 창 안에 A3 이상이 담기도록 화면 dpi 를 맞춤.
-        compact=True(앱 화면): 정보란 없이 지도만 창 가득(maps_hq.draw_grid_compact, 화면 dpi 그대로). False 는 지도 저장 때만"""
+        compact=True(앱 화면): 정보란 없이 지도만 창 가득(maps_hq.draw_grid_compact, 화면 dpi 그대로). False 는 지도 저장 때만.
+        labels·limit: 지도만 크게일 때 등음선 dB 숫자·기준선(draw_grid_compact)"""
         from sori.maps_hq import draw_grid, draw_grid_compact
         self._clear(hq=redraw)
         self.fig.set_layout_engine(None)                 # 보고서 틀은 고정 배치
         if compact or G is not None:                     # 조건을 건 표(성분 고르기)는 지도만 크게로만 그림
             self._set_dpi(self._base_dpi)
-            self.ax = draw_grid_compact(self.fig, C, cfg, key, h, G=G, note=note)
+            self.ax = draw_grid_compact(self.fig, C, cfg, key, h, G=G, note=note, labels=labels, limit=limit)
         else:
             w, hgt = max(self.canvas.width(), 50), max(self.canvas.height(), 50)
             self._set_dpi(max(20.0, min(w / 16.54, hgt / 11.69)))
@@ -562,11 +602,12 @@ class MapView(QtWidgets.QWidget):
         self.fig.get_layout_engine().set(rect=(0, 0.03, 1, 0.97))
         self.fig.text(0.995, 0.005, f"※ {AI_NOTICE}", ha="right", va="bottom", fontsize=6, color="0.4")
 
-    def draw_facade3d(self, bld, FR, F, T, bid, key, view, fh, elev, azim, title):
+    def draw_facade3d(self, bld, FR, F, T, bid, key, view, fh, elev, azim, title, ground=None):
         """3D 파사드 소음지도(그림 파일 facade_3d_*.png 와 같은 그리기 함수 sori.plots.draw_facade_3d).
         T: 층별 색을 칠할 건물(보이는 범위 안에서 벽면 결과가 있는 건물), 글자(층별 값)는 클릭한 건물 bid 에만.
         도구 줄 ‘소음도 숫자’(기본 켬)·‘주변 투명’에 따름. 건물 번호: 대상 = 빨간 상자, 주변 = 가까운 30개.
-        같은 건물을 다시 그리면(시간대·선택 바꿈) 마우스로 돌려 본 시점을 유지"""
+        같은 건물을 다시 그리면(시간대·선택 바꿈) 마우스로 돌려 본 시점을 유지.
+        ground: (격자 배열·범위, 높이 m) — ‘바닥 소음지도’(기본 켬)면 바닥을 그 격자 색으로"""
         from sori.maps_hq import din_cmap, legend_strip
         from sori.plots import draw_facade_3d
         if self.ax3d is not None and self._fac_bid == bid:
@@ -577,9 +618,10 @@ class MapView(QtWidgets.QWidget):
         ax = self.ax3d = self.fig.add_axes([0.0, 0.03, 1.0, 0.86], projection="3d", computed_zorder=False)
         cmap, norm = din_cmap()                          # 격자 지도와 같은 5 dB 등급 색(보고서 facade_3d 그림은 2 dB 그대로)
         vals, ghost = self.opt_vals.isChecked(), self.opt_ghost.isChecked()
+        gg = ground[0] if ground is not None and ground[0] is not None and self.opt_ground.isChecked() else None
         draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids={bid} if vals else set(),
                        colors=FACADE3D_COLORS, focus=bid, bid_labels=MainWindow.FACADE_BID_LABELS, ghost=ghost, label_box=True, label_gap=10.0,
-                       shade=True)
+                       shade=True, ground_grid=gg)
         bb = bld[bld.bid == bid]                         # 고른 건물: 지붕 테두리를 빨간 선으로(격자 지도의 빨간 테두리와 같은 표시)
         if len(bb):
             g = bb.iloc[0]
@@ -589,7 +631,8 @@ class MapView(QtWidgets.QWidget):
         self.title_text = title                          # 화면 위 제목(시험·확인용)
         self.fig.text(0.015, 0.975, title, fontsize=11, weight="bold", va="center", color="#222222")
         legend_strip(self.fig, [0.01, 0.915, 0.98, 0.04], road=False)
-        self.fig.text(0.01, 0.005, "빨간 번호 = 확인 대상 건물, 흰 번호 = 주변 건물" + (" · 주변 투명" if ghost else ""),
+        self.fig.text(0.01, 0.005, "빨간 번호 = 확인 대상 건물, 흰 번호 = 주변 건물" + (" · 주변 투명" if ghost else "")
+                      + (f" · 바닥 = 높이 {ground[1]:g} m 격자" if gg is not None else ""),
                       ha="left", va="bottom", fontsize=7.5, color="#444444")
         self.fig.text(0.995, 0.005, f"※ {AI_NOTICE}", ha="right", va="bottom", fontsize=6, color="0.4")
         self._show_facade_opts(True)
@@ -678,11 +721,13 @@ class MapView(QtWidgets.QWidget):
         self._notice()
         self.canvas.draw_idle()
 
-    def draw_section(self, D, info, key, grid=None, buildings=None, title="", plan=True):
+    def draw_section(self, D, info, key, grid=None, buildings=None, title="", plan=True, roads=None):
         """단면 소음지도(2026-11-14 다시 그림): 선 위 거리 × 표고 단면을 격자 지도와 같은 색표(maps_hq.din_cmap)로,
         계산점 사이를 보간해 매끄럽게 칠하고 5 dB 등음선. 지형·건물 단면은 0.5 m 지형 단면(info.profile)으로 또렷하게 가림,
         단면이 지나는 건물 지붕 위에 건물 번호. plan=True(한 창 보기): 왼쪽에 평면 격자 지도 + 단면 선 A→B,
-        False(나란히 보기 오른쪽 창): 단면만 크게(평면은 왼쪽 격자 지도에 A–B 선)"""
+        False(나란히 보기 오른쪽 창): 단면만 크게(평면은 왼쪽 격자 지도에 A–B 선).
+        roads: section_roads 결과 — 지나는 도로 노면을 지면 위 진한 선으로, 간선은 단면 위에 ▼ 도로명·차로 수,
+        아래 높이별 값 그래프에 노면 구간 가운데 점선"""
         from sori.maps_hq import BLD_EC, BLD_FC, DIN_EDGES, din_cmap, legend_strip
         cmap, norm = din_cmap()
         self._clear()
@@ -709,7 +754,7 @@ class MapView(QtWidgets.QWidget):
             ax.set_title("평면 — 파란 선 A→B", fontsize=8)
             sx = self.fig.add_axes([0.33, 0.37, 0.64, 0.48])
         else:
-            sx = self.fig.add_axes([0.075, 0.37, 0.91, 0.48])
+            sx = self.fig.add_axes([0.075, 0.37, 0.895, 0.48])        # 오른쪽에 B 글자 자리
         self.ax_sec = sx
         L = float(info["length_m"])
         ds, dz = float(info["ds_m"]), float(info["dz_m"])
@@ -722,6 +767,19 @@ class MapView(QtWidgets.QWidget):
         sx.fill_between(sp, zg, roof, where=~np.isnan(roof), color=BLD_FC, ec=BLD_EC, lw=0.5, zorder=3)  # 건물 단면
         sx.fill_between(sp, lo, zg, color="#a08868", lw=0, zorder=4)                                    # 지형
         sx.plot(sp, zg, color="#4a3a28", lw=0.9, zorder=5)
+        placed = []
+        for s0, s1, nm, ln, main in roads or []:                     # 도로: 노면 구간 = 지면 위 진한 선
+            m = (sp >= s0) & (sp <= s1)
+            if m.sum() >= 2:
+                sx.plot(sp[m], zg[m], color="#2b2b2b" if main else "#6b6b6b", lw=3.2 if main else 2.0,
+                        solid_capstyle="butt", zorder=6, gid="road")
+            sc = (s0 + s1) / 2
+            if main and all(abs(sc - q) > 0.09 * L for q in placed):
+                placed.append(sc)
+                ha = "left" if sc < 0.06 * L else "right" if sc > 0.94 * L else "center"
+                sx.annotate(f"▼ {nm} {ln}차로" if nm else f"▼ {ln}차로", (sc, 1.0), xycoords=("data", "axes fraction"),
+                            xytext=(0, 2), textcoords="offset points", ha=ha, va="bottom", fontsize=7, weight="bold",
+                            color="#2b2b2b", annotation_clip=False, gid="road_label")
         for b, s0, s1, top in section_buildings(buildings, info) if buildings is not None else []:
             if s1 - s0 > 0.02 * L:                                   # 단면 폭이 아주 좁은 건물은 번호 생략
                 sx.text((s0 + s1) / 2, min(top + 0.6, hi - 0.5), str(b), ha="center", va="bottom", fontsize=7.5,
@@ -734,8 +792,8 @@ class MapView(QtWidgets.QWidget):
         sx.set_box_aspect(box)
         sx.set_anchor("N")
         ex = box * L / H                                              # 세로 과장 배율(1 = 실제 비율)
-        sx.text(0, 1.01, "A", transform=sx.transAxes, color="#1f5fbf", weight="bold")
-        sx.text(1, 1.01, "B", transform=sx.transAxes, color="#1f5fbf", weight="bold", ha="right")
+        sx.text(-0.005, 1.0, "A", transform=sx.transAxes, color="#1f5fbf", weight="bold", ha="right", va="bottom")
+        sx.text(1.005, 1.0, "B", transform=sx.transAxes, color="#1f5fbf", weight="bold", ha="left", va="bottom")
         sx.set_xlabel(f"A로부터 거리 (m) — 계산점 간격 가로 {ds:g} m · 세로 {dz:g} m, 반사 {info['reflection_order']}차",
                       fontsize=7.5)
         # 아래: 지면 위 4 m·1.5 m 높이의 A→B 값(기준선·건물 구간) — 단면과 같은 가로축
@@ -744,6 +802,9 @@ class MapView(QtWidgets.QWidget):
         px = self.ax_prof = self.fig.add_axes([pos.x0, 0.075, pos.width, max(0.12, min(0.22, pos.y0 - 0.17))])
         for b, s0, s1, _ in (section_buildings(buildings, info) if buildings is not None else []):
             px.axvspan(s0, s1, color=BLD_FC, alpha=0.55, lw=0, zorder=0)
+        for s0, s1, *_r, main in roads or []:
+            if main:
+                px.axvline((s0 + s1) / 2, color="#2b2b2b", lw=0.8, ls=(0, (1, 2)), zorder=1)
         for h, ls, lab in ((4.0, "-", "지면 위 4 m"), (1.5, (0, (4, 2)), "지면 위 1.5 m")):
             ps, pv = section_profile(D, key, h)
             if np.isfinite(pv).any():
@@ -757,7 +818,8 @@ class MapView(QtWidgets.QWidget):
         px.set_ylabel(f"{key} dB", fontsize=7.5)
         px.tick_params(labelsize=7)
         px.legend(fontsize=7, loc="upper right", framealpha=0.85, ncol=2)
-        px.set_title("높이별 값(회색 띠 = 건물)", fontsize=7.5, loc="left")
+        px.set_title("높이별 값(회색 띠 = 건물" + (", 점선 = 간선 노면 가운데)" if any(r[-1] for r in roads or []) else ")"),
+                     fontsize=7.5, loc="left")
         sx.set_ylabel("표고 (m)" + (f" · 세로 ×{ex:.1f}" if abs(ex - 1) > 0.05 else ""), fontsize=7.5)
         sx.tick_params(labelsize=7)
         self.title_text = title
@@ -2548,6 +2610,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_bmax.setToolTip("켜면 건물을 벽면(전 층) 최고 레벨 색으로 칠함. 용도지역 기준을 넘는 건물은 굵은 자주색 테두리.\n"
                                  "건물 단위 표(정렬·CSV 저장)는 아래 ‘건물별’ 탭")
         self.act_bmax.setEnabled(False)
+        self.act_clab = QtGui.QAction("등음선 숫자·기준선", self)
+        self.act_clab.setCheckable(True)
+        self.act_clab.setChecked(True)
+        self.act_clab.setToolTip("켜면 격자 지도 등음선에 dB 숫자를, 관리기준 값(설정 plots.limits, 없으면 주간 68 / 야간 58 dB)의 "
+                                 "등음선을 굵은 남색 선으로 표시")
+        self.act_clab.triggered.connect(self.redraw)
         cm = self.menu_cond = QtWidgets.QMenu(self)
         self.act_comp = {}
         from sori.summary import COMPONENTS
@@ -2646,7 +2714,7 @@ class MainWindow(QtWidgets.QMainWindow):
             a.toggled.connect(a2.setChecked)
         m.addAction("창 모두 접기/펴기 (지도 크게)", self._toggle_all_docks, QtGui.QKeySequence("Ctrl+0"))
         m.addSeparator()
-        for a in (self.act_split, self.act_fval, self.act_bmax, self.act_sec, self.act_path, self.act_3d):
+        for a in (self.act_split, self.act_fval, self.act_bmax, self.act_clab, self.act_sec, self.act_path, self.act_3d):
             m.addAction(a)
         m.addMenu(self.menu_cond).setText("보기 조건(성분·주야 차이)")
         self.act_3d_re = m.addAction("3D 뷰어 다시 만들기", lambda: self.show_3d_view(rebuild=True))
@@ -3571,9 +3639,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     # 화면은 나란히·한 창 모두 지도만 크게, 지도 저장만 보고서 틀(A3). 2026-11-14: 한 창 보기에서 A3 틀을
                     # 창에 맞추느라 dpi 가 약 39 로 내려가 지도가 나란히 보기보다 작고 글자가 읽히지 않던 문제
                     compact = not getattr(self, "_force_report", False)
+                    on = self.act_clab.isChecked()
                     return self.map.draw_hq_grid(C, C.cfg, key, h,     # 창 크기 바뀌면 왼쪽만 다시 그림
                                                  lambda: (self._redraw_grid(), self._grid_extras()), compact=compact,
-                                                 G=Gsel, note=note)
+                                                 G=Gsel, note=note, labels=on, limit=self._grid_limit(key) if on else None)
                 except Exception as e:
                     log.warning("보고서 지도 그리기 실패 — 간단한 지도로 표시: %s", e)
             A, ext = self._grid_array(h, key, Gh)
@@ -3587,6 +3656,15 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.map.message("설정 파일(config.yaml)을 열거나 결과 폴더를 여세요.")
             self._grid_now = None
+
+    def _grid_limit(self, key):
+        """격자 지도 기준선 값: 설정 plots.limits, 없으면 maps_hq.DEFAULT_LIMITS(가 지역 주간 68 / 야간 58 dB)"""
+        from sori.maps_hq import DEFAULT_LIMITS
+        lim = {**DEFAULT_LIMITS, **(((self.cfg or {}).get("plots") or {}).get("limits") or {})}
+        try:
+            return float(lim[key])
+        except (KeyError, TypeError, ValueError):
+            return None
 
     def _hq_ctx(self):
         """보고서 지도용 자료(maps_hq.Ctx: 건물·도로 띠·교차로·교통량·결과 전파 방법). 결과 폴더별로 한 번만 읽음.
@@ -3640,10 +3718,10 @@ class MainWindow(QtWidgets.QMainWindow):
         return True
 
     def _facade_opts_changed(self, src):
-        """3D 파사드 보기 선택(소음도 숫자·주변 투명)을 두 지도 창에 맞추고 보던 건물을 다시 그림"""
+        """3D 파사드 보기 선택(소음도 숫자·주변 투명·바닥 소음지도)을 두 지도 창에 맞추고 보던 건물을 다시 그림"""
         for mv in (self.map, self.map3d):
             if mv is not src:
-                for a, b in ((mv.opt_vals, src.opt_vals), (mv.opt_ghost, src.opt_ghost)):
+                for a, b in ((mv.opt_vals, src.opt_vals), (mv.opt_ghost, src.opt_ghost), (mv.opt_ground, src.opt_ground)):
                     a.blockSignals(True)
                     a.setChecked(b.isChecked())
                     a.blockSignals(False)
@@ -3715,8 +3793,10 @@ class MainWindow(QtWidgets.QMainWindow):
         title = f"3D 파사드 · 건물 {bid}{name} · {int(b.floors)}층 · {KEYS[key]}"   # 한 줄(자세한 값은 속성 창)
         from sori.plots import loud_azimuth
         az = loud_azimuth(FR, F, bid, key)                # 가장 시끄러운 벽이 정면에(없으면 설정 azim_3d)
+        h = self.cb_h.currentData()
         target.draw_facade3d(B, FR, F, T, bid, key, view, fh, float(pc.get("elev_3d", 28.0)),
-                             az if az is not None else float(pc.get("azim_3d", -60.0)), title)
+                             az if az is not None else float(pc.get("azim_3d", -60.0)), title,
+                             ground=(self._grid_array(h, key), h) if h is not None else None)
         if not side:
             self._set_back(True)
         self.m_facade.set(FRb.sort_values(key, ascending=False).reset_index(drop=True))
@@ -3836,7 +3916,9 @@ class MainWindow(QtWidgets.QMainWindow):
         L = info["length_m"]
         vals = D[key].dropna()
         title = f"단면 · A→B {L:.0f} m · {KEYS[key]} · 최대 {vals.max():.1f} dB"   # 자세한 값은 속성 창
-        target.draw_section(D, info, key, grid, self.R.get("buildings"), title, plan=not side)
+        ml = int(((self.cfg or {}).get("model") or {}).get("main_min_lanes", 2))
+        roads = section_roads(self.R.get("roads"), info, ml)
+        target.draw_section(D, info, key, grid, self.R.get("buildings"), title, plan=not side, roads=roads)
         if not side:
             self._set_back(True)
         h4 = D[(D.h > 3.5) & (D.h <= 4.5)][key].dropna()

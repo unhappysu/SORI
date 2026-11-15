@@ -248,8 +248,33 @@ def loud_azimuth(FR, F, bid, key, offset=-30.0):
     return float(np.degrees(np.arctan2(f.ny, f.nx)) + offset)
 
 
+def ground_cells(grid, bounds, z, cmap, norm, max_cells=90):
+    """3D 파사드 바닥 소음지도(앱, 2026-11-14): 격자 결과 A 의 bounds(xmin, ymin, xmax, ymax) 안 칸을 높이 z 의
+    수평 사각형으로. 한 변 max_cells 칸이 넘으면 몇 칸씩 묶어 평균(에너지 평균이 아닌 값 평균 — 색 등급 보기용).
+    값 없는 칸(건물 안·범위 밖)은 그리지 않음 → 밑의 지면 색이 보임"""
+    A, (x0, x1, y0, y1) = grid
+    ny, nx = A.shape
+    dx, dy = (x1 - x0) / nx, (y1 - y0) / ny
+    i0, i1 = max(int((bounds[0] - x0) // dx), 0), min(int(np.ceil((bounds[2] - x0) / dx)), nx)
+    j0, j1 = max(int((bounds[1] - y0) // dy), 0), min(int(np.ceil((bounds[3] - y0) / dy)), ny)
+    sub = A[j0:j1, i0:i1]
+    k = max(1, int(np.ceil(max(sub.shape + (1,)) / max_cells)))
+    polys, cols = [], []
+    for j in range(0, sub.shape[0], k):
+        for i in range(0, sub.shape[1], k):
+            blk = sub[j:j + k, i:i + k]
+            if not np.isfinite(blk).any():
+                continue
+            v = float(np.nanmean(blk))
+            xa, ya = x0 + (i0 + i) * dx, y0 + (j0 + j) * dy
+            xb, yb = xa + blk.shape[1] * dx, ya + blk.shape[0] * dy
+            polys.append([(xa, ya, z), (xb, ya, z), (xb, yb, z), (xa, yb, z)])
+            cols.append(cmap(norm(v)))
+    return Poly3DCollection(polys, facecolors=cols, edgecolors="none", antialiased=False, zorder=0, gid="ground_grid")
+
+
 def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, label_bids=None, colors=None,
-                   focus=None, bid_labels=0, ghost=False, label_box=False, label_gap=18.0, shade=False):
+                   focus=None, bid_labels=0, ghost=False, label_box=False, label_gap=18.0, shade=False, ground_grid=None):
     """3D 파사드 소음지도 그리기(그림 파일 facade_3d 와 데스크톱 화면 sori_qt 가 같이 씀)
     T: 층별 색을 칠할 건물 번호 집합, label_bids: 층별 값 글자를 붙일 건물(None 이면 T 전체)
     view: 보이는 범위(shapely 도형), fh: 층고(m), elev·azim: 시점(도). 계산 없이 결과 표만 그림.
@@ -259,7 +284,8 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
       bid_labels: 지붕 위 건물 번호를 붙일 주변 건물 수(focus 에서 가까운 순, 0 = 번호 없음)
       ghost: focus 밖 건물을 투명하게(옅은 윤곽선만, 벽면 색 없음) — 대상 건물만 보기
       label_box: 층별 값 글자에 흰 바탕 상자, label_gap: 값 글자 열 사이 최소 거리(m)
-      shade: 벽 방향별 명암(wall_shade) — 회색 벽은 0.62–1.0, 소음 색 벽은 0.84–1.0(등급 색을 헷갈리지 않게 약하게)"""
+      shade: 벽 방향별 명암(wall_shade) — 회색 벽은 0.62–1.0, 소음 색 벽은 0.84–1.0(등급 색을 헷갈리지 않게 약하게)
+      ground_grid: (A, (xmin, xmax, ymin, ymax)) 격자 결과 — 바닥을 격자 소음지도 색으로(값 없는 칸 = 지면 색)"""
     C = {**dict(wall="#cfd0f7", roof="#f7c97f", ground="#9ac09a", sky="#8fd3fe"), **(colors or {})}
     B = bld[bld.intersects(view)]
     if ghost and focus is not None:                  # 주변 건물은 색 없이 윤곽만 → 층별 색은 대상 건물만
@@ -274,6 +300,8 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
     ground = Poly3DCollection([[(g[0], g[1], z0min - 0.2), (g[2], g[1], z0min - 0.2), (g[2], g[3], z0min - 0.2),
                                 (g[0], g[3], z0min - 0.2)]], facecolors=C["ground"], edgecolors="none", zorder=0)
     ax.add_collection3d(ground, autolim=False)                      # 지면은 항상 맨 뒤(깊이 정렬 오류 방지)
+    if ground_grid is not None:
+        ax.add_collection3d(ground_cells(ground_grid, g, z0min - 0.1, cmap, norm), autolim=False)
     for b in B.itertuples():
         if b.bid in T:
             continue

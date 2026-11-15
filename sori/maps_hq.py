@@ -449,10 +449,40 @@ def draw_grid(fig, C, cfg, key, h):
     return ax
 
 
-def draw_grid_compact(fig, C, cfg, key, h, G=None, note=""):
+LIMIT_COLOR = "#1f3a93"      # 앱 격자 지도 기준선(노랑–빨강 색표와 섞이지 않는 남색)
+
+
+def contour_labels(ax, cs, bbox, gap=0.12, per_level=5, avoid=None, z=31):
+    """등음선 dB 숫자(앱 화면, 2026-11-14): 선을 끊지 않고 흰 테두리 글자로 얹음. 건물·노면(avoid 도형) 위이거나,
+    이미 놓인 숫자와 지도 폭의 gap 배 안쪽이거나, 같은 값이 per_level 개를 넘으면 뺌(골목의 작은 고리마다 숫자가
+    붙어 어지럽지 않게). 반환: 남긴 글자 목록"""
+    from shapely.geometry import Point
+    from shapely.prepared import prep
+    texts = ax.clabel(cs, inline=False, fontsize=6.5, fmt="%d", colors="#222222")
+    av = prep(avoid) if avoid is not None and not avoid.is_empty else None
+    d = gap * (bbox[2] - bbox[0])
+    kept, pts, count = [], [], {}
+    for t in texts:
+        x, y = t.get_position()
+        lv = t.get_text()
+        if (not (bbox[0] < x < bbox[2] and bbox[1] < y < bbox[3]) or count.get(lv, 0) >= per_level
+                or any(math.hypot(x - a, y - b) < d for a, b in pts) or (av is not None and av.contains(Point(x, y)))):
+            t.remove()
+            continue
+        pts.append((x, y))
+        count[lv] = count.get(lv, 0) + 1
+        t.set_zorder(z)
+        t.set_gid("contour_label")
+        t.set_path_effects([pe.withStroke(linewidth=2.2, foreground="white")])
+        kept.append(t)
+    return kept
+
+
+def draw_grid_compact(fig, C, cfg, key, h, G=None, note="", labels=False, limit=None):
     """좁은 창(데스크톱 화면의 격자 + 3D 나란히 보기)용 지도만 크게: draw_grid 와 같은 지도 레이어(등음선 채움·
     건물·간선 노면·신호교차로·도로명·방위표·축척)에 범례는 제목 아래 가로 띠로(지도를 가리지 않게). 정보란·계산 조건은 없음
-    (보고서 그림·지도 저장은 draw_grid). 반환: 지도 축(ax)"""
+    (보고서 그림·지도 저장은 draw_grid). 앱 화면(2026-11-14): labels=True 면 등음선에 dB 숫자,
+    limit(dB) 를 주면 그 값의 등음선을 굵은 남색 기준선으로(범례 띠 오른쪽에 표시). 반환: 지도 축(ax)"""
     bbox = grid_bbox(cfg)
     gx, gy, step, Am, A = grid_array(C, key, h, bbox, G=G)       # G: 화면에서 조건을 걸어 다시 합친 표(성분 고르기)
     ax = fig.add_axes([0.005, 0.005, 0.99, 0.905])
@@ -460,7 +490,20 @@ def draw_grid_compact(fig, C, cfg, key, h, G=None, note=""):
              fontsize=11, weight="bold", va="center", color="#222222")
     cmap, norm = din_cmap()
     ax.contourf(gx, gy, Am, levels=[-200] + DIN_EDGES + [200], cmap=cmap, norm=norm, zorder=1, antialiased=True)
-    ax.contour(gx, gy, Am, levels=DIN_EDGES, colors="#333", linewidths=0.25, alpha=0.6, zorder=2)
+    cs = ax.contour(gx, gy, Am, levels=DIN_EDGES, colors="#333", linewidths=0.25, alpha=0.6, zorder=2)
+    avoid = None
+    if labels:                                                       # 숫자는 건물·간선 노면 밖에만
+        v = box(*bbox)
+        avoid = C.bld[C.bld.intersects(v)].geometry.union_all().union(C.road_band.intersection(v))
+        contour_labels(ax, cs, bbox, avoid=avoid)
+    if limit is not None and np.nanmin(Am) < limit < np.nanmax(Am):  # 기준선은 건물 위(건물 아래면 길가에서 거의 가려짐)
+        cl = ax.contour(gx, gy, Am, levels=[limit], colors=LIMIT_COLOR, linewidths=1.4, zorder=25)
+        cl.set_path_effects([pe.withStroke(linewidth=3.0, foreground="white")])
+        if labels:
+            for t in contour_labels(ax, cl, bbox, gap=0.25, per_level=4, avoid=avoid, z=32):
+                t.set_text(f"기준 {limit:g}")
+                t.set_color(LIMIT_COLOR)
+                t.set_fontweight("bold")
     base_layers(ax, C, bbox)
     sig = C.J[C.J.type == "signal"].groupby("cluster")[["x", "y"]].mean()
     ax.scatter(sig.x, sig.y, marker="o", s=50, fc="white", ec="k", lw=1.1, zorder=35)
@@ -469,7 +512,12 @@ def draw_grid_compact(fig, C, cfg, key, h, G=None, note=""):
     ax.set_anchor("N")                                                # 세로로 긴 창에서 지도를 위쪽에 붙임
     ax.set_xticklabels([]); ax.set_yticklabels([])                    # 좁은 창에서는 좌표 글자를 뺌
     ax.set_xlabel(""); ax.set_ylabel("")                            # geopandas 가 붙이는 좌표축 이름 지움
-    legend_strip(fig, [0.01, 0.915, 0.98, 0.04])                     # 범례: 제목 아래 가로 띠(지도를 가리지 않게)
+    lg = legend_strip(fig, [0.01, 0.915, 0.98, 0.04])                # 범례: 제목 아래 가로 띠(지도를 가리지 않게)
+    if limit is not None:
+        n = len(DIN_COLS)
+        lg.set_xlim(-1.6, n + 2.4)                                    # 오른쪽에 기준선 칸
+        lg.plot([n + 0.25, n + 0.95], [0.72, 0.72], color=LIMIT_COLOR, lw=1.6)
+        lg.text(n + 1.05, 0.72, f"기준 {limit:g} dB", fontsize=7, va="center", color=LIMIT_COLOR, weight="bold")
     return ax
 
 
