@@ -927,6 +927,7 @@ CHOICE_LABELS = {**METHODS,
                  "flatten": "평평하게 — 도로폭 안을 중심선 높이로 (권장)",
                  "dtm": "지형 그대로 — 등고선 지형",
                  "exclude": "제외 (기본)", "include": "포함",
+                 "grid": "격자 범위 안 건물 전부 (기본)", "radius": "중심에서 반경 안",
                  "general": "일반법 — 옥타브 대역", "alternative": "대체법 — A특성"}
 INPUT_FIELDS = [
     ("프로젝트", 0, [
@@ -969,7 +970,9 @@ INPUT_FIELDS = [
     ]),
     ("건물 벽면", 1, [
         ("receivers.facade.enabled", "벽면 계산", "bool", None, None, None),
-        ("receivers.facade.radius", "계산 반경", "float", None, "m · 격자 중심에서", None),
+        ("receivers.facade.area", "계산 대상 건물", "choice", ["grid", "radius"], None,
+         "격자 범위 안 = 격자 사각형에 조금이라도 걸치는 건물 전부(기본). 중심에서 반경 안 = 아래 반경(격자 중심에서 건물 외곽선까지)"),
+        ("receivers.facade.radius", "계산 반경", "float", None, "m · ‘중심에서 반경 안’일 때만", None),
         ("receivers.facade.piece", "수음점 가로 간격", "float", None, "m · 기본 10",
          "기본 10. 줄이면 점 수·계산 시간이 늘고(5 m ≈ 1.5배, 2.5 m ≈ 2.7배) 벽면 결과가 달라짐. 세로는 층마다 1점"),
     ]),

@@ -106,7 +106,7 @@ input:
 receivers:
   center: [{CX}, {CY}]
   grid: {{size: [300.0, 300.0], step: 10.0, heights: [4.0, 10.0]}}
-  facade: {{radius: 90.0}}
+  facade: {{area: radius, radius: 90.0}}
 propagation:
   max_dist_main: 250.0
 """)

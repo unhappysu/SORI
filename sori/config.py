@@ -3,6 +3,7 @@
 ※ Claude(Anthropic의 AI)를 활용하여 제작하였음."""
 import copy
 import logging
+import math
 from pathlib import Path
 
 import yaml
@@ -152,7 +153,10 @@ DEFAULTS = {
                  # 정밀 격자(경계 세분, sori/refine.py): 칸이 건물·간선 노면 띠에 닿거나 네 꼭짓점 값 범위가 threshold_dB 를
                  # 넘으면 반 간격으로 더 계산, levels 번(2 → step/4). 규칙 격자 결과(grid_result.csv)는 그대로, 그림·GeoTIFF 만 세밀
                  "refine": {"enabled": False, "threshold_dB": 2.0, "levels": 2}},
-        "facade": {"enabled": True, "radius": 230.0, "piece": 10.0, "z_in_floor": 2.8, "offset": 0.05},
+        "facade": {"enabled": True,
+                   "area": "grid",                 # 외벽 계산 건물: grid = 격자 범위(사각형)에 걸치는 건물 전부(2026-11-16 기본),
+                                                   #   radius = 격자 중심에서 radius(m) 안 건물(2026-11-15 이전 동작)
+                   "radius": 230.0, "piece": 10.0, "z_in_floor": 2.8, "offset": 0.05},
         "points": {"path": None,                   # 점 수음점 CSV: point_id, x, y, h(지면 위 높이 m) — 현장 측정점 비교용
                    "default_height": None,         # h 가 빈 행에 쓸 높이(m). None 이면 그 행은 건너뜀
                    "road_contrib": True,           # 점마다 도로별 기여 → point_road_contrib.csv(경로 보기와 같은 계산, 반사 3차까지)
@@ -237,6 +241,8 @@ def _validate(c):
     for k in ("max_order_grid", "max_order_facade", "max_order_point"):
         if not 0 <= int(p["reflection"][k]) <= MAXO:
             raise ValueError(f"propagation.reflection.{k} 는 0 ~ {MAXO} (4차 이상은 계산 시간이 차수마다 크게 늘어남)")
+    if c["receivers"]["facade"].get("area", "grid") not in ("grid", "radius"):
+        raise ValueError("receivers.facade.area 는 grid(격자 범위 안 건물) 또는 radius(중심에서 반경 안 건물)")
     rf = c["receivers"]["grid"].get("refine") or {}
     if not 0.1 <= float(rf.get("threshold_dB", 2.0)) <= 20.0:
         raise ValueError("receivers.grid.refine.threshold_dB 는 0.1 ~ 20 dB")
@@ -286,6 +292,16 @@ def grid_bbox(c):
     cx, cy = c["receivers"]["center"]
     w, h = g["size"]
     return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+
+
+def facade_reach(c):
+    """격자 중심에서 외벽 계산 건물이 놓일 수 있는 거리(m, 그림·3D 보기 범위용): area = radius 면 radius,
+    grid 면 중심에서 격자 모서리까지"""
+    fc = c["receivers"]["facade"]
+    if fc.get("area", "grid") == "radius":
+        return float(fc["radius"])
+    b, (cx, cy) = grid_bbox(c), center(c)
+    return max(math.hypot(x - cx, y - cy) for x in (b[0], b[2]) for y in (b[1], b[3]))
 
 
 def center(c):

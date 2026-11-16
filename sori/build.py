@@ -649,7 +649,11 @@ def facade_receivers(cfg, F, bld):
     fc = cfg["receivers"]["facade"]; mc = cfg["model"]
     cx, cy = center(cfg)
     excl = cfg["input"]["map"]["facade_exclude_kinds"]
-    sel = set(bld[(bld.geometry.distance(Point(cx, cy)) <= fc["radius"]) & (~bld.kind.isin(excl))].bid)
+    if fc.get("area", "grid") == "radius":                 # 중심에서 반경 안(건물 외곽선까지 거리)
+        near = bld.geometry.distance(Point(cx, cy)) <= fc["radius"]
+    else:                                                    # 격자 범위(사각형)에 조금이라도 걸치는 건물
+        near = bld.geometry.intersects(box(*grid_bbox(cfg)))
+    sel = set(bld[near & (~bld.kind.isin(excl))].bid)
     rows = []
     for fi, f in F[F.bid.isin(sel)].iterrows():
         k = max(1, int(math.ceil(f.L / fc["piece"])))

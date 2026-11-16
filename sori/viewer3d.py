@@ -20,7 +20,7 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE, __version__
-from .config import center, grid_bbox
+from .config import center, facade_reach, grid_bbox
 from .propagation import result_model
 from .maps_hq import DIN_EDGES, DIN_COLS, traffic_summary, traffic_std_text
 from .resources import resource_path
@@ -53,7 +53,7 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
     out = cfg["project"]["output_dir"]
     cx, cy = center(cfg)
     fh = float(cfg["model"]["floor_height"])
-    R = float(view_r or cfg["receivers"]["facade"]["radius"] + 60.0)
+    R = float(view_r or facade_reach(cfg) + 60.0)
     d = np.load(os.path.join(out, "model_rasters.npz"))
     gnd = d["gnd"]; rx0 = float(d["x0"]); ry0 = float(d["y0"]); rres = float(d["res"])
 

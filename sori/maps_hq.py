@@ -25,7 +25,7 @@ from shapely.geometry import box
 from shapely.ops import linemerge
 
 from . import AI_NOTICE, __version__
-from .config import grid_bbox, center
+from .config import grid_bbox, center, facade_reach
 from .plots import set_font
 from . import naming
 from .propagation import result_model
@@ -573,7 +573,7 @@ def _facade_pieces(C, key):
 def facade_bands(cfg, key="LrT"):
     C = Ctx(cfg)
     FR, W = _facade_pieces(C, key)
-    cx, cy = center(cfg); r = cfg["receivers"]["facade"]["radius"] + 15
+    cx, cy = center(cfg); r = facade_reach(cfg) + 15
     bbox = (cx - r, cy - r, cx + r, cy + r)
     fig, ax, side = setup_fig(f"{cfg['project']['name']} 건물 벽면(파사드) 소음지도 — {KEYNAME[key]}",
                               "벽면 바깥 5 cm, 층별 계산값 중 최댓값을 벽면을 따라 색 띠로 표시")
@@ -599,7 +599,7 @@ def building_map(cfg, key="LrT", top=12):
     C = Ctx(cfg)
     FR = pd.read_csv(os.path.join(C.out, "facade_result.csv"))
     agg = FR.groupby("bid").agg(L=(key, "max"), fl=("floor", "max"))
-    cx, cy = center(cfg); r = cfg["receivers"]["facade"]["radius"] + 15
+    cx, cy = center(cfg); r = facade_reach(cfg) + 15
     bbox = (cx - r, cy - r, cx + r, cy + r)
     fig, ax, side = setup_fig(f"{cfg['project']['name']} 건물별 소음 평가도 — {KEYNAME[key]}",
                               "건물마다 벽면(전 층) 최고 레벨로 채색 · 상위 건물 표기")
@@ -628,7 +628,8 @@ def building_map(cfg, key="LrT", top=12):
     y = legend_classes(side, 1.0, f"벽면 최고 {key} [dB(A)]", DIN_EDGES, DIN_COLS, unit="")
     side.add_patch(Rectangle((0.0, y - 0.022), 0.13, 0.02, fc=BLD_FC, ec="#999", transform=side.transAxes))
     side.text(0.17, y - 0.012, "계산 범위 밖 건물", fontsize=10, va="center", transform=side.transAxes)
-    y = info_block(side, y - 0.06, C, [("평가 건물", f"{len(E):,}동 (반경 {cfg['receivers']['facade']['radius']:g} m)")])
+    y = info_block(side, y - 0.06, C, [("평가 건물", f"{len(E):,}동 (" + ("격자 범위 안" if cfg["receivers"]["facade"].get("area", "grid") == "grid"
+                                      else f"반경 {cfg['receivers']['facade']['radius']:g} m") + ")")])
     warn_box(side, y - 0.01, "숫자 = 벽면 최고 레벨 dB(A), 아래는 건물명 또는 층수. 교통량 일부 가정값.")
     return save(fig, C.out, f"HQ_building_{key}", cfg, ("facade", key, "_building"))
 

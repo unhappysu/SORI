@@ -142,3 +142,27 @@ def test_compare_mismatch_terrain_and_method(tmp_path):
     assert compare.mismatch(a, a) == [] and compare.mismatch(a, tmp_path / "없음") == []
     (b / "run_info.json").write_text(json.dumps({"outputs": {"grid": "rls19"}}), encoding="utf-8")
     assert len(compare.mismatch(a, b)) == 2
+
+
+def test_facade_area_grid_selects_buildings_in_grid(tmp_path):
+    """외벽 계산 건물(v0.9): area = grid(기본)면 격자 사각형에 걸치는 건물 전부, radius 면 중심에서 반경 안(이전 동작).
+    facade_reach = 그림·3D 범위(grid 는 중심에서 격자 모서리까지)"""
+    import math
+    import geopandas as gpd
+    from shapely.geometry import box
+    from sori import build, config as C
+    cfg = C._merge(C.DEFAULTS, {"receivers": {"center": [0.0, 0.0], "grid": {"size": [200.0, 100.0]}}})
+    cfg["input"]["map"]["facade_exclude_kinds"] = ["가건물"]
+    bld = gpd.GeoDataFrame(dict(bid=[1, 2, 3, 4], kind=["주택", "주택", "주택", "가건물"]),
+                           geometry=[box(-5, -5, 5, 5), box(95, 45, 105, 55), box(150, 0, 160, 10), box(0, 0, 4, 4)])
+    import pandas as pd
+    F = pd.DataFrame([dict(bid=b, x1=g.bounds[0], y1=g.bounds[1], x2=g.bounds[2], y2=g.bounds[1], L=g.bounds[2] - g.bounds[0],
+                           nx=0.0, ny=-1.0, floors=1, z0=0.0, ztop=3.0, kind="x") for b, g in zip(bld.bid, bld.geometry)])   # 글자 열이 있어야 행이 정수를 유지(실제 facades 표와 같음)
+    assert cfg["receivers"]["facade"]["area"] == "grid"
+    assert set(build.facade_receivers(cfg, F, bld).bid) == {1, 2}                    # 모서리에 걸친 2 포함, 밖 3·가건물 4 제외
+    assert C.facade_reach(cfg) == math.hypot(100, 50)
+    cfg["receivers"]["facade"].update(area="radius", radius=50.0)
+    assert set(build.facade_receivers(cfg, F, bld).bid) == {1} and C.facade_reach(cfg) == 50.0
+    cfg["receivers"]["facade"]["area"] = "circle"
+    with pytest.raises(ValueError, match="facade.area"):
+        C._validate(cfg)

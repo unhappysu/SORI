@@ -20,7 +20,7 @@ from shapely.geometry import box, Point
 from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE
-from .config import grid_bbox, center
+from .config import grid_bbox, center, facade_reach
 from .propagation import SHORT, result_model
 from .resources import resource_path
 
@@ -190,7 +190,7 @@ def facade_plan(cfg):
     FR = pd.read_csv(os.path.join(out, "facade_result.csv"))
     W = FR.groupby(["fid", "piece"]).agg(x=("x", "first"), y=("y", "first"), LrT=("LrT", "max"),
                                          LrN=("LrN", "max")).reset_index()
-    cx, cy = center(cfg); r = cfg["receivers"]["facade"]["radius"] + 25
+    cx, cy = center(cfg); r = facade_reach(cfg) + 25
     bbox = (cx - r, cy - r, cx + r, cy + r)
     files = []
     for key in ("LrT", "LrN"):

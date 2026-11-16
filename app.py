@@ -167,7 +167,8 @@ def make_config(write=True, **over):
             "center": list(s.center) if s.center else None,
             "grid": {"enabled": True, "size": [float(w), float(h)], "step": float(preset["step"]),
                      "heights": [float(x) for x in s.heights]},
-            "facade": {"enabled": bool(preset["facade"]),
+            "facade": {"enabled": bool(preset["facade"]),             # 반경을 따로 정하지 않으면 격자 범위 안 건물 전부
+                       "area": "radius" if s.fac_radius else "grid",
                        "radius": float(s.fac_radius or 0.45 * min(w, h))},
         },
         "propagation": {"temperature_C": float(s.T), "humidity_pct": float(s.RH),
