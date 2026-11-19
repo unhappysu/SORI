@@ -13,6 +13,8 @@
                RLS-19: 거울반사 작도 가능, h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R (3.6)
                RLS-90: 거울반사 작도 가능, h_R ≥ 0.3·√a_R (4.6), a_R = 음원–반사체 거리
   - 허상음원 이득 gain(인자 rho): ISO 식 (20) ρ (DIr = 0, 무지향) / RLS-19 10^(−0.1·D_RV) (표 8). 2차 gain², 3차 gain³
+  - 반사면–음원 거리 제한 Rfs(> 0 일 때, SoundPLAN 'max. reflection distance to source' 비교용, 2026-11-19):
+    경로의 모든 반사면이 음원에서 Rfs 이내이고 수음점에서 Rf 이내여야 함(평면 점–선분 거리). Rfs = 0 이면 이전 동작
   - 수음점이 놓인 파사드: RLS-19 1장 'Immissionsort' 주석 "마지막 반사가 수음점이 속한 외벽에서 일어나는 경로는
     고려하지 않음" → 마지막 반사면에서만 제외(own_all = False, 기본). own_all = True 는 2026-10-29 이전 동작
     (모든 반사 순서에서 제외) — 원래 코드 기준선 비교용
@@ -48,6 +50,19 @@ def _path(meth, vx, vy, nv, zs, zr, hs, hr, gnd, dsm, bid, Gmap, x0, y0, res, nx
         R90.atten_rls90(geom, out)
     else:
         atten_iso(geom, bands, lams, alphas, ground_alt, C2, dzmax1, dzmax2, out, cmet0)
+
+
+@njit(cache=True)
+def _far(px, py, x1, y1, x2, y2, R):
+    """점 (px, py) 에서 선분까지 평면 거리가 R 초과면 True. R ≤ 0 이면 항상 False(제한 없음)"""
+    if R <= 0.0:
+        return False
+    ex = x2 - x1; ey = y2 - y1
+    L2 = ex * ex + ey * ey
+    t = ((px - x1) * ex + (py - y1) * ey) / L2 if L2 > 0.0 else 0.0
+    t = min(1.0, max(0.0, t))
+    qx = x1 + t * ex - px; qy = y1 + t * ey - py
+    return qx * qx + qy * qy > R * R
 
 
 @njit(cache=True)
@@ -112,7 +127,8 @@ def _order_n(n, xr, yr, zr, hr, rbid_r, rfid_r, cand, nc,
              fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
              gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rsm, Rsn, R2, skip_r,
              bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx,
-             own_all, bars, hd, hh, geom, out, inc, vx, vy, rb, rec_j, rec_f, rec_p, rec_n, fatt, cmet0=0.0):
+             own_all, bars, hd, hh, geom, out, inc, vx, vy, rb, rec_j, rec_f, rec_p, rec_n, fatt, cmet0=0.0,
+             Rfs=0.0, Rf=0.0):
     """n 차 반사(n ≥ 4) 한 수음점의 에너지 (주간, 야간).
       rec_*: 경로 기록(경로 보기용, sori/paths.py). rec_j.shape[0] = 0 이면 기록하지 않음(계산 커널).
       기록하면 경로마다 음원 rec_j, 에너지 계수 rec_f(대역 가중·반사 이득·감쇠 포함, 음원 파워에 곱함),
@@ -151,6 +167,8 @@ def _order_n(n, xr, yr, zr, hr, rbid_r, rfid_r, cand, nc,
                 it[depth] += 1
                 if own_all and g == rfid_r:
                     continue
+                if Rfs > 0.0 and _far(xr, yr, fx1[g], fy1[g], fx2[g], fy2[g], Rf):
+                    continue                            # Rfs 방식: 모든 반사면이 수음점 Rf 이내
                 d = (qx[depth - 1] - fx1[g]) * fnx[g] + (qy[depth - 1] - fy1[g]) * fny[g]
                 if d <= 0.05:
                     continue
@@ -169,6 +187,15 @@ def _order_n(n, xr, yr, zr, hr, rbid_r, rfid_r, cand, nc,
                 R = Rsm if smain[j] else Rsn
                 if dx * dx + dy * dy > R * R:
                     continue
+                if Rfs > 0.0:
+                    far = False
+                    for k in range(n):
+                        f = cf[k]
+                        if _far(sx[j], sy[j], fx1[f], fy1[f], fx2[f], fy2[f], Rfs):
+                            far = True
+                            break
+                    if far:
+                        continue
                 ax = sx[j]; ay = sy[j]
                 ok = True
                 Lt = 0.0
@@ -249,13 +276,13 @@ def compute(rx, ry, rz, rg, rbid, rfid, order,
             fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
             gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
             Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
-            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all):
+            bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, Rfs=0.0):
     """방음벽 없는 계산(이전 호출 형식 유지) — compute_b 에 빈 방음벽 배열을 넘김"""
     o = compute_b(rx, ry, rz, rg, rbid, rfid, order, sx, sy, sz, sg, Pd, Pn, smain,
                   fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
                   gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
                   bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all,
-                  np.zeros((0, 5)))
+                  np.zeros((0, 5)), Rfs)
     return o[0], o[1], o[2], o[3], o[4], o[5]
 
 
@@ -265,14 +292,14 @@ def compute_b(rx, ry, rz, rg, rbid, rfid, order,
               fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
               gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
               Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
-              bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars):
+              bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars, Rfs=0.0):
     """측면 회절 없는 계산(이전 호출 형식 유지). 반환 (Ed, En, Edir, E1, E2, E3, E4)"""
     o = compute_l(rx, ry, rz, rg, rbid, rfid, order, sx, sy, sz, sg, Pd, Pn, smain,
                   fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
                   gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
                   bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars,
                   False, 0, np.zeros(bars.shape[0], np.int64), np.zeros((0, 2)), np.zeros(1, np.int64),
-                  np.ones(fx1.shape[0]))
+                  np.ones(fx1.shape[0]), 0.0, Rfs)
     return o[0], o[1], o[2], o[3], o[4], o[5], o[6]
 
 
@@ -283,10 +310,11 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
               gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
               Rmain, Rminor, Rf, Rsm, Rsn, R2, skip_r,
               bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx, own_all, bars,
-              lat_on, lat_grow, bgid, bxy, bptr, fatt, cmet0=0.0):
+              lat_on, lat_grow, bgid, bxy, bptr, fatt, cmet0=0.0, Rfs=0.0):
     """bars[n, 5] = 방음벽 선분 x1, y1, x2, y2, 지면 위 높이(geometry.path_geometry_b), bgid = 조각별 방음벽 번호.
     lat_on: 측면 회절(lateral.lateral_factor, ISO 방법만), bxy·bptr = 건물 외곽선(건물 번호 = bid).
     cmet0 = ISO 9613-2 식 (22) C0(dB, 0 = 기상 보정 없음 L_AT(DW), ISO 방법만).
+    Rfs > 0: 반사면–음원 거리 제한(모든 반사면이 음원 Rfs·수음점 Rf 이내, 모듈 설명 참고). 0 = 제한 없음(이전 동작).
     fatt[NF] = 반사면별 추가 이득 계수(방음벽 반사 저감: 표 8·표 7 값 / 기본 이득, 건물·반사형 = 1).
     반환 (Ed, En, Edir, E1, E2, E3, E4, Elat): E4 = 4차 이상 반사, Elat = 측면 회절로 더해진 에너지(주간)"""
     NR = rx.shape[0]; NS = sx.shape[0]; NF = fx1.shape[0]; NB = bands.shape[0]
@@ -372,6 +400,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                     R = Rsm if smain[j] else Rsn
                     if dx * dx + dy * dy > R * R:
                         continue
+                    if _far(sx[j], sy[j], fx1[f], fy1[f], fx2[f], fy2[f], Rfs):
+                        continue
                     ds = (sx[j] - fx1[f]) * fnx[f] + (sy[j] - fy1[f]) * fny[f]
                     if ds <= 0.05:
                         continue
@@ -416,6 +446,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                     for f1 in range(NF):
                         if f1 == f2 or (own_all and f1 == rfid[r]):
                             continue
+                        if Rfs > 0.0 and _far(xr, yr, fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rf):
+                            continue
                         c1x = 0.5 * (fx1[f1] + fx2[f1]); c1y = 0.5 * (fy1[f1] + fy2[f1])
                         if (c1x - c2x) ** 2 + (c1y - c2y) ** 2 > R2 * R2:
                             continue
@@ -435,6 +467,9 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                             dx = sx[j] - xr; dy = sy[j] - yr
                             R = Rsm if smain[j] else Rsn
                             if dx * dx + dy * dy > R * R:
+                                continue
+                            if Rfs > 0.0 and (_far(sx[j], sy[j], fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rfs)
+                                              or _far(sx[j], sy[j], fx1[f2], fy1[f2], fx2[f2], fy2[f2], Rfs)):
                                 continue
                             ds1 = (sx[j] - fx1[f1]) * fnx[f1] + (sy[j] - fy1[f1]) * fny[f1]
                             if ds1 <= 0.05:
@@ -494,6 +529,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                         f2 = nb_idx[k2]
                         if own_all and f2 == rfid[r]:
                             continue
+                        if Rfs > 0.0 and _far(xr, yr, fx1[f2], fy1[f2], fx2[f2], fy2[f2], Rf):
+                            continue
                         dQ1 = (q1x - fx1[f2]) * fnx[f2] + (q1y - fy1[f2]) * fny[f2]
                         if dQ1 <= 0.05:
                             continue
@@ -507,6 +544,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                         for k1 in range(nb_ptr[f2], nb_ptr[f2 + 1]):
                             f1 = nb_idx[k1]
                             if own_all and f1 == rfid[r]:
+                                continue
+                            if Rfs > 0.0 and _far(xr, yr, fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rf):
                                 continue
                             dQ2 = (q2x - fx1[f1]) * fnx[f1] + (q2y - fy1[f1]) * fny[f1]
                             if dQ2 <= 0.05:
@@ -522,6 +561,10 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                                 dx = sx[j] - xr; dy = sy[j] - yr
                                 R = Rsm if smain[j] else Rsn
                                 if dx * dx + dy * dy > R * R:
+                                    continue
+                                if Rfs > 0.0 and (_far(sx[j], sy[j], fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rfs)
+                                                  or _far(sx[j], sy[j], fx1[f2], fy1[f2], fx2[f2], fy2[f2], Rfs)
+                                                  or _far(sx[j], sy[j], fx1[f3], fy1[f3], fx2[f3], fy2[f3], Rfs)):
                                     continue
                                 ds1 = (sx[j] - fx1[f1]) * fnx[f1] + (sy[j] - fy1[f1]) * fny[f1]
                                 if ds1 <= 0.05:
@@ -586,7 +629,7 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                                         bands, lams, alphas, wts, ground_alt, C2, dz1, dz2, meth, nb_ptr, nb_idx,
                                         own_all, bars, hd, hh, geom, out, inc, vx, vy, rb,
                                         np.zeros(0, np.int64), np.zeros(0), np.zeros((0, 2 * MAXO)),
-                                        np.zeros(1, np.int64), fatt, cmet0)
+                                        np.zeros(1, np.int64), fatt, cmet0, Rfs, Rf)
                     ed += a_d; en += a_n; e4 += a_d
         Ed[r] = ed; En[r] = en; Edir[r] = e_dir; E1[r] = e1; E2[r] = e2; E3[r] = e3; E4[r] = e4; Elat[r] = elat
     return Ed, En, Edir, E1, E2, E3, E4, Elat
@@ -634,12 +677,13 @@ def point_paths(xr, yr, zr, zgr, rbidr, rfidr, order,
                 fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
                 gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
                 Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
-                bands, lams, alphas, ground_alt, C2, dz1, dz2, meth):
+                bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, Rfs=0.0):
     """방음벽 없는 경우(이전 호출 형식 유지)"""
     return point_paths_b(xr, yr, zr, zgr, rbidr, rfidr, order, sx, sy, sz, sg, smain,
                          fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
                          gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step, Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
-                         bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, np.zeros((0, 5)), np.ones(fx1.shape[0]))
+                         bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, np.zeros((0, 5)), np.ones(fx1.shape[0]),
+                         0.0, Rfs)
 
 
 @njit(cache=True)
@@ -648,7 +692,7 @@ def point_paths_b(xr, yr, zr, zgr, rbidr, rfidr, order,
                   fx1, fy1, fx2, fy2, fnx, fny, fz0, fzt, fL, fbid, rho,
                   gnd, dsm, bid, Gmap, x0, y0, res, nx, ny, step,
                   Rmain, Rminor, Rf, Rsm, Rsn, skip_r,
-                  bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, bars, fatt, cmet0=0.0):
+                  bands, lams, alphas, ground_alt, C2, dz1, dz2, meth, bars, fatt, cmet0=0.0, Rfs=0.0):
     """수음점 1개의 직접음·1차 반사 경로별 기하와 감쇠항(대역별). compute 의 직접음·1차 반사와 같은 조건.
     반환 (info[n, NPINFO], terms[n, NTERM], band[n]). terms 열: RLS-19 = rls19_propagation.TERM_NAMES,
     ISO = iso9613.TERM_NAMES (RLS-19 는 앞 5칸만 사용). 2·3차 반사 경로는 넣지 않음"""
@@ -708,6 +752,8 @@ def point_paths_b(xr, yr, zr, zgr, rbidr, rfidr, order,
                 dx = sx[j] - xr; dy = sy[j] - yr
                 R = Rsm if smain[j] else Rsn
                 if dx * dx + dy * dy > R * R:
+                    continue
+                if _far(sx[j], sy[j], fx1[f], fy1[f], fx2[f], fy2[f], Rfs):
                     continue
                 ds = (sx[j] - fx1[f]) * fnx[f] + (sy[j] - fy1[f]) * fny[f]
                 if ds <= 0.05:

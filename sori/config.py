@@ -135,7 +135,10 @@ DEFAULTS = {
                        # all = 모든 반사 순서(2026-10-29 이전 동작, 원래 코드 기준선 비교용)
                        "own_facade": "last",
                        "r_facade": 100.0, "r_source_main": 200.0, "r_source_minor": 50.0,
-                       "r_second": 50.0},
+                       "r_second": 50.0,
+                       # 반사면–음원 거리 제한(m). None = 사용 안 함(기본, 이전 동작). 값을 주면 SoundPLAN 'max. reflection
+                       # distance to source' 처럼 경로의 모든 반사면이 음원에서 이 거리 안·수음점에서 r_facade 안이어야 함
+                       "r_refl_source": None},
         "lateral": {                               # 측면 회절(ISO 9613-2 식 13, sori/lateral.py) — iso9613_2 방법에만 적용
             "enabled": True,                       # 기본 켬(2026-11-13 사용자 결정): 건물·방음벽에 막힌 직접음 경로에 좌우 측면 경로를
                                                    # 더함. rls19·rls90 방법은 켜 있어도 적용하지 않음(원문 규정). false = 2026-11-13 이전 동작
@@ -255,6 +258,9 @@ def _validate(c):
         raise ValueError("propagation.lateral.max_grow 는 0 ~ 20")
     if p["reflection"].get("own_facade", "last") not in ("last", "all"):
         raise ValueError("propagation.reflection.own_facade 는 last 또는 all")
+    rrs = p["reflection"].get("r_refl_source")
+    if rrs is not None and not float(rrs) > 0.0:
+        raise ValueError("propagation.reflection.r_refl_source 는 null(사용 안 함) 또는 0 보다 큰 거리(m)")
     if float(p["reflection"]["D_RV"]) < 0.0:
         raise ValueError("RLS-19 표 8: reflection.D_RV 는 0 이상(dB)")
     if not 0.2 < float(p["reflection"]["rho"]) <= 1.0:

@@ -97,6 +97,12 @@ def model_outlines(d):
     return bgid, np.zeros((0, 2)), np.zeros(1, np.int64)
 
 
+def refl_source_limit(cfg):
+    """반사면–음원 거리 제한 Rfs(m, solver 인자). 설정 r_refl_source 가 없으면 0 = 제한 없음"""
+    v = cfg["propagation"]["reflection"].get("r_refl_source")
+    return float(v) if v is not None else 0.0
+
+
 def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, progress=None):
     p = cfg["propagation"]; rf = p["reflection"]; br = p["barrier"]
     model = get_model(cfg)
@@ -132,7 +138,8 @@ def _run(cfg, d, S, F, rx, ry, rz, rg, rbid, rfid, order, label, chunk=256, prog
                     bands, lams, alphas, wts, cfg["input"]["ground"]["method"] == "alternative",
                     float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, *nb,
                     rf.get("own_facade", "last") == "all", bars,
-                    lat, int((cfg["propagation"].get("lateral") or {}).get("max_grow", 6)), bgid, bxy, bptr, fatt, cmet_c0(cfg))
+                    lat, int((cfg["propagation"].get("lateral") or {}).get("max_grow", 6)), bgid, bxy, bptr, fatt, cmet_c0(cfg),
+                    refl_source_limit(cfg))
         for k in range(8):
             res[k][a:b] = o[k]
         el = time.time() - t0

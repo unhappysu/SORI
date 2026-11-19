@@ -61,7 +61,7 @@ def _high_order(cfg, d, S, F, x, y, z, zg, n):
              rf.get("own_facade", "last") == "all", RUN.model_bars(d),
              np.empty(HULL_N), np.empty(HULL_N), np.empty(NGEOM), np.empty(len(bands)), np.ones(len(bands), np.bool_),
              np.empty(MAXV), np.empty(MAXV), np.full(MAXO, -1, np.int64), rj, rfac, rp, rn, RUN.face_factors(cfg, F),
-             RUN.cmet_c0(cfg))
+             RUN.cmet_c0(cfg), RUN.refl_source_limit(cfg), float(rf["r_facade"]))
     k = int(rn[0])
     return pd.DataFrame(dict(source=rj[:k], factor=rfac[:k],
                              refl_pts=[[(rp[q, 2 * i], rp[q, 2 * i + 1]) for i in range(n)] for q in range(k)]))

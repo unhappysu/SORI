@@ -39,7 +39,7 @@ def path_terms(cfg, d, S, F, P):
     if model.name == "rls90":
         from .run import junction_K
         Kp = dict(zip(P.point_id, junction_K(cfg["project"]["output_dir"], P.x.values, P.y.values)))
-    from .run import model_bars, face_factors, cmet_c0
+    from .run import model_bars, face_factors, cmet_c0, refl_source_limit
     bars = model_bars(d)
     fatt = face_factors(cfg, F)
     frames = []
@@ -52,7 +52,8 @@ def path_terms(cfg, d, S, F, P):
             float(p["profile_step"]), float(p["max_dist_main"]), float(p["max_dist_minor"]),
             float(rf["r_facade"]), float(rf["r_source_main"]), float(rf["r_source_minor"]), float(p["skip_radius"]),
             bands, lams, alphas, cfg["input"]["ground"]["method"] == "alternative",
-            float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, bars, fatt, cmet_c0(cfg))
+            float(br["C2"]), float(br["dz_max_single"]), float(br["dz_max_double"]), model.code, bars, fatt, cmet_c0(cfg),
+            refl_source_limit(cfg))
         if not len(info):
             continue
         j = info[:, P_J].astype(int)
