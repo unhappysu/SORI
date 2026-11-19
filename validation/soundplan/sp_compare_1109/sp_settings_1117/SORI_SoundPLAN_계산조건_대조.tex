@@ -1,0 +1,206 @@
+%% SORI ↔ SoundPLAN 계산 조건 대조표 (학술발표용). 단독 컴파일 문서: xelatex 2회
+%% 근거: 소음진동설계/SoundPLAN_계산조건_정리.pdf(2026-11-17) 4절 표 「앱별로 SoundPLAN과 다른 설정」 + 1절 설정표
+%%       SORI 설정 범위: sori/config.py(DEFAULTS·_validate), sori/geometry.py(MAXO), sori/rls19.py(표 4a·4b·5)
+%%       SORI 이번 계산 설정: sp_refl/config.yaml, sp_refl_1119/config.yaml(교통량만 SoundPLAN 입력값으로 바꿈)
+%% 본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.
+\documentclass[10pt,a4paper]{article}
+\usepackage[a4paper,top=15mm,bottom=15mm,left=16mm,right=16mm]{geometry}
+\usepackage{fontspec}
+\usepackage{xetexko}
+\IfFontExistsTF{Noto Serif CJK KR}{%
+  \setmainfont{Noto Serif CJK KR}\setsansfont{Noto Sans CJK KR}%
+  \setmainhangulfont{Noto Serif CJK KR}\setsanshangulfont{Noto Sans CJK KR}%
+  \setmonohangulfont{Noto Sans CJK KR}[Scale=0.85]}{%
+  \setmainfont{Times New Roman}\setsansfont{Apple SD Gothic Neo}%
+  \setmainhangulfont{AppleMyungjo}[AutoFakeBold=2.5]\setsanshangulfont{Apple SD Gothic Neo}%
+  \setmonohangulfont{Apple SD Gothic Neo}[Scale=0.85]}
+\usepackage{booktabs,tabularx,array,longtable,xcolor,colortbl}
+\usepackage{enumitem,needspace}
+\usepackage[hidelinks]{hyperref}
+\linespread{1.12}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.35em}
+\setlist{itemsep=0.1em,topsep=0.25em}
+\renewcommand{\tablename}{표}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcommand{\f}[1]{\texttt{\small #1}}
+\newcommand{\hl}[1]{\textbf{#1}}
+\definecolor{okbg}{HTML}{E3F2E6}\definecolor{okfg}{HTML}{1E6B33}
+\definecolor{nbbg}{HTML}{FDEBD8}\definecolor{nbfg}{HTML}{A4500F}
+\definecolor{hdr}{HTML}{DCE4F2}\definecolor{navy}{HTML}{14285A}
+\newcommand{\ok}{\colorbox{okbg}{\textcolor{okfg}{\sffamily\bfseries\footnotesize 같음}}}
+\newcommand{\eq}[1]{\colorbox{okbg}{\textcolor{okfg}{\sffamily\bfseries\footnotesize #1}}}
+\newcommand{\nb}[1]{\colorbox{nbbg}{\textcolor{nbfg}{\sffamily\bfseries\footnotesize #1}}}
+\newcommand{\sect}[1]{\Needspace{6\baselineskip}\section*{\textcolor{navy}{#1}}}
+
+\begin{document}
+
+{\sffamily\Large\bfseries\textcolor{navy}{SORI 계산 조건 — SoundPLAN 계산 조건과의 대조}}\\[1mm]
+{\sffamily 전농사거리 사가정로 모델 · SoundPLAN 9.1 / SORI v0.9 · RLS-19 · 2026년 11월 19일 · 전현수}
+
+\vspace{2mm}
+\fcolorbox{blue!50!black}{blue!5}{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\small
+\textbf{요약.} 「SoundPLAN 계산 조건 정리」(2026-11-17) 4절 표에서 SORI 열은 「설정 가능 · 기본값 가정 · 확인」으로 비어 있었다.
+이 문서는 그 칸을 채우고, 항목마다 SORI의 계산 조건(이번 비교에 넣은 값)·기본값·변경 가능 범위를 정리한다.
+\begin{itemize}[leftmargin=1.2em]
+\item SORI는 배출·전파를 \hl{RLS-19}로 계산하도록 설정했고, 4절 표의 7개 항목과 표 아래 4개 확인 항목(반사 손실, 반사 거리 제한, 차폐량 상한, LrD)을
+  \hl{모두 SoundPLAN과 같게} 맞췄다.
+\item 1절 설정표의 나머지 항목(도로 분할, 탐색 반경, 교통량·속도, 노면, 도로 높이, 건물·지형, 수음점)도 같게 맞췄다.
+\item 같게 맞출 수 없는 항목은 \hl{격자 보간}(SoundPLAN 9×9 보간, SORI는 모든 점을 직접 계산) 하나다.
+  해석이 들어간 항목은 \hl{반사면–음원 50 m 판정 방식} 하나다(4절).
+\end{itemize}}}
+
+%% ------------------------------------------------------------------
+\sect{1. 「앱별로 SoundPLAN과 다른 설정」 표의 SORI 열}
+「SoundPLAN 계산 조건 정리」 4절 표의 항목 순서를 그대로 따랐다. SORI 칸은 세 가지로 나눴다.
+\hl{계산 조건}은 SoundPLAN과 비교하려고 이번에 넣은 값, \hl{기본값}은 따로 지정하지 않을 때 쓰는 값, \hl{변경 가능 범위}는 설정으로 바꿀 수 있는 값이다.
+
+{\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}P{19mm}P{22mm}P{28mm}P{30mm}Lc@{}}
+\toprule
+\rowcolor{hdr} 항목 & SoundPLAN & SORI 계산 조건 & SORI 기본값 & SORI 변경 가능 범위 & 판정 \\
+\midrule
+반사 차수 & 2차 & \hl{2차} & 3차(「소음지도의 작성방법」 별표 2 「3차 이상」) &
+  \hl{0 \textasciitilde{} 6차}. 격자·외벽·점 수음점마다 따로 지정. 4차 이상은 계산 시간이 차수마다 크게 늘어남 & \ok \\
+노면 보정 & 0 dB (기준 노면) & \hl{기준 노면}(D\textsubscript{SD} = 0 dB) & 아스팔트·콘크리트 → 기준 노면(0 dB), 블록·비포장 → 블록 포장 &
+  RLS-19 표 4a 노면 11종(기준, SMA, AC 11, 배수성 PA 8·11 등) + 표 4b 블록 포장 2종. 수치지도 「포장재질」 값마다 지정 & \ok \\
+신호교차로 보정 & 없음 & \hl{끔}(D\textsubscript{K} = 0) & 켬: 4차로 이상 도로 2개가 만나는 교차점을 신호교차로로 자동 판정 &
+  켬/끔. 자동 판정 기준 차로 수 또는 교차점 CSV 직접 지정. RLS-19 표 5: 신호 3 dB, 회전 2 dB & \ok \\
+다중반사 D\textsubscript{refl} & 없음 & \hl{끔}(D\textsubscript{refl} = 0) & 켬(도로 양쪽 건물 자동 탐색) &
+  켬/끔. RLS-19 식 (8) & \ok \\
+건물 높이 & 층수 × 3 m & \hl{층수 × 3 m} & 층수 × 3 m &
+  층고 임의 값, 또는 실제 높이 필드 사용. 무벽건물·4 m\textsuperscript{2} 미만 건물 제외 & \ok \\
+측면 회절 & 없음 & \hl{없음}(RLS-19 전파) & 켬(ISO 9613-2 전파일 때만 적용) &
+  ISO 9613-2 전파에서 켬/끔(식 13, 건물 감싸 돌기 0 \textasciitilde{} 20회). RLS-19·RLS-90 전파에서는 원문 규정대로 항상 없음 & \ok \\
+기준 표기 & RLS-19 & \hl{RLS-19}(배출·전파) & RLS-19 배출 + ISO 9613-2 전파 &
+  RLS-19(배출·전파) / RLS-19 배출 + ISO 9613-2 전파 / RLS-90(배출·전파) & \ok \\
+\midrule
+\multicolumn{6}{@{}l}{\sffamily 4절 표 아래 「모든 앱에서 같은지 함께 확인할 것」 항목} \\
+\midrule
+반사 손실 & 0.5 dB/회 & \hl{0.5 dB/회} & 0.5 dB/회 &
+  RLS-19 D\textsubscript{RV} 0 dB 이상 임의 값(표 8). ISO 전파는 반사계수 ρ(0.2 초과 1 이하), RLS-90 전파는 D\textsubscript{E} & \ok \\
+반사 거리 제한 & 반사면: 수음점 200 m, 음원 50 m 안 & 반사면–수음점 \hl{200 m}, 반사면–음원 \hl{50 m}(경로의 모든 반사면) &
+  반사면–수음점 100 m, 음원–수음점 간선 200 m·골목 50 m, 2차 반사면 간격 50 m, 반사면–음원 제한 없음 &
+  네 가지 거리를 각각 임의 값(m)으로 지정. 반사면–음원 제한은 끌 수 있음 & \ok \\
+차폐량 상한 & 1000 dB (상한 없음) & \hl{상한 없음} & RLS-19 전파: 상한 없음. ISO 전파: 단일 20 dB·다중 25 dB &
+  RLS-19 전파는 식 (15) 원문대로 상한 없음(고정). ISO 전파는 상한 값 지정 가능 & \ok \\
+평가값 & 주간 LrD (06–22시) & \hl{주간 L\textsubscript{r,T}}(= LrD) & 주간 L\textsubscript{r,T}·야간 L\textsubscript{r,N} 함께 계산 &
+  시간대 고정(주간 06–22시, 야간 22–06시) & \ok \\
+\bottomrule
+\end{tabularx}}
+
+\vspace{1mm}
+{\footnotesize 4절 표의 SORI 열을 위 결과로 바꾸면: 반사 차수 \eq{2차} · 노면 보정 \eq{0 dB} · 신호교차로 보정 \eq{없음} · 다중반사 \eq{없음} ·
+건물 높이 \eq{층수 × 3 m} · 측면 회절 \eq{없음} · 기준 표기 \eq{RLS-19}.}
+
+%% ------------------------------------------------------------------
+\sect{2. 나머지 계산 조건(「SoundPLAN 계산 조건 정리」 1절 설정표)}
+
+{\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}P{19mm}P{24mm}P{30mm}P{28mm}Lc@{}}
+\toprule
+\rowcolor{hdr} 항목 & SoundPLAN & SORI 계산 조건 & SORI 기본값 & SORI 변경 가능 범위 & 판정 \\
+\midrule
+도로 구간 분할 & 거리/직경 계수 8, 최소 1 m & \hl{1 m}(수음점 거리 s ≥ 8 m에서 l ≤ s/8) & 간선 3 m, 골목 5 m &
+  간선·골목 따로 임의 길이(m). RLS-19 3.2 주석 l ≤ s/2 조건 진단 기록 & \ok \\
+탐색 반경 & 5,000 m, 허용 오차 0.1 dB & 1,000 m(음원이 모두 600 m 안 → 5 km와 같은 결과) & 간선 300 m, 골목 150 m &
+  간선·골목 따로 임의 거리(m) & \ok \\
+교통량 & 현장 조사값, 화물차 모두 Trucks1(p1) & SoundPLAN 입력값: 동행 1,046 승용 + 388 Trucks1, 서행 838.2 승용 + 267.9 Trucks1(대/h), p2 = 0 &
+  교통량 CSV. 자료 없는 도로는 차로 수별 가정 교통량 &
+  도로(UFID·도로명)마다 주간·야간 시간당 교통량, p1·p2, 방향별 교통량·화물차 비율 & \ok \\
+속도 & 남측 50, 북측 30 km/h (차종 공통) & 남측(동행) 50, 북측(서행) 30 km/h & 자료에 없으면 간선 50, 골목 30 km/h &
+  방향별·차종별(승용·화물). 30 km/h 미만은 30 km/h(RLS-19 2장) & \ok \\
+음원선 & 차로마다 & \hl{차로마다}, 사가정로 3 + 2 차로 & 주행 방향마다 1개선(RLS-19 Bild 6) &
+  방향마다 / 차로마다. 방향별 차로 수 도로별 지정 & \ok \\
+도로 높이·경사 & 지형 높이, 경사 한계 100 \%, 평활 0 m & \hl{지형 그대로}, 평활 0 m & 차도 면 평탄화(종단 20 m), 지형 평활 5 m &
+  지형 그대로 / 평탄화, 평활 길이 임의. 경사 보정은 RLS-19 식 (7) & \ok \\
+지형 & 등고선·표고점 & \hl{등고선·표고점만} & 등고선·표고점(DEM 없음) &
+  DEM 래스터를 보조 또는 주 자료로 추가 & \ok \\
+기타 객체 & 방음벽·감쇠 영역·지면 영역 없음 & \hl{사용 안 함} & 사용 안 함 &
+  방음벽 CSV(반사·흡음), 녹지 지면 폴리곤 & \ok \\
+수음점 & M1·M2, 높이 1.31 m & SoundPLAN과 \hl{같은 좌표·높이} & 격자·건물 외벽 켬, 점 수음점 없음 &
+  점 수음점 CSV(좌표·높이), 격자, 건물 외벽(층별) & \ok \\
+격자 & 5 m 간격, 지면 위 2 m & SoundPLAN 격자점과 \hl{같은 좌표}, \hl{2 m} & 5 m 간격, 지면 위 4 m &
+  간격·높이(여러 높이)·범위 임의 & \ok \\
+격자 보간 & 9×9, 차이 0.15 dB, 40 dB 미만 항상 보간 & 모든 점 직접 계산 & 모든 점 직접 계산 &
+  보간 기능 없음(그림용 세분 격자는 보간이 아니라 더 촘촘히 계산) & \nb{맞출 수 없음} \\
+\bottomrule
+\end{tabularx}}
+
+%% ------------------------------------------------------------------
+\sect{3. SORI 계산 기능 한눈에}
+SORI는 국토지리정보원 수치지형도(건물·도로·등고선·표고점)와 교통량 CSV를 입력으로 도로교통소음 지도를 계산한다. 설정은 YAML 파일 하나에 모이며,
+지정하지 않은 항목은 기본값을 쓴다. 아래는 SoundPLAN 비교와 관련된 기능만 추렸다.
+
+{\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\linewidth}{@{}>{\bfseries}p{26mm}Lp{42mm}@{}}
+\toprule
+\rowcolor{hdr} 구분 & 기능 · 설정 범위 & 설정 키 \\
+\midrule
+계산 기준 & 전파 방법 3가지: RLS-19(배출·전파) / RLS-19 배출 + ISO 9613-2 전파 / RLS-90(배출·전파). RLS-19·RLS-90은 A 가중 단일값, ISO 9613-2는 옥타브 대역 계산 가능 & \f{propagation\_method} \\
+반사 & 차수 \hl{0 \textasciitilde{} 6차}(격자·외벽·점 따로). 반사 손실 D\textsubscript{RV}(RLS-19)·반사계수 ρ(ISO, 0.2 초과 1 이하)·D\textsubscript{E}(RLS-90). 반사면–수음점·반사면–음원·음원–수음점 거리 제한과 2차 반사면 간격. 수음점이 놓인 외벽 반사 제외 규칙(마지막 반사만 / 모든 반사) & \f{propagation.reflection.*} \\
+회절 & 건물·지형 위 회절(단일·다중). 측면 회절은 ISO 9613-2 전파에서만(켬/끔, 감싸 돌기 0 \textasciitilde{} 20회). 차폐 상한: RLS-19 없음, ISO 20 / 25 dB(설정 가능) & \f{propagation.lateral}, \f{propagation.barrier} \\
+배출 보정 & 노면 13종(RLS-19 표 4a·4b), 종단경사(식 7), 신호·회전 교차로 D\textsubscript{K}(표 5, 자동 판정 또는 CSV), 다중반사 D\textsubscript{refl}(식 8, 켬/끔) & \f{input.surface\_map}, \f{input.junctions}, \f{model.canyon} \\
+교통량·음원 & 도로별 주간·야간 교통량, p1·p2, 방향별 비율·속도. 교통량 자료 없는 도로의 차로수별 가정값. 음원선 방향별/차로별, 차로폭 자동/고정, 분할 길이 & \f{input.traffic}, \f{model.source\_lines}, \f{model.segment\_*} \\
+지형·건물 & 등고선·표고점 지형(+ DEM 선택), 지형 평활, 차도 면 평탄화/그대로, 건물 층수 × 층고 또는 높이 필드, 방음벽, 녹지 지면 & \f{model.*}, \f{input.dem}, \f{input.barriers} \\
+수음점 & 격자(간격·높이·범위, 경계 세분), 건물 외벽(층별·조각 길이), 점 수음점(좌표·높이) & \f{receivers.*} \\
+결과 & 주간 L\textsubscript{r,T}·야간 L\textsubscript{r,N}, 격자·외벽·점 CSV와 지도 그림, 점별 도로 기여도, 감쇠항별 중간값(D\textsubscript{div}, D\textsubscript{atm}, D\textsubscript{gr}, D\textsubscript{z}) & \f{receivers.points.}\newline\f{road\_contrib},\newline\f{propagation.terms\_csv} \\
+\bottomrule
+\end{tabularx}}
+
+\vspace{1mm}
+{\footnotesize SORI 기본값은 이번 비교 설정과 다르다(전파 ISO 9613-2, 반사 3차, 측면 회절 켬, D\textsubscript{K}·D\textsubscript{refl} 켬, 차도 면 평탄화).
+SoundPLAN 비교에는 1·2절의 값으로 바꾼 설정 파일을 따로 썼다.}
+
+%% ------------------------------------------------------------------
+\sect{4. 같게 맞출 수 없거나 해석이 들어간 항목}
+\begin{enumerate}[leftmargin=1.4em]
+\item \hl{격자 보간(맞출 수 없음).} SoundPLAN은 9×9 칸 모서리를 먼저 계산하고 조건이 맞으면 나머지 점을 보간한다(차이 0.15 dB 이내, 40 dB 미만 구역은 항상 보간).
+  SORI는 모든 점을 직접 계산한다. 따라서 SoundPLAN 격자값 일부는 직접 계산값이 아니며, 점별 비교에서 0.15 dB 수준 차이는 의미가 없다.
+  수음점 M1·M2는 보간과 관계없다.
+\item \hl{반사면–음원 50 m 판정(해석).} SoundPLAN 설정 「max.\ reflection distance to source」 50 m를 SORI에서는
+  「경로의 \hl{모든} 반사면이 음원(분할 구간)에서 50 m 안, 수음점에서 200 m 안」으로 구현했다(\f{r\_refl\_source: 50}, \f{r\_facade: 200}).
+  SoundPLAN이 이 거리를 분할 구간마다 재는지, 도로 전체 기준으로 재는지, 첫 반사면에만 적용하는지는 설정 화면만으로 확인할 수 없다.
+\item \hl{탐색 반경 1 km.} SoundPLAN 5 km와 값은 다르지만, 교통량이 있는 음원(사가정로)이 모두 수음점에서 600 m 안에 있어 계산 결과는 같다.
+\item \hl{건물 안 격자점.} SoundPLAN 격자 중 수치지도 건물 안에 들어가는 약 150점은 원인을 확인하기 전까지 비교에서 뺀다(「SoundPLAN 계산 조건 정리」 3절 권고와 같음).
+\end{enumerate}
+
+%% ------------------------------------------------------------------
+\clearpage
+\sect{부록. SORI 설정 파일(이번 계산)}
+\f{validation/soundplan/sp\_compare\_1109/sp\_settings\_1117/sp\_refl\_1119/config.yaml}에서 계산 조건 부분만 옮겼다(주석은 줄임).
+{\footnotesize
+\begin{verbatim}
+propagation_method: rls19              # 배출·전파 모두 RLS-19 (측면 회절 적용 안 함)
+input:
+  map: {folders: [전농사거리_수치지도]}  # 등고선·표고점·도로·건물, DEM 없음
+  traffic: {path: traffic_soundplan_1119.csv}   # SoundPLAN 입력 교통량, 화물차 전부 Lkw1
+  surface_map: {"아스팔트": "ref", "아스팔트콘크리트": "ref"}   # 기준 노면, D_SD = 0
+  junctions: {auto_signal_min_lanes: 99}       # 신호교차로 보정 없음, D_K = 0
+model:
+  floor_height: 3.0                    # 층수 × 3 m
+  source_lines: lane                   # 차로마다 음원선
+  canyon: {enabled: false}             # D_refl = 0
+  segment_main: 1.0                    # 분할 1 m
+  road_surface: dtm                    # 도로 높이 = 지형
+  terrain_smooth_m: 0.0                # 평활 0 m
+receivers:
+  points: {path: points_sp.csv}        # SoundPLAN 격자점(2 m)·수음점 M1·M2(1.31 m)
+propagation:
+  max_dist_main: 1000.0
+  reflection: {D_RV: 0.5,
+               max_order_grid: 2, max_order_facade: 2, max_order_point: 2,
+               r_facade: 200.0, r_refl_source: 50.0,
+               r_source_main: 400.0, r_source_minor: 400.0, r_second: 520.0}
+\end{verbatim}}
+
+\vfill
+{\footnotesize\color{gray} 근거: 「SoundPLAN 계산 조건 정리」(2026-11-17, SoundPLAN 9.1 설정 화면) · SORI v0.9 \f{sori/config.py}, \f{sori/rls19.py}.
+본 문서는 Claude(Anthropic의 AI)를 활용하여 작성하였음.}
+
+\end{document}

@@ -1,0 +1,40 @@
+# 2026-11-19 오후: 교통량을 SoundPLAN 입력값(방향별 승용·Trucks1, 사가정로 전 구간 같은 값)으로 바꿈. 나머지는 sp_refl 과 같음
+# 2026-11-19 r_refl_source 추가 뒤: 반사 거리도 SoundPLAN 규칙 그대로
+# SoundPLAN 계산 조건 정리(2026-11-17, SoundPLAN_계산조건_정리.pdf)에 맞춘 조건. 2026-11-19
+# ※ Claude(Anthropic의 AI)를 활용하여 작성하였음.
+# SoundPLAN: RLS-19 배출·전파, 반사 2차·D_RV 0.5 dB, 측면 회절 없음, 차폐 상한 없음, 분할 s/8·최소 1 m,
+#   탐색 5 km, 사가정로만(남 50·북 30 km/h, 화물차 전부 Trucks1), 기준 노면, Drefl·신호교차로 보정 없음,
+#   도로 높이 = 지형(평활 0), 건물 = 층수 × 3 m, 등고선·표고점만(DEM 없음), M1·M2 1.31 m, 격자 5 m·2 m
+project: {name: "사가정로_SP조건일치_SP교통량1119", scenario: "현황", output_dir: "output"}
+crs: 5186
+propagation_method: rls19                         # 배출·전파 모두 RLS-19 (측면 회절은 rls19 에서 적용 안 됨)
+input:
+  map: {folders: ["/Users/gustnbijou_/Downloads/3-2/소음진동설계/전농사거리_수치지도"]}   # DEM 없음: 등고선·표고점만
+  traffic: {path: "../traffic_soundplan_1119.csv",   # SoundPLAN 입력 교통량(11-19): 동 1,046+388 · 서 838.2+267.9, 방향별 p1, 사가정로 전 구간
+            fallback_dtv_by_lanes: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}}   # 교통량 파일에 없는 도로 = 음원 없음
+  road_override: {path: "../../roads_override_3_2.csv"} # 사가정로 3 + 2 차로
+  road_alias: {"전농로25길": "전농로"}
+  surface_map: {"아스팔트": "ref", "아스팔트콘크리트": "ref"}   # Nicht geriffelter Gussasphalt (D_SD = 0)
+  junctions: {auto_signal_min_lanes: 99}           # 신호교차로 보정 없음 → D_K = 0
+model:
+  floor_height: 3.0                                # 층수 × 3 m
+  main_min_lanes: 99                               # 계산 속도용: 교통량 파일에 없는 도로(교통량 0)를 음원에서 뺌. 분할·반사거리를 간선·골목 같게 둬 결과 불변
+  source_lines: lane                               # 차로마다 음원선
+  canyon: {enabled: false}                         # Drefl 0 dB
+  segment_main: 1.0                                # 분할: SoundPLAN 최소 1 m (s ≥ 8 m 에서 l ≤ s/8)
+  segment_minor: 1.0
+  road_surface: dtm                                # 도로 높이 = 지형 그대로(평활 0 m)
+  terrain_smooth_m: 0.0
+receivers:
+  center: [205210.0, 553128.0]
+  grid: {enabled: false}
+  facade: {enabled: false}
+  points: {path: "../../points_sp.csv", road_contrib: false}   # SoundPLAN 격자점(2 m)·수음점 M1·M2(1.31 m)
+propagation:
+  max_dist_main: 1000.0                            # SoundPLAN 5 km — 모델 안 사가정로 음원은 모두 수음점에서 600 m 안이라 1 km 로 같은 결과(래스터 축소)
+  max_dist_minor: 1000.0
+  reflection: {D_RV: 0.5, max_order_grid: 2, max_order_facade: 2, max_order_point: 2,
+               r_facade: 200.0,                    # 반사면: 수음점에서 200 m (모든 반사면)
+               r_refl_source: 50.0,                # 반사면: 음원에서 50 m (모든 반사면) — SoundPLAN 'max. reflection distance to source'
+               r_source_main: 400.0, r_source_minor: 400.0,   # 위 두 조건으로 정해지는 범위(200 + 외벽 조각 최대 105 + 50 m)보다 넓게 → 제한 안 함
+               r_second: 520.0}                    # 2차 반사면 중심 간격도 위 조건보다 넓게 → 제한 안 함

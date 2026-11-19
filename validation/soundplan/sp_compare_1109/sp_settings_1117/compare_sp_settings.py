@@ -22,6 +22,7 @@ from compare import BINS, figure, load, stats  # noqa: E402  (sagajeong_only/com
 
 CONDS = [  # (폴더, 설명)
     (os.path.join(HERE, "..", "sagajeong_only", "r2_ref"), "이전(11-12): D_K·Drefl 켬, 탐색 300 m, 분할 3 m, 지형 평활"),
+    (os.path.join(HERE, "sp_refl_1119"), "SP 조건 + SP 교통량(11-19)"),
     (os.path.join(HERE, "sp_refl"), "SP 조건 일치 + SP 반사 규칙(음원 50 m)"),
     (os.path.join(HERE, "matched"), "SP 조건 일치 · 반사면 200 m 근사"),
     (os.path.join(HERE, "r_default"), "SP 조건 일치 · 반사 거리만 SORI 기본"),
@@ -46,10 +47,10 @@ def main():
             q = g[(g.LrD >= a) & (g.LrD < b)]
             if len(q):
                 t = stats(q); t.update({"조건": desc, "SoundPLAN LrD": lab}); rows_bin.append(t)
-        if os.path.basename(folder) in ("matched", "sp_refl"):
+        if os.path.basename(folder) in ("matched", "sp_refl", "sp_refl_1119"):
             o = os.path.join(folder, "output")
             figure(d, "SoundPLAN 계산 조건 일치(RLS-19 · 반사 2차 · D_K·Drefl 없음 · 기준 노면 · 사가정로만)"
-                   + (" + 반사면–음원 50 m" if os.path.basename(folder) == "sp_refl" else ""),
+                   + {"sp_refl": " + 반사면–음원 50 m", "sp_refl_1119": " + SP 반사 규칙 · SP 교통량"}.get(os.path.basename(folder), ""),
                    os.path.join(HERE, f"비교_{os.path.basename(folder)}.png"),
                    gpd.read_file(os.path.join(o, "buildings.gpkg")), gpd.read_file(os.path.join(o, "roads.gpkg")))
     cols = ["조건", "n", "평균", "중앙", "SD", "RMSE", "MAE", "±1dB", "±2dB", "±3dB", "r", "최소", "최대",
@@ -59,13 +60,13 @@ def main():
     B = pd.DataFrame(rows_bin)[["조건", "SoundPLAN LrD", "n", "평균", "SD", "RMSE", "±2dB", "r"]].round(2)
     B.to_csv(os.path.join(HERE, "비교통계_구간.csv"), index=False, encoding="utf-8-sig")
     # 조건 사이 차이(같은 점)
-    base = "SP 조건 일치 + SP 반사 규칙(음원 50 m)"
+    base = "SP 조건 + SP 교통량(11-19)"
     rr = []
     for k, v in D.items():
         if k == base or base not in D:
             continue
         e = (D[base] - v).dropna()
-        rr.append({"비교": f"SP 반사 규칙 − [{k}]", "n": len(e), "평균": e.mean(), "|차| 95%": e.abs().quantile(0.95),
+        rr.append({"비교": f"SP 교통량 − [{k}]", "n": len(e), "평균": e.mean(), "|차| 95%": e.abs().quantile(0.95),
                    "최소": e.min(), "최대": e.max(), "P1": e.get("SP_P1"), "P2": e.get("SP_P2")})
     R = pd.DataFrame(rr).round(2)
     R.to_csv(os.path.join(HERE, "조건간_차이.csv"), index=False, encoding="utf-8-sig")
