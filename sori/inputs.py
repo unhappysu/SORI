@@ -148,8 +148,13 @@ def sample_dem(path, xs, ys, crs):
 TRAFFIC_COLS = ["key", "key_type", "road_type", "DTV", "M_day", "M_night", "p1_day", "p2_day",
                 "p1_night", "p2_night", "v_pkw", "v_lkw", "surface", "grade", "note", "basis",
                 "dir_split_fwd", "dir_basis", "p_day", "p_night",
-                "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd"]
+                "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd",
+                "p1_day_fwd", "p2_day_fwd", "p1_day_bwd", "p2_day_bwd",
+                "p1_night_fwd", "p2_night_fwd", "p1_night_bwd", "p2_night_bwd"]
 DIR_SPEED_COLS = ("v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd")   # 방향별 속도(fwd = 디지타이즈 방향), UFID 행만
+# 방향별 화물차 비율 %(2026-11-19, SoundPLAN 처럼 주행방향마다 차종 구성이 다를 때). UFID 행만, 빈칸 = 그 행 p1·p2.
+# RLS-19 배출(rls19·iso9613_2 방법)에만 적용 — RLS-90 은 p(> 2.8 t) 하나라 공통 값 사용
+DIR_P_COLS = tuple(f"p{k}_{per}_{d}" for per in ("day", "night") for d in ("fwd", "bwd") for k in (1, 2))
 TRAFFIC_BASIS = ("measured", "assumed")     # basis·dir_basis 열: 실측 / 가정. 빈칸 → unspecified
 _dir_warned = set()
 
@@ -382,6 +387,26 @@ def traffic_for_road(cfg, row, by_ufid, by_name, main, name_max_lanes=99):
         # 화물차: 그 방향 입력 → 행의 v_lkw 입력 → 그 방향 승용 속도(행 전체의 v_lkw 빈칸 규칙과 같음)
         out[f"v_lkw_{d}"] = dv[f"v_lkw_{d}"] or lkw_in or vp
     out["dir_speed_src"] = vsrc
+    dp = {c: _f(rec, c) for c in DIR_P_COLS}
+    for c, v in dp.items():
+        if v is not None and not 0.0 <= v <= 100.0:
+            raise RuntimeError(f"교통량 '{rec['key']}': {c}={v} 는 0~100 % 여야 함")
+    psrc = "same"
+    if any(v is not None for v in dp.values()):
+        if via_ufid:
+            psrc = "ufid"
+        else:
+            psrc = "name_key_ignored"
+            _dir_warn(rec["key"], "도로명 지정 행의 방향별 화물차 비율(p*_fwd·p*_bwd)은 무시(UFID 로 지정할 것)")
+            dp = dict.fromkeys(dp)
+    for per in ("day", "night"):
+        for d in ("fwd", "bwd"):
+            for k in (1, 2):
+                v = dp[f"p{k}_{per}_{d}"]
+                out[f"p{k}_{per}_{d}"] = out[f"p{k}_{per}"] if v is None else v
+            if out[f"p1_{per}_{d}"] + out[f"p2_{per}_{d}"] > 100.0 + 1e-9:
+                raise RuntimeError(f"교통량 '{rec['key']}': p1_{per}_{d} + p2_{per}_{d} 가 100 % 를 넘음")
+    out["dir_p_src"] = psrc
     sf = (rec.get("surface") if rec else "") or cfg["input"]["surface_map"].get(row["surface_attr"], "ref")
     if sf not in rls19.SURFACES:
         raise RuntimeError(f"surface '{sf}' 는 {rls19.SURFACES} 중 하나여야 함")

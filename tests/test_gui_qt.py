@@ -81,8 +81,9 @@ def test_home_screen_and_tasks(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     w = Q.MainWindow()
     assert w.stack.currentIndex() == 0 and w.tb_view.isHidden()
-    assert set(w.home.task_buttons) == {"input", "map", "grid"}
-    assert not any(b.isEnabled() for b in w.home.task_buttons.values()) and not w.home.recent_actions
+    assert set(w.home.task_buttons) == {"input", "map", "grid", "sandbox"}
+    assert not any(b.isEnabled() for k, b in w.home.task_buttons.items() if k != "sandbox") and not w.home.recent_actions
+    assert w.home.task_buttons["sandbox"].isEnabled()                      # 샌드박스는 프로젝트 없이
     assert not hasattr(w, "btn_go_run") and not hasattr(w, "btn_go_res")
     w.open_config(tmp_path / "case" / "config.yaml", out)
     assert len(w.home.recent_actions) == 1 and all(b.isEnabled() for b in w.home.task_buttons.values())
@@ -1504,3 +1505,32 @@ def test_barrier_height_study(tmp_path, monkeypatch):
     assert (out / "grid_result.csv").is_file()                                       # 설치 전 결과는 그대로
     w.close()
     app.processEvents()
+
+
+def test_home_sandbox_page():
+    """홈 ▸ 평지 샌드박스(2026-11-19): 프로젝트 없이 들어가 끌기 → 값 갱신, ⌂ 홈으로 복귀"""
+    from types import SimpleNamespace as NS
+    from PySide6 import QtWidgets
+    import sori_qt as Q
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    w = Q.MainWindow()
+    w.resize(1500, 900)
+    w.home.task_buttons["sandbox"].click()
+    sb = w.sandbox
+    assert sb is not None and w.stack.currentWidget() is sb and w.tb_view.isHidden()
+    il0 = sb.rows[0]["IL"]
+    sb.canvas.draw()
+    T = sb.ax.transData.transform
+
+    def ev(x, y):
+        px, py = T((x, y))
+        return NS(inaxes=sb.ax, button=1, x=px, y=py, xdata=x, ydata=y, key=None)
+
+    sb.on_press(ev(10, 0))                                       # 방음벽 가운데를 잡아 10 m 옮김
+    sb._last_move = 0
+    sb.on_move(ev(20, 0)); sb.on_release(ev(20, 0))
+    assert sb.sc["barriers"][0]["x1"] == 20.0 and sb.rows[0]["IL"] != il0
+    sb.back.emit()
+    assert w.stack.currentIndex() == 0
+    w.home.task_buttons["sandbox"].click()                       # 다시 들어가도 같은 페이지(장면 유지)
+    assert w.sandbox is sb and sb.sc["barriers"][0]["x1"] == 20.0

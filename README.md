@@ -74,6 +74,15 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-lock.txt
 - 앱 빌드(macOS): `.venv/bin/pip install -r requirements-build.txt` 후 `.venv/bin/pyinstaller --noconfirm --clean SORI.spec` → `dist/SORI.app`
 - 자동 빌드: GitHub 원격 저장소에 올린 뒤 `v*` 태그를 push 하거나 Actions 화면에서 수동 실행(workflow_dispatch). Windows 용 `SORI.exe` 는 맥에서 만들 수 없어 이 방법으로 만듭니다.
 
+## 0.2 평지 샌드박스 (방음벽 회절 검토, 2026-11-19)
+
+평평한 지면에 음원(점음원·선음원·RLS-19 도로)·방음벽·수음점을 놓고 마우스로 옮기며 결과를 바로 보는 화면입니다. 계산은 `sori/sandbox.py` 이고, SORI 본 계산과 같은 경로 기하(`geometry.path_geometry_b`)와 감쇠식(ISO 9613-2 / RLS-19 3.5), 방음벽 면 1차 반사, 측면 회절(ISO 식 13)을 씁니다.
+
+- 실행: `.venv/bin/python sori_sandbox.py` (예제 `--kind point|line|road`, 저장한 장면 `--scene 장면.json`)
+- 조작: 점·선 끝점(●)·선 가운데(■)를 끌어 옮김(0.5 m 단위, Shift = 자유). 끄는 동안 수음점 값·단면이 바뀌고, 놓으면 지도를 다시 계산. 위 도구 줄 '추가' 후 지도 클릭으로 새 객체, 클릭한 객체는 왼쪽 칸에서 값 수정
+- 보기: 설치 후 L / 설치 전 L₀ / 삽입손실 IL 지도, 단면(가시선·고무줄 회절 경로·경로차 z), 옥타브별 프레넬 수·D_z·A_bar 표
+- 검증: `tests/test_sandbox.py`(점음원 손계산, 긴 선음원 적분, 허상음원 반사, RLS-19 LW′)
+
 ## 1. 설치
 
 ```bash

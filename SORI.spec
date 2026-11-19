@@ -32,7 +32,7 @@ a = Analysis(
     binaries=[],
     datas=datas,
     # rasterio 등은 Cython 모듈 안에서 import 하는 하위 모듈(rasterio.serde 등)이 자동 탐지되지 않음
-    hiddenimports=collect_submodules("sori") + ["reference_case", "sori_qt"]
+    hiddenimports=collect_submodules("sori") + ["reference_case", "sori_qt", "sori_sandbox"]
     + collect_submodules("rasterio") + collect_submodules("pyproj") + collect_submodules("pyogrio")
     # 그림 저장 형식(PNG·PDF)별 matplotlib 백엔드는 savefig 때 이름으로 불러와 자동 탐지되지 않음
     + ["matplotlib.backends.backend_agg", "matplotlib.backends.backend_pdf"]

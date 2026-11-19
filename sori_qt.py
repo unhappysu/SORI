@@ -1500,6 +1500,14 @@ TRAFFIC_VIEW = [
     ("v_lkw_fwd", "정방향 화물\nkm/h", "UFID 행만: 디지타이즈 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 정방향 승용)", None),
     ("v_pkw_bwd", "역방향 승용\nkm/h", "UFID 행만: 디지타이즈 반대 방향 승용 속도. 빈칸 = 위 공통 속도", None),
     ("v_lkw_bwd", "역방향 화물\nkm/h", "UFID 행만: 반대 방향 화물 속도. 빈칸 = 공통 화물 속도(없으면 역방향 승용)", None),
+    ("p1_day_fwd", "정방향 p1\n주간 %", "UFID 행만: 디지타이즈 방향 Lkw1 비율. 빈칸 = 위 공통 p1", None),
+    ("p2_day_fwd", "정방향 p2\n주간 %", "UFID 행만: 디지타이즈 방향 Lkw2 비율. 빈칸 = 위 공통 p2", None),
+    ("p1_day_bwd", "역방향 p1\n주간 %", "UFID 행만: 반대 방향 Lkw1 비율. 빈칸 = 위 공통 p1", None),
+    ("p2_day_bwd", "역방향 p2\n주간 %", "UFID 행만: 반대 방향 Lkw2 비율. 빈칸 = 위 공통 p2", None),
+    ("p1_night_fwd", "정방향 p1\n야간 %", "UFID 행만: 디지타이즈 방향 Lkw1 비율, 야간", None),
+    ("p2_night_fwd", "정방향 p2\n야간 %", "UFID 행만: 디지타이즈 방향 Lkw2 비율, 야간", None),
+    ("p1_night_bwd", "역방향 p1\n야간 %", "UFID 행만: 반대 방향 Lkw1 비율, 야간", None),
+    ("p2_night_bwd", "역방향 p2\n야간 %", "UFID 행만: 반대 방향 Lkw2 비율, 야간", None),
     ("surface", "노면", "RLS-19 표 4a·4b (빈칸 = 수치지도 포장 속성)", None),   # 선택지는 rls19.SURFACES
     ("grade", "종단경사\n%", "빈칸 = 지형에서 산정", None),
     ("basis", "근거", "measured = 실측, assumed = 가정", ["", "measured", "assumed"]),
@@ -1508,9 +1516,13 @@ TRAFFIC_VIEW = [
     ("note", "메모", "출처·가정 등", None),
 ]
 NUM_COLS = {"DTV", "M_day", "M_night", "p1_day", "p2_day", "p1_night", "p2_night", "v_pkw", "v_lkw", "grade",
-            "dir_split_fwd", "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd"}
+            "dir_split_fwd", "v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd",
+            "p1_day_fwd", "p2_day_fwd", "p1_day_bwd", "p2_day_bwd",
+            "p1_night_fwd", "p2_night_fwd", "p1_night_bwd", "p2_night_bwd"}
 # 값이 하나도 없으면 숨기는 열(‘모든 열 보기’ 로 보임) — 자주 쓰지 않는 입력
-TRAFFIC_ADV = {"v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd", "surface", "grade", "dir_split_fwd", "dir_basis"}
+TRAFFIC_ADV = {"v_pkw_fwd", "v_lkw_fwd", "v_pkw_bwd", "v_lkw_bwd", "surface", "grade", "dir_split_fwd", "dir_basis",
+               "p1_day_fwd", "p2_day_fwd", "p1_day_bwd", "p2_day_bwd",
+               "p1_night_fwd", "p2_night_fwd", "p1_night_bwd", "p2_night_bwd"}
 TRAFFIC_HINT = "도로명 행 = 같은 이름의 2차로 이상 구간 전체 · UFID 행 = 도로 객체 하나(우선) · 빈칸 = 표준값 · LW′ = 자동 계산(음원 세기)"
 TRAFFIC_TIP = ("도로명 행은 같은 이름의 2차로 이상 구간 전체, UFID 행은 그 도로 객체 하나에 적용(UFID 가 우선). "
                "빈칸은 RLS-19 표 2·설정 기본값. 머리글에 마우스를 올리면 열 설명")
@@ -1558,10 +1570,14 @@ def lw_prime_row(rec, tcfg):
                 M = m[o] * Mf / t2[o][0]
         p1, p2 = f(f"p1_{per}"), f(f"p2_{per}")
         p1, p2 = (p1s if p1 is None else p1), (p2s if p2 is None else p2)
-        if vd["fwd"] == vd["bwd"] == (v_pkw, v_lkw):
+        pd_ = {}                                # 방향별 화물차 비율(UFID 행만, 빈칸 = 공통 p1·p2)
+        for d in ("fwd", "bwd"):
+            q1, q2 = (f(f"p1_{per}_{d}"), f(f"p2_{per}_{d}")) if ufid else (None, None)
+            pd_[d] = (p1 if q1 is None else q1, p2 if q2 is None else q2)
+        if vd["fwd"] == vd["bwd"] == (v_pkw, v_lkw) and pd_["fwd"] == pd_["bwd"] == (p1, p2):
             out.append(rls19.LW_prime(M, p1, p2, v_pkw, v_lkw, sf, g))
-        else:                                   # 방향별 속도: 두 방향 L_W′ 의 에너지 합(경사는 방향마다 부호 반대)
-            e = sum(10 ** (0.1 * rls19.LW_prime(M * share[d], p1, p2, *vd[d], sf, g if d == "fwd" else -g))
+        else:                                   # 방향별 속도·화물차 비율: 두 방향 L_W′ 의 에너지 합(경사는 방향마다 부호 반대)
+            e = sum(10 ** (0.1 * rls19.LW_prime(M * share[d], *pd_[d], *vd[d], sf, g if d == "fwd" else -g))
                     for d in ("fwd", "bwd") if share[d] > 0)
             out.append(10 * math.log10(e))
     return tuple(out)
@@ -2605,7 +2621,9 @@ class HomePage(QtWidgets.QWidget):
         for i, (key, text, desc, obj) in enumerate((
                 ("input", "데이터 입력", "수치지도 폴더·교통량·차로 수·설정값", "go"),
                 ("map", "입력 지도 확인", "수치지도의 건물·도로·등고선과 계산 범위(소음 표시 없음)", "go2"),
-                ("grid", "지도 확인 · 계산", "계산 실행, 격자 소음지도 — 건물을 누르면 3D 파사드를 함께", "go2"))):
+                ("grid", "지도 확인 · 계산", "계산 실행, 격자 소음지도 — 건물을 누르면 3D 파사드를 함께", "go2"),
+                ("sandbox", "평지 샌드박스", "방음벽 회절 검토 — 평지에 음원·방음벽·수음점을 놓고 끌어 보기"
+                 "(프로젝트 없이 사용)", "go2"))):
             b = QtWidgets.QPushButton(text, objectName=obj)
             b.setCursor(Qt.PointingHandCursor)
             b.setFixedWidth(250)
@@ -2664,8 +2682,8 @@ class HomePage(QtWidgets.QWidget):
             self.lbl_proj.setText("설정 파일(config.yaml)이나 예제를 열면 작업을 고를 수 있습니다.")
             self.lbl_proj.setToolTip("")
             self.btn_switch.setText("프로젝트 열기  ▾")
-            for b in self.task_buttons.values():
-                b.setEnabled(False)
+            for k, b in self.task_buttons.items():
+                b.setEnabled(k == "sandbox")              # 샌드박스는 프로젝트 없이 씀
             self.lbl_hint.setText("")
             return
         R = w.R
@@ -2680,6 +2698,7 @@ class HomePage(QtWidgets.QWidget):
         self.task_buttons["input"].setEnabled(w.cfg is not None)
         self.task_buttons["map"].setEnabled(w.cfg is not None)
         self.task_buttons["grid"].setEnabled(True)
+        self.task_buttons["sandbox"].setEnabled(True)
         self.lbl_hint.setText("" if w.cfg is not None else "결과 폴더만 열렸습니다. 입력하려면 설정 파일을 여세요.")
 
 
@@ -3042,6 +3061,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view3d = View3DPage()
         self.view3d.back.connect(self._back_from_3d)
         self.stack.addWidget(self.view3d)                # 4 = 앱 안 3D 보기(웹 뷰어)
+        self.sandbox = None                              # 5 = 평지 샌드박스(처음 들어갈 때 만듦 — 계산 함수 컴파일)
         self.show_home()
 
     # ------------------------------------------------------------ 홈 화면 ↔ 작업 화면
@@ -3081,6 +3101,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self._lane_focus = None                       # 홈에서 들어가면 차로 수 강조 표시는 지움
         self.enter_task(key)
 
+    def show_sandbox(self):
+        """홈 ▸ 평지 샌드박스: 평지에 음원·방음벽·수음점을 놓고 회절을 확인(sori_sandbox.SandboxPage, 프로젝트와 무관)"""
+        self.menuBar().setVisible(True)
+        self.statusBar().setVisible(True)
+        self._work_chrome(False)
+        if self.sandbox is None:
+            self.lbl_status.setText("평지 샌드박스 준비 중… (처음 한 번은 계산 함수 컴파일로 십여 초)")
+            QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
+            QtWidgets.QApplication.processEvents()
+            try:
+                from sori_sandbox import SandboxPage
+                self.sandbox = SandboxPage(home_button=True)
+                self.sandbox.back.connect(self.show_home)
+                self.stack.addWidget(self.sandbox)
+            finally:
+                QtWidgets.QApplication.restoreOverrideCursor()
+        self.stack.setCurrentWidget(self.sandbox)
+        self.sandbox.setFocus()
+        self.lbl_status.setText("평지 샌드박스 — 점·선 끝점을 끌어 옮기고, 위 도구 줄 '추가' 후 지도 클릭으로 새 객체")
+
     def show_input(self):
         self.menuBar().setVisible(True)
         self.statusBar().setVisible(True)
@@ -3094,6 +3134,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """홈 화면 작업 단추 → 입력값 화면 또는 지도 작업 화면으로 들어가 그 작업에 맞게 준비"""
         if key == "input":
             return self.show_input()
+        if key == "sandbox":
+            return self.show_sandbox()
         self.stack.setCurrentIndex(1)
         self.map_mode = "input" if key == "map" else "result"
         for a in self._result_tb:

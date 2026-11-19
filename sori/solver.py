@@ -66,6 +66,34 @@ def _far(px, py, x1, y1, x2, y2, R):
 
 
 @njit(cache=True)
+def _facade_sources(fx1, fy1, fx2, fy2, sx, sy, R):
+    """벽 조각마다 평면 거리 R 안의 음원 색인(CSR, 오름차순). 반사면–음원 거리 제한(Rfs)의 가지치기용 —
+    _far 와 같은 판정이라 목록 밖 음원은 어차피 그 벽을 반사면으로 쓸 수 없음(결과 불변)"""
+    NF = fx1.shape[0]; NS = sx.shape[0]
+    cnt = np.zeros(NF + 1, np.int64)
+    for f in range(NF):
+        xa = min(fx1[f], fx2[f]) - R; xb = max(fx1[f], fx2[f]) + R
+        ya = min(fy1[f], fy2[f]) - R; yb = max(fy1[f], fy2[f]) + R
+        for j in range(NS):
+            if sx[j] < xa or sx[j] > xb or sy[j] < ya or sy[j] > yb:
+                continue
+            if not _far(sx[j], sy[j], fx1[f], fy1[f], fx2[f], fy2[f], R):
+                cnt[f + 1] += 1
+    ptr = np.cumsum(cnt)
+    idx = np.empty(ptr[NF], np.int64)
+    k = 0
+    for f in range(NF):
+        xa = min(fx1[f], fx2[f]) - R; xb = max(fx1[f], fx2[f]) + R
+        ya = min(fy1[f], fy2[f]) - R; yb = max(fy1[f], fy2[f]) + R
+        for j in range(NS):
+            if sx[j] < xa or sx[j] > xb or sy[j] < ya or sy[j] > yb:
+                continue
+            if not _far(sx[j], sy[j], fx1[f], fy1[f], fx2[f], fy2[f], R):
+                idx[k] = j; k += 1
+    return ptr, idx
+
+
+@njit(cache=True)
 def _band_factor(out, wts, inc, gain):
     s = 0.0
     for b in range(out.shape[0]):
@@ -323,6 +351,13 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
     Elat = np.zeros(NR)
     lg_rho = rho
     nobars = np.zeros((0, 5))
+    # 반사면–음원 거리 제한(Rfs > 0): 벽마다 Rfs 안 음원 목록. 목록이 빈 벽은 반사면이 될 수 없고, 반사 경로의
+    # 음원은 첫 반사면(음원 쪽) 목록 안에서만 찾음 — 버려질 경로만 미리 빼므로 결과 불변(합산 순서도 같음)
+    use_fs = Rfs > 0.0
+    if use_fs:
+        fs_ptr, fs_idx = _facade_sources(fx1, fy1, fx2, fy2, sx, sy, Rfs)
+    else:
+        fs_ptr = np.zeros(NF + 1, np.int64); fs_idx = np.zeros(0, np.int64)
     for r in prange(NR):
         hd = np.empty(HULL_N); hh = np.empty(HULL_N); out = np.empty(NB); geom = np.empty(NGEOM)
         inc = np.ones(NB, dtype=np.bool_)
@@ -386,6 +421,12 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                 if (xr - fx1[f]) * fnx[f] + (yr - fy1[f]) * fny[f] <= 0.05:
                     continue
                 cand[nc] = f; nc += 1
+            # Rfs 방식: 2차 반사의 앞 반사면 후보 = 음원 Rfs 안 음원이 있고 수음점 Rf 안인 벽(번호 오름차순)
+            near = np.empty(NF if use_fs else 0, dtype=np.int64); nnear = 0
+            if use_fs and order >= 2:
+                for f in range(NF):
+                    if fs_ptr[f + 1] > fs_ptr[f] and not _far(xr, yr, fx1[f], fy1[f], fx2[f], fy2[f], Rf):
+                        near[nnear] = f; nnear += 1
             # ---------------- 1차 반사
             for ci in range(nc):
                 f = cand[ci]
@@ -395,7 +436,10 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                 mx = xr - 2 * dr * fnx[f]; my = yr - 2 * dr * fny[f]
                 hF = fzt[f] - fz0[f]
                 lmin = min(fL[f], hF)
-                for j in range(NS):
+                j0 = fs_ptr[f] if use_fs else 0
+                j1 = fs_ptr[f + 1] if use_fs else NS
+                for jj in range(j0, j1):
+                    j = fs_idx[jj] if use_fs else jj
                     dx = sx[j] - xr; dy = sy[j] - yr
                     R = Rsm if smain[j] else Rsn
                     if dx * dx + dy * dy > R * R:
@@ -432,6 +476,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
             if order >= 2:
                 for ci in range(nc):
                     f2 = cand[ci]
+                    if use_fs and fs_ptr[f2 + 1] == fs_ptr[f2]:
+                        continue
                     ex2 = fx2[f2] - fx1[f2]; ey2 = fy2[f2] - fy1[f2]
                     L22 = ex2 * ex2 + ey2 * ey2
                     dr2 = (xr - fx1[f2]) * fnx[f2] + (yr - fy1[f2]) * fny[f2]
@@ -443,7 +489,9 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                     r1x = xr - 2 * dr2 * fnx[f2]; r1y = yr - 2 * dr2 * fny[f2]
                     c2x = 0.5 * (fx1[f2] + fx2[f2]); c2y = 0.5 * (fy1[f2] + fy2[f2])
                     lmin2 = min(fL[f2], fzt[f2] - fz0[f2])
-                    for f1 in range(NF):
+                    n1 = nnear if use_fs else NF
+                    for i1 in range(n1):
+                        f1 = near[i1] if use_fs else i1
                         if f1 == f2 or (own_all and f1 == rfid[r]):
                             continue
                         if Rfs > 0.0 and _far(xr, yr, fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rf):
@@ -463,7 +511,10 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                         ex1 = fx2[f1] - fx1[f1]; ey1 = fy2[f1] - fy1[f1]
                         L12 = ex1 * ex1 + ey1 * ey1
                         lmin1 = min(fL[f1], fzt[f1] - fz0[f1])
-                        for j in range(NS):
+                        j0 = fs_ptr[f1] if use_fs else 0
+                        j1 = fs_ptr[f1 + 1] if use_fs else NS
+                        for jj in range(j0, j1):
+                            j = fs_idx[jj] if use_fs else jj
                             dx = sx[j] - xr; dy = sy[j] - yr
                             R = Rsm if smain[j] else Rsn
                             if dx * dx + dy * dy > R * R:
@@ -515,6 +566,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
             if order >= 3:
                 for ci in range(nc):
                     f3 = cand[ci]
+                    if use_fs and fs_ptr[f3 + 1] == fs_ptr[f3]:
+                        continue
                     ex3 = fx2[f3] - fx1[f3]; ey3 = fy2[f3] - fy1[f3]
                     L32 = ex3 * ex3 + ey3 * ey3
                     dr3 = (xr - fx1[f3]) * fnx[f3] + (yr - fy1[f3]) * fny[f3]
@@ -529,7 +582,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                         f2 = nb_idx[k2]
                         if own_all and f2 == rfid[r]:
                             continue
-                        if Rfs > 0.0 and _far(xr, yr, fx1[f2], fy1[f2], fx2[f2], fy2[f2], Rf):
+                        if Rfs > 0.0 and (fs_ptr[f2 + 1] == fs_ptr[f2]
+                                          or _far(xr, yr, fx1[f2], fy1[f2], fx2[f2], fy2[f2], Rf)):
                             continue
                         dQ1 = (q1x - fx1[f2]) * fnx[f2] + (q1y - fy1[f2]) * fny[f2]
                         if dQ1 <= 0.05:
@@ -545,7 +599,8 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                             f1 = nb_idx[k1]
                             if own_all and f1 == rfid[r]:
                                 continue
-                            if Rfs > 0.0 and _far(xr, yr, fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rf):
+                            if Rfs > 0.0 and (fs_ptr[f1 + 1] == fs_ptr[f1]
+                                              or _far(xr, yr, fx1[f1], fy1[f1], fx2[f1], fy2[f1], Rf)):
                                 continue
                             dQ2 = (q2x - fx1[f1]) * fnx[f1] + (q2y - fy1[f1]) * fny[f1]
                             if dQ2 <= 0.05:
@@ -557,7 +612,10 @@ def compute_l(rx, ry, rz, rg, rbid, rfid, order,
                             ex1 = fx2[f1] - fx1[f1]; ey1 = fy2[f1] - fy1[f1]
                             L12 = ex1 * ex1 + ey1 * ey1
                             lmin1 = min(fL[f1], fzt[f1] - fz0[f1])
-                            for j in range(NS):
+                            j0 = fs_ptr[f1] if use_fs else 0
+                            j1 = fs_ptr[f1 + 1] if use_fs else NS
+                            for jj in range(j0, j1):
+                                j = fs_idx[jj] if use_fs else jj
                                 dx = sx[j] - xr; dy = sy[j] - yr
                                 R = Rsm if smain[j] else Rsn
                                 if dx * dx + dy * dy > R * R:

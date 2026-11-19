@@ -550,15 +550,17 @@ def build_sources(cfg, road, gnd, rast, F, J, reach):
         for r in S.itertuples():
             t = T.loc[r.fid]
             M = t[f"M_{per}"] * r.frac
-            p12 = (t[f"p1_{per}"], t[f"p2_{per}"])
             if r.along is None:                       # 양방향 1개선: 디지타이즈 방향 p(+경사), 반대 1−p(−경사)
                 pf = float(t["dir_split_fwd"])        # 기본 0.5 → M·0.5 = M/2 (비트 단위 동일)
-                a = rls19.LW_prime(M * pf, *p12, *_dir_speeds(t, True), t["surface"], r.g, r.D_K, r.D_refl)
-                b = rls19.LW_prime(M * (1.0 - pf), *p12, *_dir_speeds(t, False), t["surface"], -r.g, r.D_K, r.D_refl)
+                a = rls19.LW_prime(M * pf, *_dir_p(t, per, True), *_dir_speeds(t, True), t["surface"], r.g,
+                                   r.D_K, r.D_refl)
+                b = rls19.LW_prime(M * (1.0 - pf), *_dir_p(t, per, False), *_dir_speeds(t, False), t["surface"],
+                                   -r.g, r.D_K, r.D_refl)
                 lw.append(10 * math.log10(10 ** (0.1 * a) + 10 ** (0.1 * b)))
             else:
                 g = r.g if r.along else -r.g          # 반대방향 차선: 경사 부호 반전
-                lw.append(rls19.LW_prime(M, *p12, *_dir_speeds(t, r.along), t["surface"], g, r.D_K, r.D_refl))
+                lw.append(rls19.LW_prime(M, *_dir_p(t, per, r.along), *_dir_speeds(t, r.along), t["surface"], g,
+                                         r.D_K, r.D_refl))
         S[f"LWp_{per}"] = lw
         S[f"LW_{per}"] = S[f"LWp_{per}"] + 10 * np.log10(S.l)        # 점음원 LW = LW' + 10 lg l
     return S, T.reset_index(), pd.DataFrame(lines)
@@ -572,6 +574,17 @@ def _dir_speeds(t, along):
     vp = t["v_pkw"] if vp is None or vp != vp else vp
     vl = t["v_lkw"] if vl is None or vl != vl else vl
     return vp, vl
+
+
+def _dir_p(t, per, along):
+    """음원선 방향의 (p1, p2) %. along True = 디지타이즈 방향(fwd), False = 반대(bwd).
+    방향별 비율이 없는 이전 traffic_used(열 없음·빈칸)는 도로 공통 p1·p2"""
+    d = "fwd" if along else "bwd"
+    out = []
+    for k in (1, 2):
+        v = t.get(f"p{k}_{per}_{d}")
+        out.append(t[f"p{k}_{per}"] if v is None or v != v else v)
+    return out[0], out[1]
 
 
 def _p90(t, per):
