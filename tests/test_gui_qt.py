@@ -710,7 +710,7 @@ def test_3d_view_builds_once_and_opens(tmp_path, monkeypatch):
     import sori_qt as Q
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     opened = []
-    monkeypatch.setattr(QtGui.QDesktopServices, "openUrl", lambda u: opened.append(u.toLocalFile()) or True)
+    monkeypatch.setattr(QtGui.QDesktopServices, "openUrl", lambda u: opened.append(Path(u.toLocalFile())) or True)   # Windows 도 / 로 줌 → Path 로 비교
     monkeypatch.setattr(Q, "HAS_WEB", False)                 # 브라우저 경로(앱 안 보기는 test_3d_view_in_app)
     w = Q.MainWindow()
     assert not w.act_3d.isEnabled()
@@ -718,7 +718,7 @@ def test_3d_view_builds_once_and_opens(tmp_path, monkeypatch):
     w.open_config(tmp_path / "case" / "config.yaml", out)
     assert w.act_3d.isEnabled()
     p = w.show_3d_view(sync=True)
-    assert p == out / "noise3d.html" and p.stat().st_size > 100_000 and opened == [str(p)]
+    assert p == out / "noise3d.html" and p.stat().st_size > 100_000 and opened == [p]
     html = p.read_text(encoding="utf-8")
     assert "three" in html.lower() and "주간 LrT" in html
     t0 = p.stat().st_mtime_ns

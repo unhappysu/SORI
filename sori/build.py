@@ -149,7 +149,7 @@ def flatten_road_surface(cfg, road, gnd, rast):
                               fill=0, dtype="uint8", all_touched=False).astype(bool)
     X, Y = rast.centers()
     xy = np.c_[X[band], Y[band]]
-    _, idx = cKDTree(np.vstack(pts)).query(xy)
+    idx = _nearest_lowest_index(np.vstack(pts), xy)
     znew = np.concatenate(zs)[idx].astype(np.float32)
     out = gnd.copy()
     dz = znew - out[band]
@@ -160,6 +160,19 @@ def flatten_road_surface(cfg, road, gnd, rast):
             "cells_lowered_over_1m": int((dz < -1.0).sum()), "cells_raised_over_1m": int((dz > 1.0).sum())}
     log.info("차도 면 지형 보정(flatten): %s", info)
     return out, info
+
+
+def _nearest_lowest_index(pts, xy, k=4, tol=1e-6):
+    """xy 마다 가장 가까운 pts 번호. 거리가 같은(차이 tol m 이하) 후보가 여럿이면 가장 작은 번호.
+    축에 나란한 도로·정수 좌표에서는 칸 중심이 두 중심선 점에서 정확히 같은 거리인 경우가 많은데, 그때 cKDTree 가
+    고르는 점은 CPU 의 부동소수점 끝자리(arm64 FMA 대 x86-64)에 따라 달라짐 → 맥과 Windows 결과가 다름(2026-11-20).
+    같은 거리면 번호 규칙으로 정해 어느 CPU 에서나 같은 점을 고름. 동률이 없으면 결과는 이전과 같음"""
+    k = min(k, len(pts))
+    d, idx = cKDTree(pts).query(xy, k=k)
+    if k == 1:
+        return idx
+    tie = d <= d[:, :1] + tol
+    return np.where(tie, idx, np.iinfo(idx.dtype).max).min(axis=1)
 
 
 def _road_band(road, rast):

@@ -48,3 +48,14 @@ def test_flatten_sources_sit_on_centreline_profile():
 def test_default_is_flatten_and_dtm_keeps_terrain():
     """기본은 flatten(2026-11-06 결정). dtm 이면 build 가 지형을 바꾸지 않음(보정 함수를 부르지 않음)"""
     assert DEFAULTS["model"]["road_surface"] == "flatten"
+
+
+def test_nearest_tie_takes_lowest_index():
+    """거리가 같은 후보(차이 1 µm 이하)는 가장 작은 번호 — CPU 부동소수점 끝자리와 상관없이 같은 점(2026-11-20)"""
+    pts = np.array([[1.0, 0.0], [0.0, 0.0], [0.5, 0.0], [0.5, 0.0]])
+    xy = np.array([[0.5, 1.0],                      # 2·3 번과 같은 거리(완전 동률) → 2
+                   [0.5 + 1e-9, 1.0],               # 끝자리만 다른 거의 동률 → 2
+                   [0.75, 0.0],                     # 0 번과 2·3 번이 같은 거리 0.25 → 0
+                   [0.0, 0.1]])                     # 동률 없음 → 1
+    assert build._nearest_lowest_index(pts, xy).tolist() == [2, 2, 0, 1]
+    assert build._nearest_lowest_index(pts[:1], xy).tolist() == [0, 0, 0, 0]
