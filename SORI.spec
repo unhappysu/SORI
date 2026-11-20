@@ -17,7 +17,7 @@ datas = []
 datas += collect_data_files("sori", excludes=["**/__pycache__/**"])
 # 자가 점검·예제용 기준 사례(가상 교차로) 입력과 기준값
 datas += [(str(ROOT / "tests" / "reference" / "synthetic"), "tests/reference/synthetic")]
-# 전농사거리 예제(설정·교통량·측정점 — 수치지도는 재배포 조건 미확인으로 넣지 않음, 사용자가 받아 넣음)
+# 전농사거리 예제(설정·교통량·측정점 + 계산 결과 output·output_soundplan, 2026-11-20) — 수치지도·DEM 은 재배포 조건 미확인으로 넣지 않음(다시 계산할 때 사용자가 받아 넣음)
 datas += [(str(ROOT / "examples" / "jeonnong"), "examples/jeonnong")]
 # Qt(PySide6, LGPLv3) 고지 — onedir 라 Qt 라이브러리는 사용자가 바꿔 끼울 수 있음
 datas += [(str(ROOT / "packaging" / "THIRD_PARTY_Qt.txt"), "licenses")]

@@ -1,0 +1,34 @@
+{
+  "terrain": {
+    "contour_pts": 26362,
+    "spot_pts": 27,
+    "dem_pts": 0,
+    "mode": "contours"
+  },
+  "buildings": 4595,
+  "roads": 3506,
+  "sources": 5525,
+  "sources_main": 0,
+  "facade_edges": 14083,
+  "junctions": 639,
+  "signal_junction_points": 0,
+  "grid_receivers_per_height": 552,
+  "facade_receivers": 0,
+  "roads_with_fallback_traffic": 0,
+  "roads_narrow_same_name": 0,
+  "canyon_segments": 0,
+  "minor_roads": "exclude",
+  "minor_roads_excluded": 3453,
+  "source_lines": "lane",
+  "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
+  "road_override": {
+    "rows": 51,
+    "matched_ufid": 51,
+    "unmatched_ufid": 0,
+    "roads_lanes_override": 51,
+    "roads_oneway_dir_override": 0,
+    "warnings": {
+      "lanes_fwd + lanes_bwd ≠ 수치지도 차로수": 35
+    }
+  }
+}

@@ -1,0 +1,363 @@
+{
+  "software": "SORI v0.9",
+  "notice": "본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.",
+  "numba": true,
+  "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
+  "propagation": "RLS-19 3.5·3.6 (반사 손실 D_RV 0.5 dB)",
+  "propagation_method": "rls19",
+  "method_label": "RLS-19 음원 + RLS-19 전파(3.5·3.6)",
+  "equations": [
+    "RLS-19 식 (2)",
+    "식 (11) D_A",
+    "식 (12) D_div",
+    "식 (13) D_atm",
+    "식 (14) D_gr",
+    "식 (15) D_z",
+    "식 (16) z",
+    "식 (17) K_w",
+    "3.6 반사 조건 h_R",
+    "표 8 D_RV"
+  ],
+  "reflection_order": {
+    "grid": 2,
+    "facade": 2,
+    "points": 2
+  },
+  "D_refl_in_source": false,
+  "D_refl_note": "D_refl(다중 반사 가산값) 미적용(model.canyon.enabled: false) — 반사는 허상음원만",
+  "standard_deviations": [
+    "음원선을 차로마다 둠(model.source_lines: lane) — RLS-19 Bild 6 은 주행방향마다 1개선"
+  ],
+  "lateral_diffraction": "고려 안 함(RLS-19 3.5 규정)",
+  "not_implemented": [
+    "section(단면) 소음지도",
+    "7차 이상 반사"
+  ],
+  "representative_frequency_hz": null,
+  "representative_frequency_basis": "A 가중 단일값(RLS-19), 대역 설정 미사용",
+  "meteorology": "RLS-19 3.1 주석: 순풍(약 3 m/s)·기온 역전 조건 값",
+  "reflection_loss": "D_RV = 0.5 dB/회 (표 8)",
+  "reflection_rule": "h_R ≥ 1.0 m 이고 h_R ≥ 0.3·√a_R (3.6). h_R = 벽면 높이, a_R = 수평 거리(해석)",
+  "rls19_notes": [
+    "D_z 상한 없음(원문 3.5.5)",
+    "다중 회절: C 를 A·B 중 큰 쪽에 더함(A = B 이면 A, 해석)",
+    "h_m = F/s_gr(그림 11)"
+  ],
+  "outputs": {
+    "grid": "rls19",
+    "points": "rls19"
+  },
+  "file_naming": null,
+  "ground_method": "general",
+  "bands_hz": [
+    500.0
+  ],
+  "alpha_dB_per_km": [
+    0.0
+  ],
+  "weights": [
+    1.0
+  ],
+  "reflection": {
+    "rho": 0.8,
+    "D_RV": 0.5,
+    "D_E": -1.0,
+    "max_order_grid": 2,
+    "max_order_facade": 2,
+    "max_order_point": 2,
+    "own_facade": "last",
+    "r_facade": 200.0,
+    "r_source_main": 400.0,
+    "r_source_minor": 400.0,
+    "r_second": 520.0,
+    "r_refl_source": 50.0
+  },
+  "results_range": {
+    "grid_h2": {
+      "LrT": [
+        41.22012573191614,
+        82.23255342766906
+      ],
+      "LrN": [
+        37.376614003631545,
+        78.3324050264845
+      ]
+    },
+    "points": {
+      "LrT": [
+        73.50461505043103,
+        76.97496120036541
+      ],
+      "LrN": [
+        69.71474348336342,
+        73.10236945830094
+      ]
+    }
+  },
+  "barriers": null,
+  "segment_check": {
+    "rule": "RLS-19 3.2 주석 l_i <= s_i/2 (경험칙, 진단만·결과값 불변). s = 직접 경로 3D 거리",
+    "grid_h2": {
+      "receivers": 552,
+      "violating": 88,
+      "violating_pct": 15.94,
+      "violating_via_main": 0,
+      "min_s_over_l": 1.511282491738467
+    }
+  },
+  "config": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/config_soundplan.yaml",
+  "config_resolved": {
+    "project": {
+      "name": "전농사거리_SoundPLAN조건",
+      "output_dir": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/output_soundplan",
+      "scenario": "SP조건",
+      "file_naming": false
+    },
+    "crs": 5186,
+    "propagation_method": "rls19",
+    "input": {
+      "map": {
+        "folders": [
+          "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/data/map"
+        ],
+        "encoding": "cp949",
+        "layers": {
+          "building": "*B0010000*.shp",
+          "road": "*A0020000*.shp",
+          "contour": "*F0010000*.shp",
+          "spot": "*F0020000*.shp"
+        },
+        "fields": {
+          "uid": "UFID",
+          "building_floors": "층수",
+          "building_height": null,
+          "building_kind": "종류",
+          "building_name": "명칭",
+          "road_name": "도로명",
+          "road_lanes": "차로수",
+          "road_width": "도로폭",
+          "road_oneway": "일방통행",
+          "road_surface": "포장재질",
+          "contour_z": "등고수치",
+          "spot_z": "수치"
+        },
+        "oneway_values": [
+          "일방통행"
+        ],
+        "exclude_building_kinds": [
+          "무벽건물"
+        ],
+        "facade_exclude_kinds": [
+          "가건물"
+        ],
+        "min_building_area": 4.0
+      },
+      "dem": {
+        "path": null,
+        "use_as": "auxiliary",
+        "aux_min_dist": 30.0,
+        "aux_spacing": 20.0
+      },
+      "traffic": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/traffic_soundplan_1119.csv",
+        "default_road_type": "gemeinde",
+        "fallback_dtv_by_lanes": {
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "default_speed_main": 50.0,
+        "default_speed_minor": 30.0,
+        "name_min_lanes": 2,
+        "oneway_name_traffic": "apply",
+        "missing_m": "error"
+      },
+      "road_override": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/roads_override_3_2.csv"
+      },
+      "junctions": {
+        "path": null,
+        "auto_signal_min_lanes": 99,
+        "auto_type": "signal",
+        "cluster_radius": 25.0,
+        "user_match_radius": 30.0,
+        "dk_rule": "nearest"
+      },
+      "ground": {
+        "method": "general",
+        "default_G": 0.0,
+        "soft_polygons": null,
+        "soft_G": 1.0
+      },
+      "barriers": {
+        "path": null,
+        "piece": 10.0
+      },
+      "road_alias": {
+        "전농로25길": "전농로"
+      },
+      "surface_map": {
+        "아스팔트": "ref",
+        "아스팔트콘크리트": "ref",
+        "콘크리트": "ref",
+        "블록": "pflaster_other",
+        "소형고압블록": "pflaster_other",
+        "비포장": "pflaster_other"
+      }
+    },
+    "model": {
+      "floor_height": 3.0,
+      "source_height": 0.5,
+      "source_ground": "dtm_at_source",
+      "road_surface": "dtm",
+      "road_surface_smooth_m": 20.0,
+      "building_ground": "follow",
+      "building_pad_m": 5.0,
+      "terrain_smooth_m": 0.0,
+      "grade_base": 30.0,
+      "segment_main": 1.0,
+      "segment_minor": 1.0,
+      "main_min_lanes": 99,
+      "minor_roads": "exclude",
+      "odd_lane_rule": "ceil",
+      "source_lines": "lane",
+      "lane_width": "auto",
+      "lane_width_clip": [
+        2.75,
+        3.5
+      ],
+      "lane_width_default": 3.25,
+      "canyon": {
+        "enabled": false,
+        "parallel_tol_deg": 5.0,
+        "probe_offsets": [
+          -5.0,
+          0.0,
+          5.0
+        ],
+        "max_width": 100.0,
+        "ray_length": 100.0
+      }
+    },
+    "propagation": {
+      "bands_hz": [
+        500
+      ],
+      "spectrum_dBA": [
+        0.0
+      ],
+      "temperature_C": 15.0,
+      "humidity_pct": 70.0,
+      "pressure_kPa": 101.325,
+      "alpha_dB_per_km": null,
+      "max_dist_main": 1000.0,
+      "max_dist_minor": 1000.0,
+      "profile_step": 1.0,
+      "dsm_res": 1.0,
+      "barrier": {
+        "C2": 20.0,
+        "dz_max_single": 20.0,
+        "dz_max_double": 25.0
+      },
+      "reflection": {
+        "rho": 0.8,
+        "D_RV": 0.5,
+        "D_E": -1.0,
+        "max_order_grid": 2,
+        "max_order_facade": 2,
+        "max_order_point": 2,
+        "own_facade": "last",
+        "r_facade": 200.0,
+        "r_source_main": 400.0,
+        "r_source_minor": 400.0,
+        "r_second": 520.0,
+        "r_refl_source": 50.0
+      },
+      "lateral": {
+        "enabled": true,
+        "max_grow": 6
+      },
+      "cmet_C0": 0.0,
+      "skip_radius": 1.5,
+      "segment_check": true,
+      "terms_csv": false
+    },
+    "receivers": {
+      "center": [
+        205212.5,
+        553122.5
+      ],
+      "grid": {
+        "enabled": true,
+        "bbox": [
+          205122.5,
+          553067.5,
+          205302.5,
+          553177.5
+        ],
+        "size": [
+          480.0,
+          520.0
+        ],
+        "step": 5.0,
+        "heights": [
+          2.0
+        ],
+        "refine": {
+          "enabled": false,
+          "threshold_dB": 2.0,
+          "levels": 2
+        }
+      },
+      "facade": {
+        "enabled": false,
+        "area": "grid",
+        "radius": 230.0,
+        "piece": 10.0,
+        "z_in_floor": 2.8,
+        "offset": 0.05
+      },
+      "points": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/points_soundplan.csv",
+        "default_height": null,
+        "road_contrib": true,
+        "measured": null
+      }
+    },
+    "plots": {
+      "font": null,
+      "dpi": 130,
+      "targets_3d": null,
+      "radius_3d": 105.0,
+      "elev_3d": 22.0,
+      "azim_3d": 135.0
+    }
+  },
+  "environment": {
+    "git": {
+      "commit": "ac0e38b7c9508f083c8142c627447ed382207eeb",
+      "dirty": true
+    },
+    "source_sha256": "078d47165ea8af1a50c859fd721b226763c12e0f5cab474959a3b474765cd6d7",
+    "python": "3.14.6",
+    "os": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "frozen_app": false,
+    "packages": {
+      "numpy": "2.5.4",
+      "numba": "0.68.1",
+      "scipy": "1.18.1",
+      "pandas": "3.1.0",
+      "geopandas": "1.2.0",
+      "shapely": "2.2.0",
+      "rasterio": "1.5.2",
+      "pyproj": "3.8.0",
+      "matplotlib": "3.11.2",
+      "PyYAML": "6.0.3"
+    }
+  },
+  "time": "2026-11-20 14:35:08"
+}

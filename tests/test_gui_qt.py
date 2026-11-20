@@ -416,7 +416,9 @@ def test_method_select_runs_and_separates_folders(tmp_path):
 
 
 def test_load_jeonnong_without_and_with_map(tmp_path):
-    """전농사거리 예제: 수치지도 없으면 안내 후 False(설정·교통량은 복사됨), zip 을 넣으면 풀고 설정을 엶"""
+    """전농사거리 예제: 앱에 든 계산 결과(기본값·SoundPLAN 조건)는 수치지도 없이 엶. 결과도 수치지도도 없으면 안내 후
+    False(설정·교통량은 복사됨), zip 을 넣으면 풀고 설정을 엶. 이미 복사된 폴더의 파일은 덮어쓰지 않음"""
+    import shutil
     import zipfile
     from PySide6 import QtWidgets
     import sori_qt as Q
@@ -425,9 +427,29 @@ def test_load_jeonnong_without_and_with_map(tmp_path):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     w = Q.MainWindow()
     dst = tmp_path / "전농사거리"
-    assert w.load_jeonnong(dst, quiet=True) is False
-    for f in ("config.yaml", "traffic.csv", "points.csv", "README.md", "traffic/A_현장계수_50kmh.csv"):
+    assert w.load_jeonnong(dst, quiet=True) is True                                     # 기본값 계산 결과
+    assert w.cfg_path == (dst / "config.yaml").resolve() and Path(w.ed_out.text()) == dst / "output"
+    assert "grid" in w.R and "facade" in w.R and w.R["run_info"]["propagation_method"] == "iso9613_2"
+    assert w.load_jeonnong(dst, quiet=True, case="soundplan") is True                   # SoundPLAN 비교 조건 결과
+    assert w.cfg_path == (dst / "config_soundplan.yaml").resolve() and Path(w.ed_out.text()) == dst / "output_soundplan"
+    assert "grid" in w.R and w.cfg["propagation_method"] == "rls19"
+    assert w.method_out("rls19") == (dst / "output_soundplan").resolve()                 # 설정의 결과 폴더 기준
+    for f in ("config.yaml", "config_soundplan.yaml", "traffic.csv", "traffic_soundplan_1119.csv", "points.csv",
+              "points_soundplan.csv", "roads_override_3_2.csv", "README.md", "traffic/A_현장계수_50kmh.csv"):
         assert (dst / f).exists(), f
+    (dst / "points.csv").write_text("고친 파일", encoding="utf-8")
+    shutil.rmtree(dst / "output"); shutil.rmtree(dst / "output_soundplan")
+    assert w.load_jeonnong(dst, quiet=True) is True                                     # 지운 결과 폴더만 다시 채움
+    assert (dst / "points.csv").read_text(encoding="utf-8") == "고친 파일"
+    shutil.copy2(Q.resource_path("examples", "jeonnong", "points.csv"), dst / "points.csv")
+    shutil.rmtree(dst / "output"); shutil.rmtree(dst / "output_soundplan")
+    real = Q.resource_path
+    Q.resource_path = lambda *a: tmp_path / "빈예제" if a == ("examples", "jeonnong") else real(*a)
+    (tmp_path / "빈예제").mkdir()
+    try:
+        assert w.load_jeonnong(dst, quiet=True) is False                                # 결과도 수치지도도 없음
+    finally:
+        Q.resource_path = real
     cfg = C.load(dst / "config.yaml")
     assert cfg["input"]["map"]["folders"] == [str((dst / "data" / "map").resolve())]
     assert len(read_csv_any(dst / "traffic.csv")) > 0

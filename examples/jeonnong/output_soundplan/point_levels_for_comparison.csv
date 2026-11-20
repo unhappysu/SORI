@@ -1,0 +1,9 @@
+﻿point_id,period,Leq_calc,quantity,note
+SP_P1,day,73.8,"LrT (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+SP_P2,day,77.0,"LrT (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+P1,day,73.5,"LrT (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+P2,day,76.7,"LrT (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+SP_P1,night,70.0,"LrN (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+SP_P2,night,73.1,"LrN (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+P1,night,69.7,"LrN (RLS-19 평가레벨, 교차로·반사 보정 포함)",
+P2,night,72.8,"LrN (RLS-19 평가레벨, 교차로·반사 보정 포함)",

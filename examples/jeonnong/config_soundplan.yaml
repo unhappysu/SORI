@@ -1,0 +1,49 @@
+# =====================================================================
+# SORI 예제 — 전농사거리 SoundPLAN 비교 조건 (SoundPLAN_계산조건_정리 기준, sp_refl_1119 와 같은 조건)
+# 03_전농사거리_SORI계산/config_soundplan.yaml 과 같은 설정. 계산 결과는 output_soundplan/ 에 들어 있음.
+# 다시 계산하려면 수치지도(data/map)를 받아 넣어야 함(DEM 은 쓰지 않음) — README.md.
+# ※ 본 설정은 Claude(Anthropic의 AI)를 활용하여 작성하였음. 계산 결과의 검토·검증 책임은 사용자에게 있음.
+# =====================================================================
+# SoundPLAN 계산 조건(SoundPLAN_계산조건_정리.pdf, 2026-11-17)으로 계산하는 설정 — 학술발표 비교용. 2026-11-19
+# ※ Claude(Anthropic의 AI)를 활용하여 작성하였음.
+# 기존 config.yaml(SORI 기본: ISO 9613-2, 반사 3차, 측면 회절, 다른 도로 포함)은 그대로 두고 이 파일을 따로 씀.
+# 같은 조건의 점 비교: noisemap_rls19_iso9613/validation/soundplan/sp_compare_1109/sp_settings_1117/sp_refl_1119
+project: {name: 전농사거리_SoundPLAN조건, output_dir: output_soundplan, scenario: SP조건, file_naming: false}   # 규칙 이름 사본 만들지 않음
+crs: 5186
+propagation_method: rls19                          # 배출·전파 모두 RLS-19 (측면 회절은 rls19 에서 적용 안 함)
+input:
+  map: {folders: [data/map]}                       # DEM 없음: 등고선·표고점만
+  traffic: {path: traffic_soundplan_1119.csv,      # SoundPLAN 입력 교통량: 동행 1,046 승용 + 388 Trucks1, 서행 838.2 + 267.9
+            fallback_dtv_by_lanes: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}}   # 교통량 파일에 없는 도로 = 음원 없음(사가정로만)
+  road_override: {path: roads_override_3_2.csv}    # 사가정로 서행 3 · 동행 2 차로
+  road_alias: {전농로25길: 전농로}
+  surface_map: {아스팔트: ref, 아스팔트콘크리트: ref}   # Nicht geriffelter Gussasphalt (D_SD = 0)
+  junctions: {auto_signal_min_lanes: 99}           # 신호교차로 보정 없음 → D_K = 0
+  dem: {path: null}
+model:
+  floor_height: 3.0                                # 층수 × 3 m
+  main_min_lanes: 99                               # 교통량 없는 도로를 음원에서 뺌(계산 속도용, 분할·반사거리를 간선·골목 같게 둬 결과 불변)
+  minor_roads: exclude
+  source_lines: lane                               # 차로마다 음원선
+  canyon: {enabled: false}                         # Drefl 0 dB
+  segment_main: 1.0                                # 분할: SoundPLAN 최소 1 m (s ≥ 8 m 에서 l ≤ s/8)
+  segment_minor: 1.0
+  road_surface: dtm                                # 도로 높이 = 지형 그대로(평활 0 m)
+  terrain_smooth_m: 0.0
+receivers:
+  center: [205212.5, 553122.5]
+  grid:
+    enabled: true
+    bbox: [205122.5, 553067.5, 205302.5, 553177.5] # SoundPLAN 격자점(205125–205300, 553070–553175)이 칸 가운데가 되게 2.5 m 넓힘
+    step: 5.0                                      # SoundPLAN 격자 간격
+    heights: [2.0]                                 # 지면 위 2 m
+  facade: {enabled: false}                         # SoundPLAN 비교에 벽면 없음(켜면 계산 시간이 크게 늚)
+  points: {path: points_soundplan.csv}             # SoundPLAN 수음점 M1·M2(1.31 m) + 현장 측정점 P1·P2
+propagation:
+  max_dist_main: 1000.0                            # SoundPLAN 5 km — 교통량 있는 음원이 모두 수음점 600 m 안이라 같은 결과
+  max_dist_minor: 1000.0
+  reflection: {D_RV: 0.5, max_order_grid: 2, max_order_facade: 2, max_order_point: 2,
+               r_facade: 200.0,                    # 반사면: 수음점에서 200 m (모든 반사면)
+               r_refl_source: 50.0,                # 반사면: 음원에서 50 m (모든 반사면)
+               r_source_main: 400.0, r_source_minor: 400.0,   # 위 두 조건보다 넓게 → 제한 안 함
+               r_second: 520.0}

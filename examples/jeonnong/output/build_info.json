@@ -1,0 +1,55 @@
+{
+  "terrain": {
+    "contour_pts": 24565,
+    "spot_pts": 19,
+    "dem_pts": 1047,
+    "mode": "contours+dem",
+    "smooth_m": 5.0
+  },
+  "buildings": 2911,
+  "roads": 2261,
+  "sources": 5282,
+  "sources_main": 5282,
+  "facade_edges": 12860,
+  "junctions": 403,
+  "signal_junction_points": 6,
+  "grid_receivers_per_height": 25719,
+  "facade_receivers": 20108,
+  "roads_with_fallback_traffic": 89,
+  "roads_narrow_same_name": 0,
+  "canyon_segments": 380,
+  "minor_roads": "exclude",
+  "minor_roads_excluded": 1905,
+  "source_lines": "direction",
+  "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
+  "traffic_defaults": {
+    "standard": "RLS-19 표 2",
+    "roads": 274,
+    "dtv_by_lanes_roads": 89,
+    "note": "독일 기준(도로유형별 표준값)으로, 국내 교통 특성(주·야 비율, 화물차 비율)과 다를 수 있음"
+  },
+  "dk_rule": {
+    "rule": "nearest_signal",
+    "sources_raised": 1079,
+    "dD_K_max": 2.572
+  },
+  "road_surface": {
+    "mode": "flatten",
+    "smooth_m": 20.0,
+    "cells": 240838,
+    "dz_mean": -0.024,
+    "dz_abs_p90": 0.409,
+    "dz_min": -6.987,
+    "dz_max": 2.166,
+    "cells_lowered_over_1m": 3705,
+    "cells_raised_over_1m": 2125
+  },
+  "road_override": {
+    "rows": 0,
+    "matched_ufid": 0,
+    "unmatched_ufid": 0,
+    "roads_lanes_override": 0,
+    "roads_oneway_dir_override": 0,
+    "warnings": {}
+  }
+}

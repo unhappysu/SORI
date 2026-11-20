@@ -1,0 +1,386 @@
+{
+  "software": "SORI v0.9",
+  "notice": "본 소프트웨어는 Claude(Anthropic의 AI)를 활용하여 제작하였음.",
+  "numba": true,
+  "emission": "RLS-19 (FGSV 052, 2019, Korrektur 2020)",
+  "propagation": "ISO 9613-2:1996, 500 Hz, 지면 일반법 G=0",
+  "propagation_method": "iso9613_2",
+  "method_label": "RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 프로젝트 구성 방법",
+  "equations": [
+    "ISO 9613-2 식 (3)",
+    "식 (4)",
+    "식 (5)",
+    "식 (7) A_div",
+    "식 (8) A_atm·표 2(ISO 9613-1)",
+    "ISO 9613-2 식 (9) 일반법·표 3",
+    "식 (12) A_bar = D_z − A_gr",
+    "식 (14)~(18) D_z·C3·z·K_met, 상한 20/25 dB",
+    "7.5 식 (19) 반사 크기 조건",
+    "식 (20) L_W,im = L_W + 10 lg ρ"
+  ],
+  "reflection_order": {
+    "grid": 3,
+    "facade": 3,
+    "points": 3
+  },
+  "D_refl_in_source": true,
+  "D_refl_note": "D_refl(RLS-19 식 9, 2·h_Beb/w ≤ 1,6)을 음원 L_W′ 에 포함. RLS-19 3.3.8·3.6 과 공식 시험과제 TEST-20 K2 는 D_refl 을 1·2차 허상음원 반사와 함께 적용 — 반사 3차는 표준(2차)을 넘는 프로젝트 설정이며, 3차 이상 허상음원은 D_refl 이 대신하는 고차 반사와 겹침(도로 협곡에서 이중 계상). 겹침을 피하려면 반사 차수를 2로 낮추거나 model.canyon.enabled: false",
+  "standard_deviations": [
+    "반사 3차 — RLS-19 3.6(1·2차)을 넘음. 근거: 「소음지도의 작성방법」 별표 2 제8호(3차 이상 원칙) + D_refl 과 겹침",
+    "RLS-19 음원 + ISO 9613-2 전파 — 어느 표준도 규정하지 않은 구성. RLS-19 전파와 같은 값은 가까운 거리(지면 감쇠 0)뿐이고, 포장 지면(G = 0)·차폐 없는 먼 거리에서는 RLS-19 보다 높게 나옴(평지 100 m 에서 약 +4 ~ +6 dB: RLS-19 식 14 의 지면·기상 감쇠가 ISO 일반법 G = 0 에는 없음)",
+    "측면 회절(ISO 9613-2 식 13)을 도로 음원 조각에 적용 — CNOSSOS-EU 는 실제 점음원에만 허용. 측면 경로를 막는 건물은 감싸 돌아감(프로젝트 해석, sori/lateral.py)"
+  ],
+  "lateral_diffraction": "켬 — ISO 9613-2 식 (13) A_bar = D_z(K_met = 1), 건물·방음벽에 막힌 직접음 경로에 좌우 측면 경로 최대 2개(평면 볼록 껍질, 막는 건물은 감싸 돌아감 최대 6번), 차폐 없을 때 값을 넘지 않음(ISO/TR 17534-3 5.6)",
+  "not_implemented": [
+    "측면 회절: 반사 경로·점 수음점 감쇠항 표(path_terms)·경로 보기에는 없음",
+    "음(−)의 z(가시선 위 장애물)",
+    "A_misc(부속서 A)",
+    "차폐 대상 조건(7.4 면밀도·수평 치수) 검사",
+    "C_met(식 21·22) — L_AT(DW)로 계산(propagation.cmet_C0 로 켬)",
+    "옥타브 대역 스펙트럼(출처 미확보 — 1대역 사용)",
+    "section(단면) 소음지도",
+    "7차 이상 반사"
+  ],
+  "iso_ground_method": "general(7.3.1)",
+  "iso_ground_note": "",
+  "representative_frequency_hz": 500.0,
+  "representative_frequency_basis": "ISO 9613-2 1절 비고 1(A 가중 L_W 만 알면 500 Hz 감쇠항)",
+  "meteorology": "L_AT(DW) 순풍 조건(ISO 9613-2 식 3·5), C_met 미적용",
+  "reflection_loss": "ρ = 0.8 (ISO 9613-2 식 20)",
+  "hybrid_note": "RLS-19 의 L_W 는 반공간(2π) 기준. ISO 일반법 G = 0·근거리(q = 0)에서만 A_gr = −3 dB 로 RLS-19 전파와 같은 값. 먼 거리는 A_gr = −3 − 3q(더 큰 음수)이고 RLS-19 식 (14)의 감쇠(0 ~ 4,8 dB)가 없어 더 높게, 차폐 경로는 식 (12)에서 A_gr 이 상쇄되어 회절이 작을 때 약 3 dB 낮게 나옴(TECHNICAL_NOTES 4a절)",
+  "outputs": {
+    "grid": "iso9613_2",
+    "facade": "iso9613_2",
+    "points": "iso9613_2"
+  },
+  "file_naming": null,
+  "ground_method": "general",
+  "bands_hz": [
+    500.0
+  ],
+  "alpha_dB_per_km": [
+    2.358
+  ],
+  "weights": [
+    1.0
+  ],
+  "reflection": {
+    "rho": 0.8,
+    "D_RV": 0.5,
+    "D_E": -1.0,
+    "max_order_grid": 3,
+    "max_order_facade": 3,
+    "max_order_point": 3,
+    "own_facade": "last",
+    "r_facade": 100.0,
+    "r_source_main": 200.0,
+    "r_source_minor": 50.0,
+    "r_second": 50.0,
+    "r_refl_source": null
+  },
+  "results_range": {
+    "grid_h4": {
+      "LrT": [
+        32.27655975148865,
+        82.22441560251625
+      ],
+      "LrN": [
+        27.83314619752516,
+        78.40518608650457
+      ]
+    },
+    "facade": {
+      "LrT": [
+        31.973845106846458,
+        76.85181894432294
+      ],
+      "LrN": [
+        27.670046883518626,
+        73.00807372414111
+      ]
+    },
+    "points": {
+      "LrT": [
+        76.78451477470833,
+        77.94023438825221
+      ],
+      "LrN": [
+        72.96488435930941,
+        74.12009405123392
+      ]
+    }
+  },
+  "barriers": null,
+  "segment_check": {
+    "rule": "RLS-19 3.2 주석 l_i <= s_i/2 (경험칙, 진단만·결과값 불변). s = 직접 경로 3D 거리",
+    "grid_h4": {
+      "receivers": 25719,
+      "violating": 4028,
+      "violating_pct": 15.66,
+      "violating_via_main": 4028,
+      "min_s_over_l": 1.1444434758376378
+    },
+    "facade": {
+      "receivers": 20108,
+      "violating": 11,
+      "violating_pct": 0.05,
+      "violating_via_main": 11,
+      "min_s_over_l": 1.669206579867571
+    }
+  },
+  "config": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/config.yaml",
+  "config_resolved": {
+    "project": {
+      "name": "전농사거리",
+      "output_dir": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/output",
+      "scenario": "현황",
+      "file_naming": false
+    },
+    "crs": 5186,
+    "propagation_method": "iso9613_2",
+    "input": {
+      "map": {
+        "folders": [
+          "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/data/map"
+        ],
+        "encoding": "cp949",
+        "layers": {
+          "building": "*B0010000*.shp",
+          "road": "*A0020000*.shp",
+          "contour": "*F0010000*.shp",
+          "spot": "*F0020000*.shp"
+        },
+        "fields": {
+          "uid": "UFID",
+          "building_floors": "층수",
+          "building_height": null,
+          "building_kind": "종류",
+          "building_name": "명칭",
+          "road_name": "도로명",
+          "road_lanes": "차로수",
+          "road_width": "도로폭",
+          "road_oneway": "일방통행",
+          "road_surface": "포장재질",
+          "contour_z": "등고수치",
+          "spot_z": "수치"
+        },
+        "oneway_values": [
+          "일방통행"
+        ],
+        "exclude_building_kinds": [
+          "무벽건물"
+        ],
+        "facade_exclude_kinds": [
+          "가건물"
+        ],
+        "min_building_area": 4.0
+      },
+      "dem": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/data/dem/전농사거리_(B080)공개DEM_37705_img_2025.zip",
+        "use_as": "auxiliary",
+        "aux_min_dist": 30.0,
+        "aux_spacing": 20.0
+      },
+      "traffic": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/traffic.csv",
+        "default_road_type": "gemeinde",
+        "fallback_dtv_by_lanes": {
+          "1": 1000.0,
+          "2": 6000.0,
+          "3": 12000.0,
+          "4": 20000.0,
+          "5": 30000.0,
+          "6": 40000.0
+        },
+        "default_speed_main": 50.0,
+        "default_speed_minor": 30.0,
+        "name_min_lanes": 2,
+        "oneway_name_traffic": "apply",
+        "missing_m": "error"
+      },
+      "road_override": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/roads_override.csv"
+      },
+      "junctions": {
+        "path": null,
+        "auto_signal_min_lanes": 4,
+        "auto_type": "signal",
+        "cluster_radius": 25.0,
+        "user_match_radius": 30.0,
+        "dk_rule": "nearest_signal"
+      },
+      "ground": {
+        "method": "general",
+        "default_G": 0.0,
+        "soft_polygons": null,
+        "soft_G": 1.0
+      },
+      "barriers": {
+        "path": null,
+        "piece": 10.0
+      },
+      "road_alias": {
+        "전농로25길": "전농로"
+      },
+      "surface_map": {
+        "아스팔트": "AC11",
+        "아스팔트콘크리트": "AC11",
+        "콘크리트": "ref",
+        "블록": "pflaster_other",
+        "소형고압블록": "pflaster_other",
+        "비포장": "pflaster_other"
+      }
+    },
+    "model": {
+      "floor_height": 3.0,
+      "source_height": 0.5,
+      "source_ground": "dtm_at_source",
+      "road_surface": "flatten",
+      "road_surface_smooth_m": 20.0,
+      "building_ground": "follow",
+      "building_pad_m": 5.0,
+      "terrain_smooth_m": 5.0,
+      "grade_base": 30.0,
+      "segment_main": 3.0,
+      "segment_minor": 5.0,
+      "main_min_lanes": 2,
+      "minor_roads": "exclude",
+      "odd_lane_rule": "ceil",
+      "source_lines": "direction",
+      "lane_width": "auto",
+      "lane_width_clip": [
+        2.75,
+        3.5
+      ],
+      "lane_width_default": 3.25,
+      "canyon": {
+        "enabled": true,
+        "parallel_tol_deg": 5.0,
+        "probe_offsets": [
+          -5.0,
+          0.0,
+          5.0
+        ],
+        "max_width": 100.0,
+        "ray_length": 100.0
+      }
+    },
+    "propagation": {
+      "bands_hz": [
+        500
+      ],
+      "spectrum_dBA": [
+        0.0
+      ],
+      "temperature_C": 15.0,
+      "humidity_pct": 70.0,
+      "pressure_kPa": 101.325,
+      "alpha_dB_per_km": null,
+      "max_dist_main": 300.0,
+      "max_dist_minor": 150.0,
+      "profile_step": 1.0,
+      "dsm_res": 1.0,
+      "barrier": {
+        "C2": 20.0,
+        "dz_max_single": 20.0,
+        "dz_max_double": 25.0
+      },
+      "reflection": {
+        "rho": 0.8,
+        "D_RV": 0.5,
+        "D_E": -1.0,
+        "max_order_grid": 3,
+        "max_order_facade": 3,
+        "max_order_point": 3,
+        "own_facade": "last",
+        "r_facade": 100.0,
+        "r_source_main": 200.0,
+        "r_source_minor": 50.0,
+        "r_second": 50.0,
+        "r_refl_source": null
+      },
+      "lateral": {
+        "enabled": true,
+        "max_grow": 6
+      },
+      "cmet_C0": 0.0,
+      "skip_radius": 1.5,
+      "segment_check": true,
+      "terms_csv": false
+    },
+    "receivers": {
+      "center": [
+        205108.0,
+        553110.0
+      ],
+      "grid": {
+        "enabled": true,
+        "bbox": null,
+        "size": [
+          480.0,
+          520.0
+        ],
+        "step": 2.5,
+        "heights": [
+          4.0
+        ],
+        "refine": {
+          "enabled": false,
+          "threshold_dB": 2.0,
+          "levels": 2
+        }
+      },
+      "facade": {
+        "enabled": true,
+        "area": "grid",
+        "radius": 200.0,
+        "piece": 10.0,
+        "z_in_floor": 2.8,
+        "offset": 0.05
+      },
+      "points": {
+        "path": "/Users/gustnbijou_/Downloads/3-2/소음진동설계/03_전농사거리_SORI계산/points.csv",
+        "default_height": null,
+        "road_contrib": true,
+        "measured": null
+      }
+    },
+    "plots": {
+      "font": null,
+      "dpi": 130,
+      "targets_3d": null,
+      "radius_3d": 105.0,
+      "elev_3d": 22.0,
+      "azim_3d": 135.0,
+      "limits": {
+        "LrT": 68,
+        "LrN": 58,
+        "label": "도로교통소음 관리기준(주거지역 등) 주간 68 / 야간 58 dB(A)"
+      }
+    }
+  },
+  "environment": {
+    "git": {
+      "commit": "ac0e38b7c9508f083c8142c627447ed382207eeb",
+      "dirty": true
+    },
+    "source_sha256": "078d47165ea8af1a50c859fd721b226763c12e0f5cab474959a3b474765cd6d7",
+    "python": "3.14.6",
+    "os": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "frozen_app": false,
+    "packages": {
+      "numpy": "2.5.4",
+      "numba": "0.68.1",
+      "scipy": "1.18.1",
+      "pandas": "3.1.0",
+      "geopandas": "1.2.0",
+      "shapely": "2.2.0",
+      "rasterio": "1.5.2",
+      "pyproj": "3.8.0",
+      "matplotlib": "3.11.2",
+      "PyYAML": "6.0.3"
+    }
+  },
+  "time": "2026-11-20 15:09:05"
+}

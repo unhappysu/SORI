@@ -53,6 +53,9 @@ KEYS = {"LrT": "주간 LrT (06–22시)", "LrN": "야간 LrN (22–06시)"}
 # 전농사거리 예제(examples/jeonnong)가 쓰는 국토지리정보원 수치지형도 v2.0 도엽 — 수치지도는 앱에 넣지 않음(재배포 조건 미확인)
 JEONNONG_SHEETS = ["377051731", "377051732", "377051733", "377051741", "377051742", "377051743",
                    "377051751", "377051752", "377051753"]
+# 전농사거리 예제 안의 계산 결과(앱에 포함, 2026-11-20): 기본값 계산과 SoundPLAN 비교 조건. (설정 파일, 결과 폴더, 이름)
+JEONNONG_CASES = {"default": ("config.yaml", "output", "기본값 계산"),
+                  "soundplan": ("config_soundplan.yaml", "output_soundplan", "SoundPLAN 비교 조건")}
 
 
 def extract_map_zips(folder):
@@ -2662,7 +2665,8 @@ class HomePage(QtWidgets.QWidget):
             m.addAction(text, fn)
         m.addSeparator()
         m.addAction("예제: 가상 교차로(실제 지역 아님)", w.load_example)
-        m.addAction("예제: 전농사거리(수치지도는 따로 받음)…", w.load_jeonnong)
+        m.addAction("예제: 전농사거리 — 기본값 계산 결과", w.load_jeonnong)
+        m.addAction("예제: 전농사거리 — SoundPLAN 비교 조건 결과", lambda: w.load_jeonnong(case="soundplan"))
         self.recent_actions = []
         rec = recent_projects()
         if rec:
@@ -2984,7 +2988,8 @@ class MainWindow(QtWidgets.QMainWindow):
         m.addAction("설정 파일 열기…", self.pick_cfg, QtGui.QKeySequence.Open)
         m.addAction("결과 폴더 열기…", self.pick_out)
         m.addAction("예제 불러오기(가상 교차로)", self.load_example)
-        m.addAction("전농사거리 불러오기(수치지도는 따로 받음)…", self.load_jeonnong)
+        m.addAction("전농사거리 불러오기(기본값 계산 결과)", self.load_jeonnong)
+        m.addAction("전농사거리 불러오기(SoundPLAN 비교 조건 결과)", lambda: self.load_jeonnong(case="soundplan"))
         m.addSeparator()
         m.addAction("저장 (입력값 화면: 설정 파일 / 지도 화면: 지도 그림)", self.save_current, QtGui.QKeySequence.Save)
         m.addAction("지도 저장(PNG·PDF)…", self.save_map)
@@ -3299,21 +3304,33 @@ class MainWindow(QtWidgets.QMainWindow):
         log.info("예제(가상 교차로, 실제 지역 아님): %s", dst)
         self.open_config(dst / "config.yaml", dst / "output")
 
-    def load_jeonnong(self, dst=None, quiet=False):
-        """전농사거리 예제(설정·교통량·측정점)를 문서/SORI/전농사거리 에 복사해 엶. 수치지도는 사용자가 받아
-        data/map 에 넣음(zip 그대로 넣으면 여기서 풂). 수치지도가 없으면 받는 방법을 알리고 폴더를 엶 → False"""
+    def load_jeonnong(self, dst=None, quiet=False, case="default"):
+        """전농사거리 예제를 문서/SORI/전농사거리 에 복사해 엶. case: default(기본값 계산) / soundplan(SoundPLAN 비교 조건).
+        앱에 든 계산 결과(output, output_soundplan)는 수치지도 없이 바로 봄. 다시 계산하려면 수치지도가 필요 — 사용자가 받아
+        data/map 에 넣음(zip 그대로 넣으면 여기서 풂). 이미 복사된 폴더에는 없는 파일·폴더만 채움(고친 설정·다시 계산한
+        결과는 덮어쓰지 않음, 결과 폴더는 통째로 있거나 없거나). 반환: 설정을 열었으면 True, 수치지도도 결과도 없으면 False"""
         import shutil
+        cfg_name, out_name, label = JEONNONG_CASES[case]
+        src = resource_path("examples", "jeonnong")
         dst = Path(dst) if dst else default_output_dir() / "전농사거리"
-        if not (dst / "config.yaml").exists():
-            shutil.copytree(resource_path("examples", "jeonnong"), dst, dirs_exist_ok=True)
-            log.info("전농사거리 예제 복사: %s", dst)
+        dst.mkdir(parents=True, exist_ok=True)
+        added = []
+        for p in sorted(src.iterdir()):
+            q = dst / p.name
+            if not q.exists():
+                (shutil.copytree if p.is_dir() else shutil.copy2)(p, q)
+                added.append(p.name)
+        if added:
+            log.info("전농사거리 예제 복사: %s (%s)", dst, ", ".join(added))
         mp = dst / "data" / "map"
         mp.mkdir(parents=True, exist_ok=True)
         n = extract_map_zips(mp)
         if n:
             log.info("수치지도 압축 %d개를 풀었음: %s", n, mp)
-        if not has_building_layer(mp):
-            msg = ("전농사거리 수치지도가 아직 없습니다(앱에는 설정·교통량·측정점만 들어 있음).\n\n"
+        out = dst / out_name
+        has_map, has_res = has_building_layer(mp), (out / "grid_result.csv").is_file()
+        if not has_map and not has_res:
+            msg = ("전농사거리 수치지도가 아직 없습니다.\n\n"
                    "국토정보플랫폼(map.ngii.go.kr) → 공간정보 → 수치지도 → 수치지형도 v2.0(1:1,000, SHP)에서\n"
                    f"도엽 {', '.join(JEONNONG_SHEETS)} 을 받아\n{mp}\n에 넣은 뒤(zip 그대로 가능) "
                    "다시 '파일 ▸ 전농사거리 불러오기' 를 누르세요.")
@@ -3323,7 +3340,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 G.open_folder(mp)
             self.lbl_status.setText(f"전농사거리 수치지도를 {mp} 에 넣어 주세요")
             return False
-        self.open_config(dst / "config.yaml", dst / "output")
+        self.open_config(dst / cfg_name, out)
+        if not has_map:
+            log.info("전농사거리 %s: 앱에 든 계산 결과를 엶(다시 계산하려면 수치지도 필요: %s)", label, mp)
+            self.lbl_status.setText(f"전농사거리 {label} — 앱에 든 계산 결과. 다시 계산하려면 수치지도를 {mp} 에 넣으세요")
         return True
 
     def open_config(self, path, out=None):
@@ -3336,7 +3356,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return self._err(f"설정 파일을 읽을 수 없습니다.\n{e}")
         self.cfg_path, self.cfg = path, cfg
         self.method0 = cfg.get("propagation_method") or "iso9613_2"     # 설정 파일의 전파 방법
-        self._base_out = path.parent / "output"
+        self._base_out = Path(cfg["project"].get("output_dir") or path.parent / "output")   # 설정의 결과 폴더
         self._set_method(self.method0)
         out = Path(out) if out else self._base_out
         self.ed_cfg.setText(str(path))
@@ -5806,13 +5826,19 @@ def _out_for(cfg_path, out):
 
 
 def restore(win, config=None, out=None):
-    """--config 로 받은 설정 파일, 없으면 지난번에 쓴 설정 파일을 미리 엶"""
+    """--config 로 받은 설정 파일, 없으면 지난번에 쓴 설정 파일을 미리 엶.
+    처음 실행(지난번 설정 없음)이면 기본 예제 = 전농사거리 기본값 계산 결과(앱에 포함, 2026-11-20)"""
     st = G.load_settings()
     p = Path(config) if config else (Path(st["last_config"]) if st.get("last_config") else None)
     if p and p.is_file():
         win.open_config(p, out or (_out_for(p, st.get("last_out")) if not config else None))
     elif out:
         win.open_results(out)
+    else:
+        try:
+            win.load_jeonnong(quiet=True)
+        except Exception as e:                       # 예제를 못 열어도 앱은 빈 화면으로 시작
+            log.error("기본 예제(전농사거리)를 열지 못함: %s", e)
 
 
 def light_theme(app):
