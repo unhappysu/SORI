@@ -95,6 +95,10 @@ DEFAULTS = {
         "source_ground": "dtm_at_source",          # 음원 높이 기준 지면: dtm_at_source(현행, 음원점 위치 DTM) | road_profile(도로중심선 종단 고도)
         "road_surface": "flatten",                 # 차도 면 지형: flatten(기본, 도로폭 안 DTM 을 도로중심선 종단 고도로 — 노면 평탄) | dtm(등고선 DTM 그대로, 2026-11-05 이전 동작)
         "road_surface_smooth_m": 20.0,             # flatten: 중심선 종단 고도 이동평균 길이(m, 등고선 계단 완화)
+        "building_ground": "follow",               # 건물 바닥(2026-11-20 기본 follow, 사용자 결정): vertex_min(이전 기본, 외곽선 꼭짓점 지형고 최솟값) | follow(지형 따라가기 — 지붕·벽·벽면 수음점을
+                                                   #   그 자리 지형 + 높이로, 땅속 바닥·수음점 없음, 2026-11-20) | pad(부지 정지 — 외곽선 0.5 칸 간격 최솟값,
+                                                   #   건물 안·벽 둘레를 그 높이로 깎아 묻힘·뜸 없앰. 깎기만, 도로 칸 제외, 2026-11-20)
+        "building_pad_m": 5.0,                     # pad: 벽에서 원래 지형으로 이어지는 폭(m). 벽 바로 바깥 1.5 칸은 바닥 높이 그대로
         "terrain_smooth_m": 5.0,                   # 등고선 삼각망 계단 현상 완화(가우스 σ, m). 0 = 사용 안 함
         "grade_base": 30.0,                        # 종단경사 산정 구간 길이(m, 도로선을 따라)
         "segment_main": 3.0,
@@ -276,6 +280,10 @@ def _validate(c):
         raise ValueError("model.minor_roads 는 exclude 또는 include")
     if m["road_surface"] not in ("dtm", "flatten"):
         raise ValueError("model.road_surface 는 dtm 또는 flatten")
+    if m.get("building_ground", "follow") not in ("vertex_min", "follow", "pad"):
+        raise ValueError("model.building_ground 는 vertex_min, follow, pad 중 하나")
+    if not 1.0 <= float(m.get("building_pad_m", 5.0)) <= 50.0:
+        raise ValueError("model.building_pad_m 는 1 ~ 50 m")
     if m["source_ground"] not in ("dtm_at_source", "road_profile"):
         raise ValueError("model.source_ground 는 dtm_at_source 또는 road_profile")
     if m["odd_lane_rule"] not in ("ceil", "major_fwd"):

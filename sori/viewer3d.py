@@ -21,13 +21,14 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE, __version__
 from .config import center, facade_reach, grid_bbox
+from .bldz import roof_fn
 from .propagation import result_model
 from .maps_hq import DIN_EDGES, DIN_COLS, traffic_summary, traffic_std_text
 from .resources import resource_path
 
 # 뷰어 판(파일 머리 <meta name="sori-viewer">). 화면 구성이 바뀌면 올림 — 앱은 판이 다르거나 없는 파일을 자동으로 다시 만듦
 #   2 = 2026-11-13 기준 초과 단추·색 삭제
-VIEWER_VERSION = 3        # 3(2026-11-14): 벽면 방향별 명암(fac.s)·건물 윤곽선
+VIEWER_VERSION = 6        # 6(2026-11-20): 지붕·층 색이 지형을 따라감(building_ground: follow). 5: 시점이 지형 밑으로 못 들어감·지면 양면·처음 시점 지형 기준. 4: 건물 벽 아래 끝을 지형 메쉬 밑까지(뜬 틈 없음). 3(2026-11-14): 벽면 명암·윤곽선
 GROUND_BG = (226, 230, 222)
 ROAD_RGB = (150, 150, 150)
 MINOR_RGB = (190, 190, 190)
@@ -112,13 +113,28 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
     FR = pd.read_csv(os.path.join(out, "facade_result.csv"))
     F = pd.read_csv(os.path.join(out, "facades.csv"), index_col="fid")
     has = set(FR.bid.unique())
+    Zn = Zg.reshape(n, n)
+
+    def mesh_floor(geom):
+        """외곽선이 지나는 메쉬 칸(5 m)의 꼭짓점 지형고 최솟값 — three.js 삼각형 지면이 이보다 낮아지지 않음"""
+        P = np.vstack([np.asarray(r.segmentize(1.0).coords) for r in [geom.exterior] + list(geom.interiors)])
+        j = np.clip(np.floor((P[:, 0] - (cx - R)) / mesh_step).astype(int), 0, n - 2)
+        i = np.clip(np.floor(((cy + R) - P[:, 1]) / mesh_step).astype(int), 0, n - 2)
+        return float(min(Zn[i, j].min(), Zn[i + 1, j].min(), Zn[i, j + 1].min(), Zn[i + 1, j + 1].min()))
+
     blds = []
     for b in B.itertuples():
         p = orient(b.geometry, 1.0)
         ring = lambda r: [[round(x - cx, 2), round(y - cy, 2)] for x, y in list(r.coords)[:-1]]
         nm = b.bname if isinstance(b.bname, str) and b.bname not in ("", "nan", "None") else ""
+        rf = roof_fn(b)
+        tops = [[round(rf(x, y) - zref, 2) for x, y in list(r.coords)[:-1]] for r in [p.exterior] + list(p.interiors)]
         blds.append({"id": int(b.bid), "r": ring(p.exterior), "h": [i for i in (list(map(ring, p.interiors)))],
-                     "z": [round(b.z0 - zref, 2), round(b.ztop - zref, 2)], "f": int(b.floors), "n": nm,
+                     "t": tops if getattr(b, "ztops", None) else None,
+                     # 벽 아래 끝 = min(z0, 외곽선 아래 메쉬 지형) − 0.3 m: 꼭짓점 사이·거친 메쉬에서 건물이 지형 위에 떠
+                     # 보이는 틈을 막음. 오르막 쪽은 지형이 벽을 덮음(실제 경사지 건물). 그리기만, 계산 z0 불변(2026-11-20)
+                     "z": [round(min(b.z0, mesh_floor(p)) - 0.3 - zref, 2), round(b.ztop - zref, 2)],
+                     "f": int(b.floors), "n": nm,
                      "c": int(b.bid in has)})
     # ---- 벽면 사각형(층 × 구간)
     f = F.loc[FR.fid]
@@ -127,7 +143,7 @@ def build_data(cfg, view_r=None, tex_res=1.0, mesh_step=5.0):
     y1 = f.y1.values + FR.a.values * (f.y2.values - f.y1.values) + off * f.ny.values - cy
     x2 = f.x1.values + FR.b.values * (f.x2.values - f.x1.values) + off * f.nx.values - cx
     y2 = f.y1.values + FR.b.values * (f.y2.values - f.y1.values) + off * f.ny.values - cy
-    za = f.z0.values + (FR.floor.values - 1) * fh - zref
+    za = (FR.zg.values if "zg" in FR else f.z0.values) + (FR.floor.values - 1) * fh - zref   # 층 바닥 = 수음점 지면(지형 따라가기면 벽 위치 지형)
     quads = np.c_[x1, y1, x2, y2, za, za + fh].round(2)
     # 벽면 방향별 명암(2026-11-14): 벽면 색은 조명을 받지 않는 재질이라 모든 벽이 같은 밝기로 납작해 보였음 →
     # 장면의 해(sun.position −300, 500, 200 — 평면 방향 (−300, −200))를 향한 정도로 밝기 0.80–1.0(등급 색을 헷갈리지 않게 약하게)
@@ -243,7 +259,14 @@ const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(40,1,1,5000);
 const controls=new THREE.OrbitControls(camera,renderer.domElement);
 controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.495;
-function home(){camera.position.set(D.R*0.55,D.R*0.62,D.R*0.95);controls.target.set(0,10,0);controls.update()}
+// 지형 높이(장면 좌표 x, z → y). 지면 메쉬와 같은 격자(북쪽 행부터, z = −북쪽). 2026-11-20
+function zAt(x,z){const s=D.step,m=D.n,h=(m-1)*s/2;let u=(x+h)/s,v=(z+h)/s;
+ u=Math.min(Math.max(u,0),m-1.001);v=Math.min(Math.max(v,0),m-1.001);const j=Math.floor(u),i=Math.floor(v),fx=u-j,fy=v-i,g=D.zg;
+ const a=g[i*m+j],b=g[i*m+j+1],c=g[(i+1)*m+j],d=g[(i+1)*m+j+1];return (a*(1-fx)+b*fx)*(1-fy)+(c*(1-fx)+d*fx)*fy}
+// 시점이 지형 밑으로 들어가지 않게: 회전 중심은 지형 위 1 m, 카메라는 지형 위 2 m 이상(끌기·확대·옮기기 모두)
+function keepAbove(){const t=controls.target,tg=zAt(t.x,t.z)+1;if(t.y<tg){const d=tg-t.y;t.y+=d;camera.position.y+=d}
+ const cg=zAt(camera.position.x,camera.position.z)+2;if(camera.position.y<cg)camera.position.y=cg}
+function home(){const z0=zAt(0,0);camera.position.set(D.R*0.55,z0+D.R*0.62,D.R*0.95);controls.target.set(0,z0+10,0);controls.update()}
 home();
 scene.add(new THREE.HemisphereLight(0xffffff,0x8a8a80,0.75));
 const sun=new THREE.DirectionalLight(0xffffff,0.55);sun.position.set(-300,500,200);scene.add(sun);
@@ -255,17 +278,17 @@ const gg=new THREE.PlaneGeometry(W,W,n-1,n-1);gg.rotateX(-Math.PI/2);
 const gp=gg.attributes.position;for(let i=0;i<gp.count;i++)gp.setY(i,D.zg[i]);gg.computeVertexNormals();
 const loader=new THREE.TextureLoader();const tex={};
 for(const k of ['LrT','LrN']){if(D.tex[k]){const t=loader.load(D.tex[k]);t.anisotropy=8;tex[k]=t}}
-const gmat=new THREE.MeshLambertMaterial({map:tex.LrT,color:0xffffff});
-const plain=new THREE.MeshLambertMaterial({color:0xdfe3dc});
+const gmat=new THREE.MeshLambertMaterial({map:tex.LrT,color:0xffffff,side:THREE.DoubleSide});   // 양면: 지형과 겹쳐도 하늘이 비치지 않게
+const plain=new THREE.MeshLambertMaterial({color:0xdfe3dc,side:THREE.DoubleSide});
 const ground=new THREE.Mesh(gg,gmat);scene.add(ground);
 // buildings (walls + roofs)
 function bgeom(list){const P=[];for(const b of list){const z0=b.z[0],z1=b.z[1];
- const rings=[b.r,...b.h];
- for(const r of rings){for(let i=0;i<r.length;i++){const a=r[i],c=r[(i+1)%r.length];
-  P.push(a[0],z0,-a[1], c[0],z0,-c[1], c[0],z1,-c[1], a[0],z0,-a[1], c[0],z1,-c[1], a[0],z1,-a[1])}}
+ const rings=[b.r,...b.h],tops=b.t||rings.map(r=>r.map(()=>z1));   // b.t = 꼭짓점별 지붕(지형 따라가기)
+ for(let ri=0;ri<rings.length;ri++){const r=rings[ri],T=tops[ri];for(let i=0;i<r.length;i++){const j=(i+1)%r.length,a=r[i],c=r[j];
+  P.push(a[0],z0,-a[1], c[0],z0,-c[1], c[0],T[j],-c[1], a[0],z0,-a[1], c[0],T[j],-c[1], a[0],T[i],-a[1])}}
  const cont=b.r.map(p=>new THREE.Vector2(p[0],p[1]));const holes=b.h.map(h=>h.map(p=>new THREE.Vector2(p[0],p[1])));
  let tri=[];try{tri=THREE.ShapeUtils.triangulateShape(cont,holes)}catch(e){}
- const all=cont.concat(...holes);for(const t of tri)for(const k of t){const v=all[k];P.push(v.x,z1,-v.y)}}
+ const all=cont.concat(...holes),allT=[].concat(...tops);for(const t of tri)for(const k of t){const v=all[k];P.push(v.x,allT[k],-v.y)}}
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.computeVertexNormals();return g}
 const mainB=D.bld.filter(b=>b.c),otherB=D.bld.filter(b=>!b.c);
 const bmatA=new THREE.MeshLambertMaterial({color:0xe9e4da,side:THREE.DoubleSide});
@@ -326,7 +349,7 @@ paint();
 function resize(){const w=wrap.clientWidth,h=wrap.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
 addEventListener('resize',resize);resize();
 const v3=new THREE.Vector3();
-(function loop(){requestAnimationFrame(loop);controls.update();renderer.render(scene,camera);
+(function loop(){requestAnimationFrame(loop);controls.update();keepAbove();renderer.render(scene,camera);
  const w=renderer.domElement.clientWidth,h=renderer.domElement.clientHeight;
  for(const l of labs){v3.copy(l.v).project(camera);const vis=v3.z<1&&Math.abs(v3.x)<1.1&&Math.abs(v3.y)<1.1;
   l.el.style.display=vis?'block':'none';l.el.style.left=((v3.x+1)/2*w)+'px';l.el.style.top=((1-v3.y)/2*h)+'px'}})();

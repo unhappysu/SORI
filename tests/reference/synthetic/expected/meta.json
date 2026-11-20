@@ -1,11 +1,11 @@
 {
   "description": "기준 사례(가상 교차로, tests/reference/synthetic/input) 기준값. 실제 지역 자료 아님",
-  "created": "2026-11-13T23:30:31",
-  "commit": "b5c29bca731c85676bed047b1f00c51a3ad4dfe0",
+  "created": "2026-11-20T13:20:15",
+  "commit": "98f84c05b69ad8a14c6260c9f0ad3a97b6d3aaef",
   "sori_code_uncommitted_changes": true,
   "environment": {
     "python": "3.14.6",
-    "os": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "os": "macOS-27.2.1-arm64-arm-64bit-Mach-O",
     "machine": "arm64",
     "packages": {
       "numpy": "2.5.4",

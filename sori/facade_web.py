@@ -17,6 +17,7 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE
 from .plots import bid_label_points
+from .bldz import roof_fn
 from .viewer3d import _hex, _png_uri
 from .resources import resource_path
 
@@ -63,9 +64,15 @@ def scene_data(B, FR, F, T, bid, view, fh, grids=None, h=None, edges=(), cols=()
     for b in Bv.itertuples():
         for g in getattr(b.geometry, "geoms", [b.geometry]):
             p = orient(g, 1.0)
+            rf = roof_fn(b)
+            tops = [[round(rf(x, y) - zref, 2) for x, y in list(r.coords)[:-1]] for r in [p.exterior] + list(p.interiors)]
             blds.append({"id": int(b.bid), "r": [r2(c) for c in list(p.exterior.coords)[:-1]],
+                         "t": tops if getattr(b, "ztops", None) else None,
                          "h": [[r2(c) for c in list(i.coords)[:-1]] for i in p.interiors],
-                         "z": [round(float(b.z0) - zref, 2), round(float(b.ztop) - zref, 2)], "f": int(b.floors)})
+                         # 벽 아래 끝 = 바닥판 밑(−0.2 m). 경사지에서 z0 가 높은 건물이 평평한 바닥 위에 떠 보이지 않게
+                         # 받침 벽으로 이어 그림(그리기만, 계산값·층 위치는 z0 그대로, 2026-11-20)
+                         "z": [-0.2, round(float(b.ztop) - zref, 2)], "z0": round(float(b.z0) - zref, 2),
+                         "f": int(b.floors)})
     # 벽면 사각형(층 × 구간) — 외벽 앞 6 cm, 해 방향 명암 0.80–1.0(3D 뷰어와 같은 규칙)
     S = FR[FR.bid.isin(T)]
     f = F.loc[S.fid]
@@ -73,6 +80,8 @@ def scene_data(B, FR, F, T, bid, view, fh, grids=None, h=None, edges=(), cols=()
     ax_, ay_ = f.x1.values + S.a.values * (f.x2.values - f.x1.values), f.y1.values + S.a.values * (f.y2.values - f.y1.values)
     bx_, by_ = f.x1.values + S.b.values * (f.x2.values - f.x1.values), f.y1.values + S.b.values * (f.y2.values - f.y1.values)
     z0b = Bv.set_index("bid").z0.reindex(S.bid.values).values
+    if "zg" in S:                                    # 층 바닥 = 수음점 지면(지형 따라가기면 벽 위치 지형)
+        z0b = S.zg.values
     za = np.where(np.isfinite(z0b), z0b, f.z0.values) + (S.floor.values - 1) * fh - zref
     q = np.c_[ax_ + off * f.nx.values - ox, ay_ + off * f.ny.values - oy, bx_ + off * f.nx.values - ox,
               by_ + off * f.ny.values - oy, za, za + fh].round(2)
@@ -92,7 +101,8 @@ def scene_data(B, FR, F, T, bid, view, fh, grids=None, h=None, edges=(), cols=()
         x, y = w.x1 + t * (w.x2 - w.x1) + 0.8 * w.nx, w.y1 + t * (w.y2 - w.y1) + 0.8 * w.ny
         walls.append({"x": round(x - ox, 2), "y": round(y - oy, 2), "nx": round(float(w.nx), 3), "ny": round(float(w.ny), 3),
                       "L": round(float(np.hypot(w.x2 - w.x1, w.y2 - w.y1)), 1),
-                      "z": [round(float(fb.z0) + (fl - 0.5) * fh - zref, 2) for fl in r.floor],
+                      "z": [round(float(zb) + (fl - 0.5) * fh - zref, 2)
+                            for fl, zb in zip(r.floor, r.zg if "zg" in r else [fb.z0] * len(r))],
                       "T": [round(float(v), 1) for v in r.LrT], "N": [round(float(v), 1) for v in r.LrN]})
     nums = [{"id": b, "x": round(x - ox, 2), "y": round(y - oy, 2), "z": round(zt - zref, 2), "me": bool(me)}
             for b, x, y, zt, me in bid_label_points(Bv, bid, n_labels)]
@@ -197,11 +207,12 @@ function legend(){const L=$('lgbar');L.innerHTML='';const n=D.cols.length;
  D.edges.forEach((e,i)=>L.insertAdjacentHTML('beforeend',`<em style="left:${100*(i+1)/n}%">${e}</em>`))}
 function dispose(o){o.traverse(x=>{if(x.geometry)x.geometry.dispose();if(x.material){(Array.isArray(x.material)?x.material:[x.material]).forEach(m=>{if(m.map)m.map.dispose();m.dispose()})}})}
 function bgeom(list,tri){const P=[];for(const b of list){const z0=b.z[0],z1=b.z[1],n0=P.length;
- for(const r of [b.r,...b.h]){for(let i=0;i<r.length;i++){const a=r[i],c=r[(i+1)%r.length];
-  P.push(a[0],z0,-a[1], c[0],z0,-c[1], c[0],z1,-c[1], a[0],z0,-a[1], c[0],z1,-c[1], a[0],z1,-a[1])}}
+ const rings=[b.r,...b.h],tops=b.t||rings.map(r=>r.map(()=>z1));   // b.t = 꼭짓점별 지붕(지형 따라가기)
+ for(let ri=0;ri<rings.length;ri++){const r=rings[ri],T=tops[ri];for(let i=0;i<r.length;i++){const j=(i+1)%r.length,a=r[i],c=r[j];
+  P.push(a[0],z0,-a[1], c[0],z0,-c[1], c[0],T[j],-c[1], a[0],z0,-a[1], c[0],T[j],-c[1], a[0],T[i],-a[1])}}
  const cont=b.r.map(p=>new THREE.Vector2(p[0],p[1])),holes=b.h.map(h=>h.map(p=>new THREE.Vector2(p[0],p[1])));
  let t=[];try{t=THREE.ShapeUtils.triangulateShape(cont,holes)}catch(e){}
- const all=cont.concat(...holes);for(const f of t)for(const k of f){const v=all[k];P.push(v.x,z1,-v.y)}
+ const all=cont.concat(...holes),allT=[].concat(...tops);for(const f of t)for(const k of f){const v=all[k];P.push(v.x,allT[k],-v.y)}
  if(tri)tri.push([n0/9,P.length/9,b.id])}
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.computeVertexNormals();return g}
 function facMesh(idx){const q=D.fac.q,n=idx.length,P=new Float32Array(n*18),C=new Float32Array(n*18);
@@ -292,5 +303,5 @@ window.SORI={show(d,k){D=d;key=k||'T';$('msg').style.display='none';$('notice').
  key(k){if(!D)return false;key=k;paint();return true},
  state(){return D?{bid:D.bid,key,opts:S,nfac:D.fac.b.length,shown:[...labs.children].filter(e=>e.style.display==='block').map(e=>e.textContent)}:null}};
 applyOpts();
-(function loop(){requestAnimationFrame(loop);controls.update();if(dirty){renderer.render(scene,camera);place();dirty=false}})();
+(function loop(){requestAnimationFrame(loop);controls.update();if(controls.target.y<0.5){const d=0.5-controls.target.y;controls.target.y+=d;camera.position.y+=d;dirty=true}if(camera.position.y<1.5){camera.position.y=1.5;dirty=true}if(dirty){renderer.render(scene,camera);place();dirty=false}})();
 </script></body></html>"""

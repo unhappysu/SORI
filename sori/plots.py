@@ -21,6 +21,7 @@ from shapely.geometry.polygon import orient
 
 from . import AI_NOTICE
 from .config import grid_bbox, center, facade_reach
+from .bldz import roof_fn
 from .propagation import SHORT, result_model
 from .resources import resource_path
 
@@ -300,15 +301,17 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
     ground = Poly3DCollection([[(g[0], g[1], z0min - 0.2), (g[2], g[1], z0min - 0.2), (g[2], g[3], z0min - 0.2),
                                 (g[0], g[3], z0min - 0.2)]], facecolors=C["ground"], edgecolors="none", zorder=0)
     ax.add_collection3d(ground, autolim=False)                      # 지면은 항상 맨 뒤(깊이 정렬 오류 방지)
+    zfloor = z0min - 0.2       # 벽 아래 끝 = 바닥판. 경사지에서 z0 가 높은 건물이 떠 보이지 않게 받침 벽으로(그리기만, 2026-11-20)
     if ground_grid is not None:
         ax.add_collection3d(ground_cells(ground_grid, g, z0min - 0.1, cmap, norm), autolim=False)
     for b in B.itertuples():
         if b.bid in T:
             continue
         c = list(orient(b.geometry, 1.0).exterior.coords)
+        rf = roof_fn(b)                              # 꼭짓점별 지붕(지형 따라가기). 예전 결과는 평지붕 ztop
         out = gpolys if ghost and b.bid != focus else polys
         for (x1, y1), (x2, y2) in zip(c[:-1], c[1:]):
-            out.append([(x1, y1, b.z0), (x2, y2, b.z0), (x2, y2, b.ztop), (x1, y1, b.ztop)])
+            out.append([(x1, y1, zfloor), (x2, y2, zfloor), (x2, y2, rf(x2, y2)), (x1, y1, rf(x1, y1))])
             if out is polys:
                 if shade:                            # 반시계 외곽선의 바깥 법선 = (dy, −dx)
                     ln = math.hypot(x2 - x1, y2 - y1) or 1.0
@@ -316,15 +319,22 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
                     cols.append(tuple(min(1.0, v * k) for v in to_rgb(C["wall"])))
                 else:
                     cols.append(C["wall"])
-        out.append([(x, y, b.ztop) for x, y in c[:-1]])
+        out.append([(x, y, rf(x, y)) for x, y in c[:-1]])
         if out is polys:
             cols.append(C["roof"])
     lab_cols = []                                    # 라벨 열 위치(겹침 방지)
     labels3d = []
     for bid in T:
         b = bld[bld.bid == bid].iloc[0]
-        polys.append([(x, y, b.ztop) for x, y in list(orient(b.geometry, 1.0).exterior.coords)[:-1]])
+        ring = list(orient(b.geometry, 1.0).exterior.coords)
+        rf = roof_fn(b)
+        polys.append([(x, y, rf(x, y)) for x, y in ring[:-1]])
         cols.append(C["roof"])
+        gz = lambda x, y: rf(x, y) - float(b.H)      # noqa: E731  그 자리 지면(지붕 − H). 평지붕 결과면 z0
+        for (x1, y1), (x2, y2) in zip(ring[:-1], ring[1:]):   # 받침 벽(바닥판 ~ 그 자리 지면) — 층별 색 벽 아래 틈 메움
+            if max(gz(x1, y1), gz(x2, y2)) > zfloor + 0.05:
+                polys.append([(x1, y1, zfloor), (x2, y2, zfloor), (x2, y2, gz(x2, y2)), (x1, y1, gz(x1, y1))])
+                cols.append(C["wall"])
         sub = FR[FR.bid == bid]
         cand = F.loc[sub.fid.unique()]
         score = (cand.nx * cam[0] + cand.ny * cam[1]) * np.minimum(cand.L, 25)
@@ -337,7 +347,7 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
                 pmid = grp.piece.unique()[len(grp.piece.unique()) // 2]
                 for _, rr in grp[grp.piece == pmid].iterrows():
                     xa = f.x1 + (rr.a + rr.b) / 2 * (f.x2 - f.x1); ya = f.y1 + (rr.a + rr.b) / 2 * (f.y2 - f.y1)
-                    labels3d.append((xa + 0.8 * f.nx, ya + 0.8 * f.ny, b.z0 + (rr.floor - 0.5) * fh,
+                    labels3d.append((xa + 0.8 * f.nx, ya + 0.8 * f.ny, getattr(rr, "zg", b.z0) + (rr.floor - 0.5) * fh,
                                      f"{rr[key]:.1f}", len(lab_cols) - 1))
                 if label_box:                        # 앱: 보이는 벽마다 한 열(대상 건물을 둘러 가며 값)
                     continue
@@ -346,7 +356,7 @@ def draw_facade_3d(ax, bld, FR, F, T, key, cmap, norm, view, fh, elev, azim, lab
             f = F.loc[rr.fid]
             xa = f.x1 + rr.a * (f.x2 - f.x1); ya = f.y1 + rr.a * (f.y2 - f.y1)
             xb = f.x1 + rr.b * (f.x2 - f.x1); yb = f.y1 + rr.b * (f.y2 - f.y1)
-            za = b.z0 + (rr.floor - 1) * fh; zb = za + fh
+            za = getattr(rr, "zg", b.z0) + (rr.floor - 1) * fh; zb = za + fh   # 층 바닥 = 수음점 지면
             polys.append([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)])
             c_ = cmap(norm(rr[key]))
             if shade:

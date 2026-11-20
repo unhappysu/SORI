@@ -162,15 +162,103 @@ def flatten_road_surface(cfg, road, gnd, rast):
     return out, info
 
 
-def build_dsm(bld, gnd, rast):
-    bidr = features.rasterize(((g, int(b)) for g, b in zip(bld.geometry, bld.bid)),
+def _road_band(road, rast):
+    """수치지도 도로폭 안(도로중심선 ± 폭/2) 칸 마스크 — flatten_road_surface 와 같은 띠"""
+    polys = []
+    for _, rd in road.iterrows():
+        w = rd["width"]
+        w = float(w) if w is not None and np.isfinite(w) and w > 0 else 3.25 * max(int(rd["lanes"]), 1)
+        for line in getattr(rd.geometry, "geoms", [rd.geometry]):
+            if line.length >= 0.5:
+                polys.append(line.buffer(w / 2.0, cap_style="flat"))
+    if not polys:
+        return np.zeros((rast.ny, rast.nx), bool)
+    return features.rasterize(((p, 1) for p in polys), out_shape=(rast.ny, rast.nx), transform=rast.transform,
+                              fill=0, dtype="uint8", all_touched=False).astype(bool)
+
+
+def _rasterize_bid(bld, rast):
+    return features.rasterize(((g, int(b)) for g, b in zip(bld.geometry, bld.bid)),
                               out_shape=(rast.ny, rast.nx), transform=rast.transform,
                               fill=-1, dtype="int32", all_touched=False)
+
+
+def outline_min_z(bld, gnd, rast, step=None):
+    """건물별 외곽선(바깥·안쪽 고리)을 step(m, 기본 0.5 칸) 간격으로 따라간 지형고 최솟값 — 벽 어디서도 바닥이 지형보다 높지 않음"""
+    step = 0.5 * rast.res if step is None else step
     z0 = []
-    for g in bld.geometry:                         # 건물 기저 = 외곽선 정점 지형고의 최솟값
-        c = np.asarray(g.exterior.coords)
-        z0.append(float(np.min(rast.sample(gnd, c[:, 0], c[:, 1]))))
-    bld["z0"] = z0
+    for g in bld.geometry:
+        zs = []
+        for ring in [g.exterior] + list(g.interiors):
+            c = np.asarray(ring.segmentize(step).coords)
+            zs.append(np.min(rast.sample(gnd, c[:, 0], c[:, 1])))
+        z0.append(float(min(zs)))
+    return np.asarray(z0)
+
+
+def grade_building_pads(cfg, bld, road, gnd, rast):
+    """건물 부지 정지(model.building_ground: pad, 2026-11-20). 등고선·DEM 은 건물 부지를 깎은 면을 모르므로, 경사지 건물은
+    오르막 쪽 벽이 지형에 묻히고(최솟값 바닥) 긴 벽 아래 지형이 꺼진 곳은 건물이 뜸(꼭짓점만 본 최솟값).
+      z0 = 외곽선 0.5 칸 간격 지형고 최솟값(outline_min_z)
+      건물 안 = z0, 벽 바로 바깥 띠(1.5 칸, 1 m 격자에서 1.5 m) = z0(이 띠만 쌓기 허용 — 벽 아래가 꺼진 곳의 뜸 방지), 그 바깥 building_pad_m 까지
+      원래 지형으로 선형 연결(가장 가까운 건물 기준). 1 m 띠 바깥은 깎기만 함(새 지형 = min(원래, 정지면)) — 없던
+      둔덕(차폐)을 만들지 않음. 도로폭 안 칸은 바꾸지 않음(음원 높이 불변) — 도로와 맞닿은 벽은 도로면 아래로 묻힐 수 있음.
+    반환: (정지한 지형, z0 배열, 기록 dict)"""
+    from scipy.ndimage import distance_transform_edt
+    B = float(cfg["model"].get("building_pad_m", 5.0))
+    apron = min(max(1.0, 1.5 * rast.res), B)     # 벽 바로 바깥 띠(칸 중심 거리, 모서리 대각선 칸 √2 칸 포함)
+    z0 = outline_min_z(bld, gnd, rast)
+    bidr = _rasterize_bid(bld, rast)
+    if not (bidr >= 0).any():
+        return gnd, z0, {"mode": "pad", "cells": 0}
+    pos = {int(b): i for i, b in enumerate(bld.bid)}
+    zb = np.full(int(bld.bid.max()) + 1, np.nan)
+    for b, i in pos.items():
+        zb[b] = z0[i]
+    dist, (ii, jj) = distance_transform_edt(bidr < 0, sampling=rast.res, return_indices=True)
+    near = bidr[ii, jj]
+    target = zb[np.clip(near, 0, None)]
+    w = np.clip((B - dist) / max(B - apron, 1e-6), 0.0, 1.0)          # 벽 1 m 안 = 1, B 에서 0
+    w[dist <= apron] = 1.0
+    graded = gnd + w * (target - gnd)
+    out = np.where(dist <= B, np.minimum(gnd, graded), gnd)
+    out = np.where(dist <= apron, target, out).astype(np.float32)   # 건물 안·벽 바깥 띠는 바닥 높이 그대로(이 띠만 쌓기 허용 — 뜸 방지)
+    road_m = _road_band(road, rast)
+    out[road_m & (bidr < 0)] = gnd[road_m & (bidr < 0)]
+    dz = out - gnd
+    ch = np.abs(dz) > 1e-4
+    info = {"mode": "pad", "pad_m": B, "cells": int(ch.sum()), "cells_filled": int((dz > 1e-4).sum()),
+            "fill_max": round(float(max(dz.max(), 0.0)), 3),
+            "cells_in_buildings": int((ch & (bidr >= 0)).sum()),
+            "cut_mean": round(float(-dz[dz < -1e-4].mean()), 3) if (dz < -1e-4).any() else 0.0,
+            "cut_p90": round(float(np.percentile(-dz[dz < -1e-4], 90)), 3) if (dz < -1e-4).any() else 0.0,
+            "cut_max": round(float(-dz.min()), 3),
+            "cells_cut_over_1m": int((dz < -1.0).sum()), "cells_cut_over_5m": int((dz < -5.0).sum())}
+    log.info("건물 부지 정지(pad): %s", info)
+    return out, z0, info
+
+
+def build_dsm(bld, gnd, rast, z0=None, follow=False):
+    """follow=True(model.building_ground: follow): 지붕이 지형을 따라감 — 건물 안 칸마다 그 칸 지형 + H.
+    기록용 z0 = 외곽선 꼭짓점 최솟값, ztop = 외곽선 0.5 칸 간격 최댓값 + H"""
+    bidr = _rasterize_bid(bld, rast)
+    if z0 is None:
+        z0 = []
+        for g in bld.geometry:                     # 건물 기저 = 외곽선 정점 지형고의 최솟값(model.building_ground: vertex_min)
+            c = np.asarray(g.exterior.coords)
+            z0.append(float(np.min(rast.sample(gnd, c[:, 0], c[:, 1]))))
+    bld["z0"] = list(map(float, z0))
+    if follow:
+        zmax = []
+        for g in bld.geometry:
+            c = np.vstack([np.asarray(r.segmentize(0.5 * rast.res).coords) for r in [g.exterior] + list(g.interiors)])
+            zmax.append(float(np.max(rast.sample(gnd, c[:, 0], c[:, 1]))))
+        bld["ztop"] = np.asarray(zmax) + bld["H"].values
+        from .bldz import encode                       # 3D 그리기용 꼭짓점별 지붕 표고(지형 + H)
+        bld["ztops"] = [encode(g, lambda x, y: rast.sample(gnd, x, y), float(h)) for g, h in zip(bld.geometry, bld.H)]
+        Hb = bld["H"].values.astype(np.float32)
+        dsm = np.where(bidr >= 0, gnd + Hb[np.clip(bidr, 0, None)], gnd).astype(np.float32)
+        return dsm, bidr.astype(np.int64)
     bld["ztop"] = bld["z0"] + bld["H"]
     top = bld["ztop"].values.astype(np.float32)
     dsm = np.where(bidr >= 0, top[np.clip(bidr, 0, None)], gnd).astype(np.float32)
@@ -622,7 +710,8 @@ def _rls90_emission(S, T, Ln):
 
 
 # ====================================================================== 파사드 / 수음점
-def facade_edges(cfg, bld, bidr, rast, region, min_len=2.0):
+def facade_edges(cfg, bld, bidr, rast, region, min_len=2.0, gnd=None):
+    """gnd 를 주면(model.building_ground: follow) 벽마다 그 벽을 따라간 지형으로 z0(최저)·ztop(평균 + H)"""
     rows = []
     for b in bld[bld.intersects(region)].itertuples():
         poly = orient(b.geometry, 1.0)
@@ -641,8 +730,14 @@ def facade_edges(cfg, bld, bidr, rast, region, min_len=2.0):
                         party += 1
                 if party >= 2:
                     continue
+                z0, zt = b.z0, b.ztop
+                if gnd is not None:
+                    k = max(2, int(math.ceil(L / (0.5 * rast.res))) + 1)
+                    t = np.linspace(0.0, 1.0, k)
+                    zw = rast.sample(gnd, x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+                    z0, zt = float(zw.min()), float(zw.mean()) + float(b.H)
                 rows.append(dict(x1=x1, y1=y1, x2=x2, y2=y2, nx=nx_, ny=ny_, L=L, bid=b.bid,
-                                 z0=b.z0, ztop=b.ztop, H=b.H, floors=int(b.floors), kind=b.kind))
+                                 z0=z0, ztop=zt, H=b.H, floors=int(b.floors), kind=b.kind))
     return pd.DataFrame(rows)
 
 
@@ -658,7 +753,8 @@ def grid_receivers(cfg, gnd, bidr, rast):
     return xs, ys, zg, inside
 
 
-def facade_receivers(cfg, F, bld):
+def facade_receivers(cfg, F, bld, gnd=None, rast=None):
+    """gnd·rast 를 주면(model.building_ground: follow) 층 높이를 수음점이 붙은 벽 위치의 지형에서 쌓음(땅속 수음점 없음)"""
     fc = cfg["receivers"]["facade"]; mc = cfg["model"]
     cx, cy = center(cfg)
     excl = cfg["input"]["map"]["facade_exclude_kinds"]
@@ -675,11 +771,15 @@ def facade_receivers(cfg, F, bld):
             m = (a + b_) / 2
             x = f.x1 + m * (f.x2 - f.x1) + fc["offset"] * f.nx
             y = f.y1 + m * (f.y2 - f.y1) + fc["offset"] * f.ny
+            zb, ztop_ = f.z0, f.ztop
+            if gnd is not None:                              # 벽 위 지점(수음점 바로 안쪽)의 지형
+                zb = float(rast.sample(gnd, [f.x1 + m * (f.x2 - f.x1)], [f.y1 + m * (f.y2 - f.y1)])[0])
+                ztop_ = zb + f.H
             for fl in range(1, f.floors + 1):
-                z = f.z0 + fc["z_in_floor"] + (fl - 1) * mc["floor_height"]
-                if z > f.ztop:
+                z = zb + fc["z_in_floor"] + (fl - 1) * mc["floor_height"]
+                if z > ztop_:
                     break
-                rows.append(dict(fid=fi, piece=q, a=a, b=b_, x=x, y=y, z=z, zg=f.z0, floor=fl,
+                rows.append(dict(fid=fi, piece=q, a=a, b=b_, x=x, y=y, z=z, zg=zb, floor=fl,
                                  bid=f.bid, nx=f.nx, ny=f.ny))
     return pd.DataFrame(rows)
 
@@ -757,14 +857,20 @@ def main(cfg):
     rsinfo = None
     if cfg["model"].get("road_surface", "dtm") == "flatten":
         gnd, rsinfo = flatten_road_surface(cfg, road, gnd, rast)
-    dsm, bidr = build_dsm(bld, gnd, rast)
+    pinfo = None
+    z0 = None
+    if cfg["model"].get("building_ground", "follow") == "pad":
+        gnd, z0, pinfo = grade_building_pads(cfg, bld, road, gnd, rast)
+    follow = cfg["model"].get("building_ground", "follow") == "follow"
+    dsm, bidr = build_dsm(bld, gnd, rast, z0, follow)
     Gm = build_G(cfg, rast)
     refl_region = box(*gb).buffer(pc["reflection"]["r_facade"] + pc["reflection"]["r_source_main"])
-    F = facade_edges(cfg, bld, bidr, rast, refl_region)
+    F = facade_edges(cfg, bld, bidr, rast, refl_region, gnd=gnd if follow else None)
     J, reach = junctions(cfg, road)
     S, T, Ln = build_sources(cfg, road, gnd, rast, F, J, reach)
     xs, ys, gz, inside = grid_receivers(cfg, gnd, bidr, rast)
-    FR = facade_receivers(cfg, F, bld) if cfg["receivers"]["facade"]["enabled"] else pd.DataFrame()
+    FR = (facade_receivers(cfg, F, bld, *((gnd, rast) if follow else ()))
+          if cfg["receivers"]["facade"]["enabled"] else pd.DataFrame())
     BR = barrier_pieces(cfg, gnd, rast)                # 방음벽(선택 입력). 없으면 아래 파일·기록은 이전과 같음
     extra = {}
     bpath = os.path.join(out, "barriers_used.csv")
@@ -787,7 +893,8 @@ def main(cfg):
     F.to_csv(os.path.join(out, "facades.csv"), index_label="fid", encoding="utf-8-sig")
     FR.to_csv(os.path.join(out, "facade_receivers.csv"), index=False, encoding="utf-8-sig")
     J.to_csv(os.path.join(out, "junctions_used.csv"), index=False, encoding="utf-8-sig")
-    keep = ["geometry", "bid", "bname", "kind", "floors", "H", "H_src", "z0", "ztop"]
+    keep = ["geometry", "bid", "bname", "kind", "floors", "H", "H_src", "z0", "ztop"] + \
+        (["ztops"] if "ztops" in bld else [])
     bld[keep].to_file(os.path.join(out, "buildings.gpkg"), driver="GPKG")
     road[["geometry", "fid", "ufid", "rname", "axis", "lanes", "width", "oneway"]].to_file(
         os.path.join(out, "roads.gpkg"), driver="GPKG")
@@ -819,6 +926,8 @@ def main(cfg):
         info["roads_oneway_name_fallback"] = int((T.traffic_src == "fallback_oneway").sum())
     if rsinfo is not None:                         # 옵션을 켠 경우에만 기록
         info["road_surface"] = rsinfo
+    if pinfo is not None:
+        info["building_ground"] = pinfo
     if len(BR):                                    # 방음벽을 넣은 경우에만 기록
         g = BR.groupby("barrier_id", sort=False)
         info["barriers"] = {"count": int(g.ngroups), "length_m": round(float(BR.L.sum()), 1),

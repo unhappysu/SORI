@@ -334,6 +334,20 @@ RLS-19 3.2, 3.3.1(원문 `fgsv_052_korrektur_04032020.pdf`)과 ISO 9613-2 4절�
 | 14 라 외벽 | 건물에서 소음원 방향 1.0 m, 건물 반사음 포함 | 외벽 앞 5 cm, 자기 외벽 반사 제외(RLS-19 1장) | 정의가 달라 값을 직접 비교할 수 없음 |
 | 15 검증 | 계산값 − 실측값 평균 ±3 dB, 표준편차 3 이내. ±5 dB 이상 지점은 원인 분석 | 사가정로 2지점 +5.6 ~ +8.5 dB | 미충족 — 원인 분석 대상(`field_measurement/2026-10-22/02_분석보고서.md`) |
 
+## 5c. 건물 바닥과 지형 (2026-11-20)
+
+원칙(사용자 결정 2026-11-20): **건물 바닥·벽면 수음점이 지형 아래에 있으면 안 됨** → 기본 `model.building_ground: follow`.
+
+| 방식 | 내용 | SoundPLAN 조건 격자 552점(2 m) LrT − LrD 평균 / RMSE |
+|---|---|---|
+| `follow` (**기본**) | 지붕 DSM = 칸마다 지형 + H, 반사면 = 벽을 따라간 지형 최저 ~ 평균 + H, 벽면 수음점 = 벽 위치 지형부터 층을 쌓음. 땅속 바닥·수음점 없음. `buildings.gpkg` 의 `ztops`(꼭짓점별 지붕 표고, `sori/bldz.py`)로 3D 지붕·벽이 지형을 따라감 | −1.30 / 3.54 dB |
+| `vertex_min` (이전 기본) | z0 = 외곽선 꼭짓점 지형고 최솟값, 평지붕 z0 + H. 경사지에서 오르막 쪽 바닥·1층 수음점이 지형 아래(전농사거리 1 m 넘게 묻힘 약 20 %, 땅속 벽면 수음점 63점) | **−1.00 / 3.33 dB** (SoundPLAN 과 가장 가까움) |
+| `pad` | 부지 정지: 외곽선 0.5 칸 최솟값, 건물 둘레 5 m 깎음(쌓지 않음, 도로 제외) | −1.14 / 3.45 dB |
+
+- SoundPLAN 격자의 지면고(Z)는 깎지 않은 지형과 맞고, `vertex_min` 이 SoundPLAN 과 가장 가까움 → SoundPLAN 도 건물 높이를 낮은 쪽 기준으로 두는 것으로 추정(화면 확인 안 함). `follow` 는 오르막 쪽 지붕이 높아져 건물 뒤가 더 낮게 나옴(기존 대비 1 dB 넘게 바뀐 격자점 10 %, 최대 −5.0 dB). 수음점 P1·P2 는 거의 같음.
+- SoundPLAN 과 같은 건물 규칙으로 비교하려면 설정에 `model.building_ground: vertex_min` 을 적음(이전 결과: `03_전농사거리_SORI계산/_보관/2026-11-20/output_soundplan_vertex_min`).
+- 그리기: 3D 보기 벽 아래 끝 = min(바닥, 외곽선이 지나는 5 m 메쉬 칸 꼭짓점 지형고) − 0.3 m(뜬 틈 없음), 시점은 지형 위 2 m·회전 중심 지형 위 1 m 아래로 못 감, 지면 양면. 3D 파사드(평평한 바닥)는 바닥판부터 받침 벽. 층별 색은 수음점 지면(`zg`)부터.
+
 ## 6. 검증 (`python -m pytest -q tests`)
 
 > 2026-11-13(측면 회절 뒤): **400 통과, 1 skipped, 1 xfailed** — `test_lateral.py`(8)·`test_lateral_proto.py`(3) 추가. 측면 회절 `sori/lateral.py`(ISO 식 13, `propagation.lateral.enabled`, **기본 켬** — 같은 날 사용자 결정, 결과 바뀜, 기준 사례 기준값 다시 만듦), 설명은 Technical Manual ‘측면 회절’ 절·`validation/lateral_diffraction/README.md`.
